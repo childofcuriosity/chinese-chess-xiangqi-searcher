@@ -7,7 +7,7 @@ import urllib.request
 # --- 1. 配置与显示颜色 ---
 USE_DEPTH=0  # 是否使用固定深度搜索 (否则使用迭代加深)
 CLOUD_BOOK_ENABLED=1  # 是否启用云开局库查询
-OPEN_NMP=0  # 是否启用空步裁剪 (Null Move Pruning)
+OPEN_NMP=1  # 是否启用空步裁剪 (Null Move Pruning)
 RESET = "\033[0m"
 RED_TXT = "\033[31m"
 BLACK_TXT = "\033[36m"
@@ -265,19 +265,88 @@ class XiangqiCLI:
         self.board[r1][c1] = moved_piece
         self.board[r2][c2] = captured
         self.turn = 'black' if self.turn == 'red' else 'red'
+    def calculate_mobility(self, is_red_turn):
+        """
+        计算盘面机动性加分（只在 evaluate 中调用）
+        针对车、马进行机动性评估
+        """
+        mobility_score = 0
+        
+        # 预计算马的 8 个跳跃方向和对应的蹩腿位置
+        # (马跳dr, dc), (蹩腿lr, lc)
+        knight_moves = [
+            (-2, -1, -1, 0), (-2, 1, -1, 0),  # 上跳 (蹩腿在上)
+            (2, -1, 1, 0),   (2, 1, 1, 0),    # 下跳 (蹩腿在下)
+            (-1, -2, 0, -1), (1, -2, 0, -1),  # 左跳 (蹩腿在左)
+            (-1, 2, 0, 1),   (1, 2, 0, 1)     # 右跳 (蹩腿在右)
+        ]
+        
+        # 车的 4 个方向
+        rook_dirs = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+
+        for r in range(ROWS):
+            for c in range(COLS):
+                piece = self.board[r][c]
+                if piece == '.': continue
+                
+                # 区分红黑，用来决定加分还是减分
+                is_red_piece = self.is_red(piece)
+                factor = 1 if is_red_piece else -1
+                
+                p_lower = piece.lower()
+                
+                # --- 1. 车的机动性 ---
+                if p_lower == 'r':
+                    # 车每控制一个点 +1 分，稍微增加一些权重
+                    # 如果车被憋在角落，分就低
+                    move_cnt = 0
+                    for dr, dc in rook_dirs:
+                        nr, nc = r + dr, c + dc
+                        # 简单的射线扫描
+                        while 0 <= nr < ROWS and 0 <= nc < COLS:
+                            move_cnt += 1
+                            if self.board[nr][nc] != '.':
+                                break
+                            nr += dr
+                            nc += dc
+                    # 车的机动性价值较高
+                    mobility_score += (move_cnt * 3) * factor
+
+                # --- 2. 马的机动性 ---
+                elif p_lower == 'n':
+                    # 马每有一个合法跳点 +4 分 (鼓励马跳出)
+                    # 重点检查蹩腿
+                    move_cnt = 0
+                    for dr, dc, lr, lc in knight_moves:
+                        nr, nc = r + dr, c + dc
+                        leg_r, leg_c = r + lr, c + lc
+                        
+                        # 检查边界
+                        if 0 <= nr < ROWS and 0 <= nc < COLS:
+                            # 检查蹩腿点必须为空
+                            if self.board[leg_r][leg_c] == '.':
+                                # 检查落点（要么是空，要么是敌子，不能是队友）
+                                target = self.board[nr][nc]
+                                if target == '.' or self.is_red(target) != is_red_piece:
+                                    move_cnt += 1
+                    
+                    mobility_score += (move_cnt * 5) * factor
+        
+        # 返回总分（相对于红方视角）
+        return mobility_score
 
     def evaluate(self):
-        """现在的评估函数只需要 O(1) 的时间"""
-        # 仍然需要检查是否有将帅被吃（防止绝杀Bug）
-        # 为了速度，我们可以只在搜索层数较浅或产生杀棋时做全盘扫描，
-        # 但在这个简化版里，我们假设 generate_moves 不会生成送将的步，
-        # 或者 minimax 会自动过滤掉丢将的步。
+        """
+        综合评估：基础子力 + PST位置分 + 机动性动态分
+        """
+        # 1. 基础分 (增量更新的)
+        base_score = self.current_score
         
-        # 简单的胜负修正：如果此时 current_score 极其离谱（比如丢了将），
-        # 在这里修正并不容易。
-        # 最快的方法是：相信 current_score，但在 minimax 里处理无将的情况。
+        # 2. 机动性分 (实时计算)
+        # 注意：这里会稍微降低速度，但能显著提高棋力
+        # mob_score = self.calculate_mobility(self.turn == 'red')
         
-        return self.current_score
+        return base_score #+ mob_score
     def is_red(self, piece):
         return piece.isupper()
 
@@ -400,7 +469,7 @@ class XiangqiCLI:
             if beta > stand_pat: beta = stand_pat
         # --- 关键修改 1: 限制 QS 处理将军的深度 ---
         # 如果在 QS 里连续处理逃生步超过 2 层，就强制停止，防止卡死
-        if qs_depth > 2:
+        if qs_depth > 10:
             return stand_pat
         in_check = self.is_in_check(maximizing_player)
         # 只生成吃子步
@@ -500,42 +569,40 @@ class XiangqiCLI:
         """撤销空步：操作完全一样"""
         self.turn = 'black' if self.turn == 'red' else 'red'
         self.current_hash ^= self.zobrist_turn
-
-    # --- Minimax 搜索 (集成置换表) ---
     def minimax(self, depth, alpha, beta, maximizing_player):
         self.nodes += 1
         
-        # 1. 检查超时
-        if self.is_time_up():
-            return 0, None # 超时返回，结果将被舍弃
-        # 1. 查表 (TT Lookup)
-        original_alpha = alpha
+        # 0. 检查超时 (每 2048 个节点检查一次)
+        if self.nodes & 2047 == 0:
+            if self.is_time_up():
+                return 0, None
 
         # 1. 查表 (TT Lookup)
+        original_alpha = alpha
         idx = self.current_hash % self.tt_size
         tt_entry = self.tt[idx]
-        if tt_entry is not None and tt_entry[0] == self.current_hash :
+        tt_move = None
+        
+        if tt_entry is not None and tt_entry[0] == self.current_hash:
             tt_hash, tt_depth, tt_flag, tt_score, tt_move = tt_entry
             # 只有当表里的深度比当前要求更深或相等时，结果才可靠
             if tt_depth >= depth:
                 if tt_flag == TT_EXACT:
                     return tt_score, tt_move
-                elif tt_flag == TT_ALPHA: # 之前在这里 Fail Low (Max value < alpha)
-                    if tt_score <= alpha:
-                        return tt_score, tt_move
-                elif tt_flag == TT_BETA:  # 之前在这里 Fail High (Min value > beta)
-                    if tt_score >= beta:
-                        return tt_score, tt_move
+                elif tt_flag == TT_ALPHA and tt_score <= alpha:
+                    return tt_score, tt_move
+                elif tt_flag == TT_BETA and tt_score >= beta:
+                    return tt_score, tt_move
 
-        # 2. 基本结束条件
-        if depth == 0:
+        # 2. 基础结束条件
+        # 如果深度耗尽，进入静态搜索 (QS)
+        if depth <= 0:
             val = self.quiescence_search(alpha, beta, maximizing_player)
-            # 静态搜索的结果也存一下，depth=0
-            # self.tt[self.current_hash] = (0, TT_EXACT, val, None)
             return val, None
 
-        # 检查无将 (简单判断)
+        # 3. 检查胜负 (防止绝杀时死循环)
         kings = [False, False]
+        # 这一步其实比较耗时，但在 Python 简易引擎中为了安全保留
         for r in range(ROWS):
             for c in range(COLS):
                 if self.board[r][c] == 'K': kings[0] = True
@@ -543,135 +610,149 @@ class XiangqiCLI:
         if not kings[0]: return -30000 + depth, None 
         if not kings[1]: return 30000 - depth, None 
 
+        in_check = self.is_in_check(maximizing_player)
+        
+        # --- 移除死循环风险的 Check Extension ---
+        # 原来的 if in_check: depth += 1 会导致无限递归。
+        # 这里改为：如果被将军，我们不做空步裁剪(NMP)，
+        # 并且依靠 QS 在 depth=0 时处理将军，或者仅在 depth 较小时才极少量延伸(这里为了稳定，暂不延伸)。
 
         # --- Null Move Pruning (空步裁剪) ---
-        # 仅当深度足够，且当前不处于被将军状态时启用
-        # R = 2 (裁剪深度)
-        R = 2
-        # 注意：endgame时(子力很少)往往容易出现 zugzwang，严谨引擎会判断子力价值总和，这里简化处理
-        
-        # 只有剩余深度 > R 才有剪枝意义
-        if OPEN_NMP and depth >= R + 1:
-            # 判断是否允许空步 (必须不被将军)
-            if not self.is_in_check(maximizing_player):
-                
-                self.make_null_move() # 走空步，把出子权给对方
-                
-                # 零窗口搜索 (Null Window Search)
-                # 这里的逻辑稍微绕一点，因为我们用的不是 Negamax 而是 Minimax
-                
-                if maximizing_player:
-                    # 当前是红方(Max)，假装没走，轮到黑方(Min)
-                    # 我们希望证明：即使我让一步，局面依然 >= Beta (Fail High)
-                    # 传递给对方的窗口是 [beta, beta+1]
-                    null_score, _ = self.minimax(depth - R - 1, beta-1, beta, False)
-                    
-                    self.undo_null_move()
-                    if null_score >= beta:
-                        return beta, None # 剪枝！直接返回 Beta
-                else:
-                    # 当前是黑方(Min)，假装没走，轮到红方(Max)
-                    # 我们希望证明：即使我让一步，局面依然 <= Alpha (Fail Low)
-                    # 传递给对方的窗口是 [alpha-1, alpha]
-                    null_score, _ = self.minimax(depth - R - 1, alpha, alpha+1, True)
-                    
-                    self.undo_null_move()
-                    if null_score <= alpha:
-                        return alpha, None # 剪枝！直接返回 Alpha
-                    
+        # 只有在：没被将军 + 深度足够 + 没到残局(简单判断) 时才启用
+        if OPEN_NMP and depth >= 3 and not in_check:
+            self.make_null_move()
+            R = 2
+            # 这里的递归必须保证 depth 减小
+            val, _ = self.minimax(depth - 1 - R, beta - 1, beta, not maximizing_player)
+            self.undo_null_move()
+            
+            if self.stop_search: return 0, None
+            
+            if maximizing_player:
+                if val >= beta: return beta, None
+            else:
+                if val <= alpha: return alpha, None
+
+        # 4. 生成着法
         moves = self.get_all_moves(maximizing_player)
         if not moves:
+            # 无棋可走：如果是被将军，就是输了；如果没被将军，是困毙(算和棋或输，这里简化为输)
             return (-30000 if maximizing_player else 30000), None
 
-        # 3. 启发式移动排序
-        # 如果 TT 里有建议的 best_move，把它排第一！(极大提高剪枝效率)
-        if tt_entry and tt_entry[3] in moves:
-            moves.remove(tt_entry[3])
-            moves.insert(0, tt_entry[3])
-        else:
-            # 否则还是按吃子价值排
-            killers = self.killer_moves[depth]
-            def move_sorter(m):
-                start, end = m
-                # 吃子价值 (MVV-LVA)
-                victim = self.board[end[0]][end[1]]
-                capture_val = PIECE_VALUES.get(victim, 0) if victim != '.' else 0
-
-                if capture_val > 0:
-                    return 100000 + capture_val
-                # 3. 杀手步 (给一个比吃子低，但比历史分高的固定高分)
-                if m == killers[0]: return 90000
-                if m == killers[1]: return 80000
-                # 4. 历史得分 (防止溢出，缩小权重)
-                hist_val = self.history_table[start[0]][start[1]][end[0]][end[1]]
-                return hist_val 
-            moves.sort(key= move_sorter, reverse=True)
-
-        best_move = None
-        best_score = -float(SCORE_INF ) if maximizing_player else float(SCORE_INF )
-
-        # 4. 遍历
-        if maximizing_player:
-            for start, end in moves:
-                captured = self.make_move(start, end)
-                eval_score, _ = self.minimax(depth - 1, alpha, beta, False)
-                self.undo_move(start, end, captured)
-                # 核心检查：如果子节点返回了 None 或者标志位变了，立即停止更新并向上返回 None
-                if self.stop_search or eval_score is None: 
-                    return None, None
-                if eval_score > best_score:
-                    best_score = eval_score
-                    best_move = (start, end)
-                
-                alpha = max(alpha, best_score)
-                if beta <= alpha:
-                    if self.board[end[0]][end[1]] == '.': # 只记录非吃子步
-                        # 深度越深，这就说明这步棋越关键，加分越多
-                        self.history_table[start[0]][start[1]][end[0]][end[1]] += depth * depth
-                        # 如果这步棋不是第一杀手步，才更新
-                        if (start, end) != self.killer_moves[depth][0]:
-                            # 把原来的第一挤到第二，新的变第一
-                            self.killer_moves[depth][1] = self.killer_moves[depth][0]
-                            self.killer_moves[depth][0] = (start, end)
-                    break # Beta Cutoff
-        else:
-            for start, end in moves:
-                captured = self.make_move(start, end)
-                eval_score, _ = self.minimax(depth - 1, alpha, beta, True)
-                self.undo_move(start, end, captured)
-                if self.stop_search or eval_score is None:
-                    return None, None
-                if eval_score < best_score:
-                    best_score = eval_score
-                    best_move = (start, end)
-                
-                beta = min(beta, best_score)
-                if beta <= alpha:
-                    if self.board[end[0]][end[1]] == '.': # 只记录非吃子步
-                        # 深度越深，这就说明这步棋越关键，加分越多
-                        self.history_table[start[0]][start[1]][end[0]][end[1]] += depth * depth
-                        # 如果这步棋不是第一杀手步，才更新
-                        if (start, end) != self.killer_moves[depth][0]:
-                            # 把原来的第一挤到第二，新的变第一
-                            self.killer_moves[depth][1] = self.killer_moves[depth][0]
-                            self.killer_moves[depth][0] = (start, end)
-                    break # Alpha Cutoff
-        if not self.stop_search:
-            # 5. 存表 (TT Store)
-            # 确定 Flag 类型
-            flag = TT_EXACT
-            if best_score <= original_alpha:
-                flag = TT_ALPHA # Fail Low, 说明这个局面很差，分数的上限是 original_alpha
-            elif best_score >= beta:
-                flag = TT_BETA  # Fail High, 发生剪枝，分数的下限是 beta
+        # 排序
+        killers = self.killer_moves[depth] if depth < 64 else [None, None]
+        def move_sorter(m):
+            start, end = m
+            if tt_move and (start, end) == tt_move: return 2000000 # TT Move
             
-            idx = self.current_hash % self.tt_size
-            existing_entry = self.tt[idx]
-            if (existing_entry is None or depth >= existing_entry[1] or self.current_hash != existing_entry[0]):
-                self.tt[idx] = (self.current_hash, depth, flag, best_score, best_move)
+            victim = self.board[end[0]][end[1]]
+            if victim != '.': # MVV-LVA
+                val = PIECE_VALUES.get(victim, 0)
+                attacker = self.board[start[0]][start[1]]
+                attacker_val = PIECE_VALUES.get(attacker, 0)
+                return 100000 + val * 10 - attacker_val
             
-            return best_score, best_move
-        return None, None
+            if m == killers[0]: return 90000
+            if m == killers[1]: return 80000
+            return self.history_table[start[0]][start[1]][end[0]][end[1]]
+
+        moves.sort(key=move_sorter, reverse=True)
+
+        best_move = moves[0]
+        best_score = -float(SCORE_INF) if maximizing_player else float(SCORE_INF)
+        moves_count = 0
+        
+        # 5. 遍历
+        for start, end in moves:
+            moves_count += 1
+            captured = self.make_move(start, end)
+            
+            score = 0
+            
+            # --- PVS & LMR ---
+            # 只有当不是被将军状态时，才敢大胆进行 LMR 裁剪
+            do_lmr = (depth >= 3 and moves_count > 4 and 
+                      captured == '.' and not in_check)
+            
+            if maximizing_player:
+                if moves_count == 1:
+                    score, _ = self.minimax(depth - 1, alpha, beta, False)
+                else:
+                    reduction = 1 if do_lmr else 0
+                    if moves_count > 10 and do_lmr: reduction = 2
+                    
+                    search_depth = depth - 1 - reduction
+                    # 确保深度不会变成负数导致逻辑混乱(虽然 minimax 入口有判断，但保持清醒很好)
+                    if search_depth < 0: search_depth = 0
+
+                    # 1. 尝试零窗口搜索
+                    score, _ = self.minimax(search_depth, alpha, alpha + 1, False)
+                    
+                    # 2. 如果 Fail High (在这个深度居然比 alpha 好)，说明可能过度剪枝了
+                    if score > alpha:
+                        if do_lmr: # 恢复深度重搜
+                            score, _ = self.minimax(depth - 1, alpha, alpha + 1, False)
+                        if score > alpha and score < beta: # 全窗口重搜
+                            score, _ = self.minimax(depth - 1, alpha, beta, False)
+            else:
+                if moves_count == 1:
+                    score, _ = self.minimax(depth - 1, alpha, beta, True)
+                else:
+                    reduction = 1 if do_lmr else 0
+                    if moves_count > 10 and do_lmr: reduction = 2
+                    
+                    search_depth = depth - 1 - reduction
+                    if search_depth < 0: search_depth = 0
+
+                    score, _ = self.minimax(search_depth, beta - 1, beta, True)
+                    
+                    if score < beta:
+                        if do_lmr:
+                            score, _ = self.minimax(depth - 1, beta - 1, beta, True)
+                        if score < beta and score > alpha:
+                            score, _ = self.minimax(depth - 1, alpha, beta, True)
+
+            self.undo_move(start, end, captured)
+            
+            if self.stop_search: return 0, None
+
+            # 更新 Alpha/Beta
+            if maximizing_player:
+                if score > best_score:
+                    best_score = score
+                    best_move = (start, end)
+                    if best_score > alpha:
+                        alpha = best_score
+                        if alpha >= beta:
+                            if captured == '.':
+                                self.history_table[start[0]][start[1]][end[0]][end[1]] += depth * depth
+                                if self.killer_moves[depth][0] != (start, end):
+                                    self.killer_moves[depth][1] = self.killer_moves[depth][0]
+                                    self.killer_moves[depth][0] = (start, end)
+                            break
+            else:
+                if score < best_score:
+                    best_score = score
+                    best_move = (start, end)
+                    if best_score < beta:
+                        beta = best_score
+                        if beta <= alpha:
+                            if captured == '.':
+                                self.history_table[start[0]][start[1]][end[0]][end[1]] += depth * depth
+                                if self.killer_moves[depth][0] != (start, end):
+                                    self.killer_moves[depth][1] = self.killer_moves[depth][0]
+                                    self.killer_moves[depth][0] = (start, end)
+                            break
+
+        # 6. 存表
+        flag = TT_EXACT
+        if best_score <= original_alpha: flag = TT_ALPHA
+        elif best_score >= beta: flag = TT_BETA
+        
+        if tt_entry is None or depth >= tt_entry[1]:
+            self.tt[idx] = (self.current_hash, depth, flag, best_score, best_move)
+
+        return best_score, best_move
     def search_main(self, max_time, is_ai_red):
         cloud_data = self.query_cloud_book()
         if cloud_data:
@@ -706,7 +787,7 @@ class XiangqiCLI:
                 print(f"完成深度 {depth} | 耗时 {elapsed:.2f}s | 评估 {last_completed_val}", file=f)
 
             if abs(last_completed_val) > 20000: break # 发现绝杀
-            if elapsed > max_time * 0.2: break # 剩余时间预警
+            if elapsed > max_time * 0.3: break # 剩余时间预警
 
         # 哪怕深度 6 失败了，我们返回的也是深度 5 的最佳走法
         return last_completed_val, last_completed_move
@@ -774,7 +855,7 @@ class XiangqiCLI:
                     print(f">>> AI 正在思考 (深度 {DEPTH})...")
                     val, best = self.minimax(DEPTH, -float(SCORE_INF ), float(SCORE_INF ), is_ai_red)
                 else:
-                    MAX_TIME = 10.0 if  cnt<=3 else 30.0  # 每步最多思考 10 秒(仅在非固定深度时生效) 
+                    MAX_TIME = 10.0 if  cnt<=3 else 60.0  # 每步最多思考 10 秒(仅在非固定深度时生效) 
                     print(f">>> AI 正在思考 (限时 {MAX_TIME} 秒)...")
                     val, best = self.search_main(MAX_TIME, is_ai_red)
                 
@@ -910,7 +991,7 @@ def start_engine():
                     DEPTH = 6 # 中后期加深到6层
                 val, best = engine.minimax(DEPTH, -float(SCORE_INF ), float(SCORE_INF ), is_ai_red)
             else:
-                MAX_TIME = 10.0 if  cnt<=3 else 30.0 # 每步最多思考 10 秒(仅在非固定深度时生效) 
+                MAX_TIME = 10.0 if  cnt<=3 else 60.0 # 每步最多思考 10 秒(仅在非固定深度时生效) 
                 print(f">>> AI 正在思考 (限时 {MAX_TIME} 秒)...")
                 val, best = engine.search_main(MAX_TIME, is_ai_red)
 
