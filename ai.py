@@ -6,7 +6,7 @@ import random
 import urllib.request
 # --- 1. 配置与显示颜色 ---
 USE_DEPTH=0  # 是否使用固定深度搜索 (否则使用迭代加深)
-CLOUD_BOOK_ENABLED=1  # 是否启用云开局库查询
+CLOUD_BOOK_ENABLED=0  # 是否启用云开局库查询
 OPEN_NMP=1  # 是否启用空步裁剪 (Null Move Pruning)
 RESET = "\033[0m"
 RED_TXT = "\033[31m"
