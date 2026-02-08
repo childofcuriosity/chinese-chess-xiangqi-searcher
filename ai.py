@@ -1,3 +1,67 @@
+import subprocess
+import re
+USE_PIKAFISH=True  # 全局开关，是否使用皮卡鱼引擎进行评估
+class PikafishEvaluator:
+    def __init__(self, engine_path="pikafish.exe"):
+        # 启动进程，保持后台运行
+        self.process = subprocess.Popen(
+            engine_path,
+            universal_newlines=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=1
+        )
+        # 初始化
+        self.send("uci")
+        self.wait_for("uciok")
+        self.send("isready")
+        self.wait_for("readyok")
+        # 必须加载 NNUE 才能评估
+        # self.send("setoption name EvalFile value pikafish.nnue") # 如果没有自动加载请取消注释
+        
+    def send(self, cmd):
+        self.process.stdin.write(cmd + "\n")
+        self.process.stdin.flush()
+
+    def wait_for(self, target_str):
+        while True:
+            line = self.process.stdout.readline()
+            if target_str in line:
+                return
+
+    def get_evaluation(self, fen):
+        """
+        发送 FEN 并获取静态评估分
+        """
+        self.send(f"position fen {fen}")
+        self.send("eval")
+        
+        score = 0
+        # 解析皮卡鱼的输出，寻找 "Final evaluation"
+        # 典型输出: "Final evaluation: 0.35 (white side)"
+        while True:
+            line = self.process.stdout.readline().strip()
+            # 皮卡鱼/Stockfish 的 eval 输出格式通常包含 "Final evaluation"
+            if "Final evaluation" in line:
+                # 提取数字
+                match = re.search(r"Final evaluation\s+([+\-]?\d+(\.\d+)?)", line)
+                if match:
+                    # 皮卡鱼通常输出的是 "分数 (cp)"，比如 +0.55
+                    # 我们需要将其转换为整数分 (0.55 -> 55)
+                    val_float = float(match.group(1))
+                    score = int(val_float * 100)
+                break
+            
+            # 防止死循环（有些版本输出不同）
+            if line == "" and self.process.poll() is not None:
+                break
+                
+        return score
+
+    def close(self):
+        self.process.terminate()
+
 import sys
 import os
 import copy
@@ -6,7 +70,7 @@ import random
 import urllib.request
 # --- 1. 配置与显示颜色 ---
 USE_DEPTH=0  # 是否使用固定深度搜索 (否则使用迭代加深)
-CLOUD_BOOK_ENABLED=0  # 是否启用云开局库查询
+CLOUD_BOOK_ENABLED=1 # 是否启用云开局库查询
 OPEN_NMP=1  # 是否启用空步裁剪 (Null Move Pruning)
 RESET = "\033[0m"
 RED_TXT = "\033[31m"
@@ -22,86 +86,116 @@ PIECE_CHARS = {
     '.': '．' 
 }
 SCORE_INF = 30000 
+
+
 # --- 2. 核心参数 (基于成熟引擎标准) ---
 
 # 基础子力价值 (车9马4.5炮4.5)
+# --- 修正后的子力价值 ---
+# 逻辑：
+# 1. 兵(90) vs 马(450) = 1:5。过河后配合 PST 会达到 150-200，符合实战。
+# 2. 士象(120) 略高于兵，防止 AI 为了贪吃一个兵把士象丢了导致后防空虚。
+# 3. 车(900) 依然维持最高权重。
 PIECE_VALUES = {
-    'k': 10000, 'r': 900, 'n': 430, 'c': 450, 'a': 20, 'b': 20, 'p': 10,
-    'K': 10000, 'R': 900, 'N': 430, 'C': 450, 'A': 20, 'B': 20, 'P': 10
+    'k': 10000, 
+    'r': 900, 
+    'n': 450, 
+    'c': 450, 
+    'a': 120, 
+    'b': 120, 
+    'p': 90, 
+    'K': 10000, 'R': 900, 'N': 450, 'C': 450, 'A': 120, 'B': 120, 'P': 90
 }
 
 # --- PST (Piece-Square Tables) 位置价值表 ---
 # 所有的表都是基于红方视角 (Row 0是底线, Row 9是敌方底线)
 # 黑方使用时，代码会自动翻转 (Row = 9 - Row)
+# --- 修正后的 PST (绝对坐标版) ---
+# 此时：Row 9 是红方底线，Row 0 是红方要进攻的敌方底线
+# 逻辑：红方棋子在 Row r 时，直接查 table[r]
 
-# 兵：过河前无分，过河后逼近九宫格分数暴涨
+# [兵]：
+# Row 0~2: 敌方九宫/底线 (分数最高)
+# Row 3/4: 敌方兵行线/河口 (高分)
+# Row 5/6: 我方河口/兵行线 (还没过河，低分)
+# Row 7-9: 家里 (0分)
 pst_pawn = [
-    [  0,  3,  6,  9, 12,  9,  6,  3,  0], # 9 (敌底)
-    [ 18, 36, 56, 80,120, 80, 56, 36, 18],
-    [ 14, 26, 42, 60, 80, 60, 42, 26, 14],
-    [ 10, 20, 30, 34, 40, 34, 30, 20, 10], # 6 (卒林)
-    [  6, 12, 18, 18, 20, 18, 18, 12,  6], # 5 (河界)
-    [  2,  0,  8,  0,  8,  0,  8,  0,  2], # 4 (河界)
-    [  0,  0, -2,  0,  4,  0, -2,  0,  0],
+    [ 90, 90, 90,100,100,100, 90, 90, 90], # 0 (敌底)
+    [ 90, 90, 90,100,100,100, 90, 90, 90], # 1 (敌宫心)
+    [ 60, 80, 80, 90,100, 90, 80, 80, 60], # 2 (敌宫顶)
+    [ 50, 60, 60, 60, 60, 60, 60, 60, 50], # 3 (敌兵林)
+    [ 20, 20, 20, 20, 20, 20, 20, 20, 20], # 4 (敌河口 - 刚过河)
+    [  0,  0,  0, 10, 10, 10,  0,  0,  0], # 5 (我河口 - 没过河，只有中兵稍微值钱)
+    [  0,  0,  0,  0,  0,  0,  0,  0,  0], # 6 (我兵林 - 初始位置)
     [  0,  0,  0,  0,  0,  0,  0,  0,  0],
     [  0,  0,  0,  0,  0,  0,  0,  0,  0],
-    [  0,  0,  0,  0,  0,  0,  0,  0,  0]  # 0 (我底)
+    [  0,  0,  0,  0,  0,  0,  0,  0,  0]  # 9 (我底)
 ]
 
-# 车：抢占要道，控制河界
+# [车]：
+# 喜欢 Row 0 (沉底), Row 4 (占敌河), Row 3/2 (压制)
 pst_rook = [
-    [ 14, 14, 12, 18, 16, 18, 12, 14, 14],
-    [ 16, 20, 18, 24, 26, 24, 18, 20, 16],
-    [ 12, 12, 12, 18, 18, 18, 12, 12, 12],
-    [ 12, 18, 16, 22, 22, 22, 16, 18, 12],
-    [ 12, 16, 14, 20, 20, 20, 14, 16, 12],
-    [ 12, 16, 14, 20, 20, 20, 14, 16, 12],
-    [  6, 10,  8, 14, 14, 14,  8, 10,  6],
-    [  4,  8,  6, 14, 12, 14,  6,  8,  4],
-    [  8,  4,  8, 16,  8, 16,  8,  4,  8],
-    [ -6, 10,  4,  6,  2,  6,  4, 10, -6]
+    [ 10, 20, 20, 20, 20, 20, 20, 20, 10], # 0 (沉底车，好)
+    [ 10, 20, 20, 20, 20, 20, 20, 20, 10], # 1 (二线车)
+    [ 20, 30, 30, 40, 40, 40, 30, 30, 20], # 2 (扼守咽喉)
+    [ 20, 30, 30, 40, 40, 40, 30, 30, 20], # 3 (卒林车)
+    [ 20, 40, 40, 50, 50, 50, 40, 40, 20], # 4 (河口车 - 最好)
+    [ 10, 20, 20, 30, 30, 30, 20, 20, 10], # 5 (守河车)
+    [  0, 10,  0, 10,  0, 10,  0, 10,  0], # 6
+    [  0,  5,  0, 10,  0, 10,  0,  5,  0], # 7
+    [  0,  5,  0,  5,  0,  5,  0,  5,  0], # 8
+    [ -5,  0,  5,  5,  0,  5,  5,  0, -5]  # 9 (窝心车不好)
 ]
 
-# 马：鼓励跳向中心，过河后占领卧槽/挂角位
+# [马]：
+# 喜欢 Row 2/3 (卧槽/挂角), 不喜欢 Row 9/0 的边角
 pst_knight = [
-    [  4,  8, 16, 12,  4, 12, 16,  8,  4],
-    [  4, 10, 28, 16,  8, 16, 28, 10,  4],
-    [ 12, 14, 16, 20, 18, 20, 16, 14, 12], # 7行 (卧槽)
-    [  8, 24, 18, 24, 20, 24, 18, 24,  8],
-    [  6, 16, 14, 18, 16, 18, 14, 16,  6],
-    [  4, 12, 16, 14, 12, 14, 16, 12,  4],
-    [  2,  6,  8,  6, 10,  6,  8,  6,  2],
-    [  4,  2,  8,  8,  4,  8,  8,  2,  4], # 初始位置
-    [  0,  2,  4,  4, -2,  4,  4,  2,  0],
-    [  0, -4,  0,  0,  0,  0,  0, -4,  0]
+    [ -5, -5, -5, -5, -5, -5, -5, -5, -5], # 0 (敌底 - 除非是挂角，否则一般)
+    [ -5,  5,  5, 15,  5, 15,  5,  5, -5], # 1
+    [ -5,  5, 20, 40, 30, 40, 20,  5, -5], # 2 (卧槽/挂角 High)
+    [ -5, 10, 20, 30, 20, 30, 20, 10, -5], # 3 (占据要道)
+    [ -5,  5, 15, 20, 20, 20, 15,  5, -5], # 4 (河口)
+    [ -5,  5, 15, 20, 20, 20, 15,  5, -5], # 5 (河口)
+    [ -5,  5,  5, 10,  5, 10,  5,  5, -5], # 6
+    [ -5, 15, 10, 15, 15, 15, 10, 15, -5], # 7 (守中卒)
+    [ -5,  5,  5,  5,  5,  5,  5,  5, -5], # 8
+    [ -5, -5, -5, -5, -5, -5, -5, -5, -5]  # 9 (归心马 - 弱)
 ]
 
-# 炮：中炮(Col 4)加分，巡河炮(Row 5/4)加分
+# [炮]：
+# 喜欢 Row 2 (沉底炮/闷宫), Row 4 (巡河)
 pst_cannon = [
-    [  6,  4,  0, -10, -12, -10,  0,  4,  6],
-    [  2,  2,  0, -4, -14, -4,  0,  2,  2],
-    [  2,  2,  0, -10, -8, -10,  0,  2,  2],
-    [  0,  0, -2,  4, 10,  4, -2,  0,  0],
-    [  0,  0,  0,  2,  4,  2,  0,  0,  0],
-    [ -2,  0,  4,  2,  6,  2,  4,  0, -2],
-    [  0,  0,  0,  2,  0,  2,  0,  0,  0],
-    [  4,  0,  8,  6, 10,  6,  8,  0,  4], # 2行 (炮架)
-    [  0,  2,  4,  6,  6,  6,  4,  2,  0],
-    [  0,  0,  2,  6,  6,  6,  2,  0,  0]
+    [  0,  0,  5, 10, 10, 10,  5,  0,  0], # 0 (进底)
+    [  0,  5,  5, 10, 10, 10,  5,  5,  0], # 1
+    [  0, 10, 20, 30, 30, 30, 20, 10,  0], # 2 (控制线)
+    [  0,  0,  0, 10, 10, 10,  0,  0,  0], # 3
+    [ 10, 10, 20, 20, 20, 20, 20, 10, 10], # 4 (巡河炮)
+    [  0,  0, 10, 10, 10, 10, 10,  0,  0], # 5 (守河)
+    [  0,  0,  0,  0,  0,  0,  0,  0,  0], # 6
+    [  0, 10, 10, 20, 20, 20, 10, 10,  0], # 7 (沿河/自家炮架)
+    [  0,  5,  0,  5,  0,  5,  0,  5,  0], # 8
+    [  0,  0,  0,  0,  0,  0,  0,  0,  0]  # 9
 ]
 
-# 士相：保持阵型
+# [士]：只在自家九宫格有分 (Row 7,8,9)
 pst_advisor = [[0]*9 for _ in range(10)]
-pst_advisor[0] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
-pst_advisor[1] = [0, 0, 0, -2, 0, -2, 0, 0, 0]
-pst_advisor[2] = [0, 0, 0, 0, 2, 0, 0, 0, 0] # 归心
+pst_advisor[9] = [0, 0, 0, 20,  0, 20, 0, 0, 0] # 9行底士 (9,3) (9,5)
+pst_advisor[8] = [0, 0, 0,  0, 20,  0, 0, 0, 0] # 8行中士 (8,4)
+pst_advisor[7] = [0, 0, 0, -5,  0, -5, 0, 0, 0] # 7行高士 (危险)
 
+# [相]：只在自家半场 (Row 5,7,9)
 pst_bishop = [[0]*9 for _ in range(10)]
-pst_bishop[0] = [0, 0, 2, 0, 0, 0, 2, 0, 0]
-pst_bishop[2] = [0, 0, 0, 0, 2, 0, 0, 0, 0]
-pst_bishop[4] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+pst_bishop[9] = [0, 0, 20, 0,  0, 0, 20, 0, 0] # 9行底相
+pst_bishop[7] = [0, 0,  0, 0, 20, 0,  0, 0, 0] # 7行中相
+pst_bishop[5] = [0, 0, -5, 0,  0, 0, -5, 0, 0] # 5行河口相
 
+# [帅]：只在自家九宫格 (Row 7,8,9)，且 9行最好
+pst_king = [[0]*9 for _ in range(10)]
+pst_king[9] = [0, 0, 0, 20, 30, 20, 0, 0, 0] # 9行：安稳
+pst_king[8] = [0, 0, 0, 10, 10, 10, 0, 0, 0] # 8行：稍差
+pst_king[7] = [0, 0, 0, -10,-10,-10, 0, 0, 0] # 7行：危险
 PST_MAP = {
+    'k': pst_king,   'K': pst_king,
     'r': pst_rook,   'R': pst_rook,
     'n': pst_knight, 'N': pst_knight,
     'c': pst_cannon, 'C': pst_cannon,
@@ -110,6 +204,23 @@ PST_MAP = {
     'b': pst_bishop, 'B': pst_bishop
 }
 
+
+# --- 评估权重配置 (基于 Eleeye 简化) ---
+# 棋形分
+EV_HOLLOW_CANNON = 450    # 空头炮 (非常危险)
+EV_CENTRAL_CANNON = 50    # 中炮 (镇中)
+EV_LINKED_PAWNS = 30      # 连兵 (过河兵相连)
+EV_ROOK_TRAPPED = -50     # 车被困 (低机动性)
+EV_FULL_GUARDS = 40       # 士象全 (防守加分)
+
+# 威胁分
+EV_ATTACK_KING = 20       # 每一个攻击老将区域的大子
+
+# 机动性 (每多一个控制点加的分)
+EV_MOBILITY = {
+    'r': 6,  'n': 12, 'c': 6, # 车马炮的灵活性价值
+    'R': 6,  'N': 12, 'C': 6
+}
 # --- 3. 主逻辑类 ---
 # --- TT 表标记 ---
 TT_EXACT = 0   # 精确值
@@ -158,6 +269,67 @@ class XiangqiCLI:
 
         self.history_table = [[[[0]*9 for _ in range(10)] for _ in range(9)] for _ in range(10)]
         self.killer_moves = [[None, None] for _ in range(64)]
+
+
+        
+        # 1. 启动皮卡鱼 (确保 exe 在同级目录)
+        try:
+            self.pikafish = PikafishEvaluator("pikafish.exe")
+            print("成功连接皮卡鱼引擎用于评估！")
+        except Exception as e:
+            print(f"无法启动皮卡鱼: {e}")
+            self.pikafish = None
+
+        # 2. 添加一个评估缓存 (非常重要！否则太慢)
+        self.eval_cache = {} 
+
+    # 3. 彻底替换 evaluate 函数
+    def evaluate(self):
+        """
+        使用皮卡鱼进行静态评估
+        """
+        # 如果皮卡鱼没启动，回退到原来的逻辑（或者直接返回0）
+        if not USE_PIKAFISH:
+            return self.current_score # 回退到旧的子力分数
+        
+        # 1. 生成 FEN
+        # 为了提高缓存命中率，只取 FEN 的前两部分 (棋盘布局 + 轮谁走)
+        # 忽略回合数等无关信息
+        full_fen = self.to_fen()
+        fen_key = " ".join(full_fen.split()[:2])
+        
+        # 2. 查缓存
+        if fen_key in self.eval_cache:
+            return self.eval_cache[fen_key]
+
+        # 3. 调用皮卡鱼 (最耗时的一步)
+        # 注意：皮卡鱼的评估是相对于“当前行动方”的
+        # 也就是：如果是红方走，正分代表红优；如果是黑方走，正分代表黑优。
+        # 你的 minimax 逻辑看起来是基于 "红方为正，黑方为负" 的绝对分数体系。
+        # 我们需要转换一下。
+        
+        score = self.pikafish.get_evaluation(full_fen)
+        
+        # 皮卡鱼返回的分数通常是 "当前视角分"
+        # 如果当前轮到黑方 (self.turn == 'black')，且皮卡鱼说 +100 (黑优)，
+        # 那么在你的绝对分数体系里，这应该是 -100 (红劣)。
+        if self.turn == 'black':
+            final_score = -score
+        else:
+            final_score = score
+
+        # 4. 存缓存
+        # 限制缓存大小，防止内存爆炸
+        if len(self.eval_cache) > 100000:
+            self.eval_cache.clear()
+        self.eval_cache[fen_key] = final_score
+        
+        return final_score
+    
+    # 记得在程序退出时关闭进程，比如加个析构函数或者在 quit 时调用
+    def close(self):
+        if self.pikafish:
+            self.pikafish.close()
     # 2. 辅助函数：获取移动的历史得分
     def get_history_score(self, move):
         start, end = move
@@ -334,19 +506,186 @@ class XiangqiCLI:
         
         # 返回总分（相对于红方视角）
         return mobility_score
+    def get_relation_score(self):
+        """
+        核心重构：计算棋形、关系、威胁和防守
+        """
+        score = 0
+        
+        # 1. 寻找双方老将位置
+        red_king = self.find_king(True)
+        black_king = self.find_king(False)
+        
+        # 临时统计：[红方计数, 黑方计数]
+        # 士/象的数量
+        guards = {'a': 0, 'b': 0, 'A': 0, 'B': 0}
+        # 攻击老将的大子数量
+        attack_units = [0, 0] # red_attackers, black_attackers
 
-    def evaluate(self):
-        """
-        综合评估：基础子力 + PST位置分 + 机动性动态分
-        """
-        # 1. 基础分 (增量更新的)
-        base_score = self.current_score
+        # 2. 全局扫描 (为了性能，尽量在一个循环内完成)
+        # 我们按列扫描，这样容易判断“空头炮”和“兵及其阻挡”
         
-        # 2. 机动性分 (实时计算)
-        # 注意：这里会稍微降低速度，但能显著提高棋力
-        # mob_score = self.calculate_mobility(self.turn == 'red')
+        # 用于记录每一列是否有红/黑的炮、兵
+        cols_summary = [ {'R_cannon':0, 'B_cannon':0, 'pieces':[]} for _ in range(COLS) ]
+
+        for c in range(COLS):
+            col_pieces = []
+            for r in range(ROWS):
+                p = self.board[r][c]
+                if p != '.':
+                    col_pieces.append((r, p))
+                    # 统计士象数量
+                    if p in guards: guards[p] += 1
+            
+            cols_summary[c]['pieces'] = col_pieces
+            
+            # 分析每一列的特殊棋形
+            for idx, (r, p) in enumerate(col_pieces):
+                # --- A. 连兵判断 (过河兵) ---
+                if p == 'P' and r <= 4: # 红兵过河
+                    # 检查左右是否有友军
+                    if c > 0 and self.board[r][c-1] == 'P': score += EV_LINKED_PAWNS
+                    if c < 8 and self.board[r][c+1] == 'P': score += EV_LINKED_PAWNS
+                elif p == 'p' and r >= 5: # 黑卒过河
+                    if c > 0 and self.board[r][c-1] == 'p': score -= EV_LINKED_PAWNS
+                    if c < 8 and self.board[r][c+1] == 'p': score -= EV_LINKED_PAWNS
+
+                # --- B. 记录炮的位置，用于后续空头炮判断 ---
+                if p == 'C': cols_summary[c]['R_cannon'] += 1
+                if p == 'c': cols_summary[c]['B_cannon'] += 1
+
+        # 3. 详细阵型判断
         
-        return base_score #+ mob_score
+        # --- C. 空头炮与中炮 (Central & Hollow Cannon) ---
+        # 检查中路 (Col 4)
+        mid_info = cols_summary[4]
+        mid_pieces = mid_info['pieces']
+        
+        # 红方中炮/空头炮
+        if mid_info['R_cannon'] > 0:
+            # 找到红炮位置
+            c_idx = -1
+            for i, (r, p) in enumerate(mid_pieces):
+                if p == 'C': c_idx = i; break
+            
+            if c_idx != -1:
+                # 检查红炮前方是否有阻碍 (黑将之前的阻碍)
+                # 简单近似：如果黑将也在中路
+                if black_king and black_king[1] == 4:
+                    blockers = 0
+                    # 统计炮和黑将之间的子
+                    for check_r in range(mid_pieces[c_idx][0] + 1, black_king[0]):
+                        if self.board[check_r][4] != '.': blockers += 1
+                    
+                    if blockers == 0: score += EV_HOLLOW_CANNON  # 空头炮！致命
+                    elif blockers == 1: score += EV_CENTRAL_CANNON # 中炮
+        
+        # 黑方中炮/空头炮
+        if mid_info['B_cannon'] > 0:
+            c_idx = -1
+            for i, (r, p) in enumerate(mid_pieces):
+                if p == 'c': c_idx = i; break
+            
+            if c_idx != -1:
+                if red_king and red_king[1] == 4:
+                    blockers = 0
+                    for check_r in range(red_king[0] + 1, mid_pieces[c_idx][0]):
+                        if self.board[check_r][4] != '.': blockers += 1
+                    
+                    if blockers == 0: score -= EV_HOLLOW_CANNON
+                    elif blockers == 1: score -= EV_CENTRAL_CANNON
+
+        # --- D. 士象全 (Full Guards) ---
+        if guards['A'] == 2 and guards['B'] == 2: score += EV_FULL_GUARDS
+        if guards['a'] == 2 and guards['b'] == 2: score -= EV_FULL_GUARDS
+
+        # 4. 机动性 (Mobility) 与 局部威胁
+        # 这一步比较耗时，我们简化计算：只计算车马炮
+        # 并且只计算"有多少个合法的落子点"
+        
+        # 遍历棋盘大子
+        for r in range(ROWS):
+            for c in range(COLS):
+                p = self.board[r][c]
+                if p == '.': continue
+                
+                low_p = p.lower()
+                if low_p not in ['r', 'n', 'c']: continue
+                
+                is_red_p = self.is_red(p)
+                factor = 1 if is_red_p else -1
+                
+                # 4.1 简单的机动性计算
+                moves_cnt = 0
+                
+                # 车：沿直线扫描
+                if low_p == 'r':
+                    for dr, dc in [(0,1), (0,-1), (1,0), (-1,0)]:
+                        tr, tc = r+dr, c+dc
+                        while 0 <= tr < ROWS and 0 <= tc < COLS:
+                            moves_cnt += 1
+                            if self.board[tr][tc] != '.': break
+                            tr, tc = tr+dr, tc+dc
+                    
+                    # 惩罚：如果车被困在角落且不动 (例如没得动)
+                    if moves_cnt < 2: score += (EV_ROOK_TRAPPED * factor)
+
+                # 马：由 get_valid_moves 逻辑简化
+                elif low_p == 'n':
+                    for dr, dc, lr, lc in [(-2,-1,-1,0), (-2,1,-1,0), (2,-1,1,0), (2,1,1,0),
+                                           (-1,-2,0,-1), (1,-2,0,-1), (-1,2,0,1), (1,2,0,1)]:
+                        nr, nc, leg_r, leg_c = r+dr, c+dc, r+lr, c+lc
+                        if 0<=nr<ROWS and 0<=nc<COLS and self.board[leg_r][leg_c] == '.':
+                            # 如果落点是友军，虽不能走，但算作保护，机动性算一半
+                            target = self.board[nr][nc]
+                            if target == '.' or self.is_red(target) != is_red_p:
+                                moves_cnt += 1
+                
+                # 炮：
+                elif low_p == 'c':
+                    # 炮的机动性稍微低一点权重，更多看位置
+                    for dr, dc in [(0,1), (0,-1), (1,0), (-1,0)]:
+                        tr, tc = r+dr, c+dc
+                        while 0 <= tr < ROWS and 0 <= tc < COLS:
+                            if self.board[tr][tc] == '.': moves_cnt += 1
+                            else: break # 炮主要看移动，吃子另算
+                            tr, tc = tr+dr, tc+dc
+
+                score += moves_cnt * EV_MOBILITY[low_p] * factor
+                
+                # 4.2 将帅安全 (King Safety)
+                # 如果这个大子在敌方老将附近的“九宫扩展区”内，加分
+                if is_red_p and black_king:
+                    kr, kc = black_king
+                    if abs(r - kr) + abs(c - kc) <= 3: # 曼哈顿距离小于3
+                        score += EV_ATTACK_KING
+                elif not is_red_p and red_king:
+                    kr, kc = red_king
+                    if abs(r - kr) + abs(c - kc) <= 3:
+                        score -= EV_ATTACK_KING
+
+        return score
+
+    # def evaluate(self):
+    #     """
+    #     新的综合评估入口
+    #     """
+    #     # 1. 基础分 (增量维护的子力+PST)
+    #     base = self.current_score
+        
+    #     # 2. 关系与阵型分 (实时计算)
+    #     # 注意：这里如果太慢，可以考虑只在 depth > X 时调用，或者简化
+    #     relation = self.get_relation_score()
+        
+    #     total = base + relation
+        
+    #     # 如果当前轮到黑方走，minimax 视角需要取反吗？
+    #     # 注意：你的 minimax 实现中，maximize_player 是布尔值。
+    #     # 如果你的 current_score 已经是 "红优则正，黑优则负"，
+    #     # 那么这里直接返回 total 即可。minimax 内部会根据 maximizing_player 处理。
+    #     # 这里假设 total 是相对于红方的净胜分。
+        
+    #     return total
     def is_red(self, piece):
         return piece.isupper()
 
@@ -459,7 +798,11 @@ class XiangqiCLI:
     # --- 5. 静态搜索 (Quiescence Search) ---
     # 作用：搜索到底层时，如果还在吃子，就继续搜，防止“假吃”
     def quiescence_search(self, alpha, beta, maximizing_player, qs_depth=0):
-        stand_pat = self.evaluate()
+        if qs_depth == 0:
+            stand_pat = self.evaluate()
+        else:
+            # 深入 QS 后，为了速度只用基础分
+            stand_pat = self.current_score
         
         if maximizing_player:
             if stand_pat >= beta: return beta
@@ -569,7 +912,7 @@ class XiangqiCLI:
         """撤销空步：操作完全一样"""
         self.turn = 'black' if self.turn == 'red' else 'red'
         self.current_hash ^= self.zobrist_turn
-    def minimax(self, depth, alpha, beta, maximizing_player):
+    def minimax(self, depth, alpha, beta, maximizing_player, allow_null=True):
         self.nodes += 1
         
         # 0. 检查超时 (每 2048 个节点检查一次)
@@ -619,19 +962,38 @@ class XiangqiCLI:
 
         # --- Null Move Pruning (空步裁剪) ---
         # 只有在：没被将军 + 深度足够 + 没到残局(简单判断) 时才启用
-        if OPEN_NMP and depth >= 3 and not in_check:
+        if OPEN_NMP and depth >= 3 and not in_check and allow_null:
             self.make_null_move()
-            R = 2
-            # 这里的递归必须保证 depth 减小
-            val, _ = self.minimax(depth - 1 - R, beta - 1, beta, not maximizing_player)
-            self.undo_null_move()
             
-            if self.stop_search: return 0, None
-            
-            if maximizing_player:
-                if val >= beta: return beta, None
+            # 动态 R 值计算 (保持不变)
+            if depth > 6:
+                R = 3
             else:
-                if val <= alpha: return alpha, None
+                R = 2
+            
+            # 确保剩下的深度至少为 0
+            next_depth = max(0, depth - 1 - R)
+            
+            # --- 逻辑修正开始 ---
+            if maximizing_player:
+                # 当前是红方：希望证明 即使空步，局势依然 >= beta
+                # 交给黑方搜，使用 (beta-1, beta) 窗口
+                val, _ = self.minimax(next_depth, beta - 1, beta, False, allow_null=False)
+                self.undo_null_move() # 记得恢复
+                
+                if self.stop_search: return 0, None
+                if val >= beta and val < 20000: 
+                    return beta, None
+            else:
+                # 当前是黑方：希望证明 即使空步，局势依然 <= alpha
+                # 交给红方搜，使用 (alpha, alpha+1) 窗口
+                val, _ = self.minimax(next_depth, alpha, alpha + 1, True, allow_null=False)
+                self.undo_null_move() # 记得恢复
+
+                if self.stop_search: return 0, None
+                if val <= alpha and val > -20000: 
+                    return alpha, None
+            # --- 逻辑修正结束 ---
 
         # 4. 生成着法
         moves = self.get_all_moves(maximizing_player)
@@ -668,18 +1030,20 @@ class XiangqiCLI:
             captured = self.make_move(start, end)
             
             score = 0
+            is_killer = ((start, end) == killers[0] or (start, end) == killers[1])
             
             # --- PVS & LMR ---
             # 只有当不是被将军状态时，才敢大胆进行 LMR 裁剪
             do_lmr = (depth >= 3 and moves_count > 4 and 
-                      captured == '.' and not in_check)
+                      captured == '.' and not in_check and 
+                      not is_killer)
             
             if maximizing_player:
                 if moves_count == 1:
                     score, _ = self.minimax(depth - 1, alpha, beta, False)
                 else:
                     reduction = 1 if do_lmr else 0
-                    if moves_count > 10 and do_lmr: reduction = 2
+                    if moves_count > 15 and do_lmr: reduction = 2
                     
                     search_depth = depth - 1 - reduction
                     # 确保深度不会变成负数导致逻辑混乱(虽然 minimax 入口有判断，但保持清醒很好)
@@ -855,7 +1219,7 @@ class XiangqiCLI:
                     print(f">>> AI 正在思考 (深度 {DEPTH})...")
                     val, best = self.minimax(DEPTH, -float(SCORE_INF ), float(SCORE_INF ), is_ai_red)
                 else:
-                    MAX_TIME = 10.0 if  cnt<=3 else 60.0  # 每步最多思考 10 秒(仅在非固定深度时生效) 
+                    MAX_TIME = 10.0 if  cnt<=3 else 30.0  # 每步最多思考 10 秒(仅在非固定深度时生效) 
                     print(f">>> AI 正在思考 (限时 {MAX_TIME} 秒)...")
                     val, best = self.search_main(MAX_TIME, is_ai_red)
                 
@@ -942,9 +1306,9 @@ class XiangqiCLI:
                 
                 if not moves: return None
                 
-                # 筛选规则：分数不低于最高分 10 分
+                # 筛选规则：分数不低于最高分 5 分
                 max_score = moves[0]['score']
-                candidates = [m for m in moves if m['score'] >= max_score - 10]
+                candidates = [m for m in moves if m['score'] >= max_score - 5]
                 
                 # 随机选一个高分走法
                 selected = random.choice(candidates)
@@ -991,7 +1355,7 @@ def start_engine():
                     DEPTH = 6 # 中后期加深到6层
                 val, best = engine.minimax(DEPTH, -float(SCORE_INF ), float(SCORE_INF ), is_ai_red)
             else:
-                MAX_TIME = 10.0 if  cnt<=3 else 60.0 # 每步最多思考 10 秒(仅在非固定深度时生效) 
+                MAX_TIME = 10.0 if  cnt<=3 else 30.0 # 每步最多思考 10 秒(仅在非固定深度时生效) 
                 print(f">>> AI 正在思考 (限时 {MAX_TIME} 秒)...")
                 val, best = engine.search_main(MAX_TIME, is_ai_red)
 
