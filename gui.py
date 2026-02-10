@@ -8,7 +8,7 @@ Pygame front-end for your Xiangqi AI. Features:
 - Keeps coordinate mapping consistent with engine (engine expects Red on bottom by default)
 
 Run: python gui.py
-Make sure ai.py is next to this file and adjust `pypy_path` if needed.
+Make sure aicopy.py is next to this file and adjust `pypy_path` if needed.
 """
 
 import pygame
@@ -71,7 +71,7 @@ class LocalBoard:
 
 # --- AI 客户端类 (子进程通信) ---
 class AIClient:
-    def __init__(self, pypy_path='pypy3', ai_filename='ai.py'):
+    def __init__(self, pypy_path='pypy3', ai_filename='aicopy.py'):
         # 延迟启动 (现在只记录参数)，真正启动在 connect()
         self.pypy_path = pypy_path
         self.ai_filename = ai_filename
@@ -177,7 +177,7 @@ class XiangqiGUI:
 
         # AI settings (adjust if needed)
         self.pypy_path = 'pypy3'  # change to 'python' if you don't have pypy3
-        self.ai_filename = 'ai.py'
+        self.ai_filename = 'aicopy.py'
 
     def build_start_ui(self):
         w = 220; h = 48

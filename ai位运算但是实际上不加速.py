@@ -21,6 +21,34 @@ BOLD = "\033[1m"
 ROWS = 10
 COLS = 9
 
+#加速
+SQUARES = ROWS*COLS  # 10*9
+SQ_BITS = 7   # 2^7 = 128 > 90，足够存位置索引
+
+# idx -> (r, c) 的查表数组
+IDX_TO_ROW = [i // COLS for i in range(SQUARES)]
+IDX_TO_COL = [i % COLS for i in range(SQUARES)]
+
+def pack_move(from_idx, to_idx):
+    """把两个坐标压缩成一个 int"""
+    return from_idx | (to_idx << SQ_BITS)
+
+def unpack_move(move):
+    """解压 int 得到两个坐标"""
+    from_idx = move & 127  # 127是 (1<<7)-1
+    to_idx = (move >> SQ_BITS) & 127
+    return from_idx, to_idx
+
+
+def move_to_str(move):
+    """调试用：把整数move转为易读字符串"""
+    f, t = unpack_move(move)
+    r1, c1 = IDX_TO_ROW[f], IDX_TO_COL[f]
+    r2, c2 = IDX_TO_ROW[t], IDX_TO_COL[t]
+    return f"{r1},{c1}->{r2},{c2}"
+
+
+
 
 
 PIECE_CHARS = {
@@ -338,9 +366,8 @@ class XiangqiCLI:
         self.stop_search = False  # 中断标志
         self.nodes = 0           # 统计搜索量
 
-        self.history_table = [[[[0]*9 for _ in range(10)] for _ in range(9)] for _ in range(10)]
-        self.killer_moves = [[None, None] for _ in range(64)]
-
+        self.history_table = [0] * (SQUARES * SQUARES) 
+        self.killer_moves = [[0, 0] for _ in range(64)]
 
         
         # 1. 启动皮卡鱼 (确保 exe 在同级目录)
@@ -491,9 +518,11 @@ class XiangqiCLI:
             self.current_hash ^= self.zobrist_turn
         self.history = [self.current_hash]    
 
-    def make_move(self, start, end):
-        r1, c1 = start
-        r2, c2 = end
+    def make_move(self, move_int):
+        from_idx = move_int & 127
+        to_idx = (move_int >> 7) & 127
+        r1, c1 = IDX_TO_ROW[from_idx], IDX_TO_COL[from_idx]
+        r2, c2 = IDX_TO_ROW[to_idx], IDX_TO_COL[to_idx]
         moving_piece = self.board[r1][c1]
         captured_piece = self.board[r2][c2]
 
@@ -523,10 +552,12 @@ class XiangqiCLI:
 
         return captured_piece
 
-    def undo_move(self, start, end, captured):
+    def undo_move(self, move_int, captured):
         self.history.pop()
-        r1, c1 = start
-        r2, c2 = end
+        from_idx = move_int & 127
+        to_idx = (move_int >> 7) & 127
+        r1, c1 = IDX_TO_ROW[from_idx], IDX_TO_COL[from_idx]
+        r2, c2 = IDX_TO_ROW[to_idx], IDX_TO_COL[to_idx]
         moved_piece = self.board[r2][c2]
 
         # 1. 还原分数
@@ -719,7 +750,8 @@ class XiangqiCLI:
         moves = []
         if piece == '.': return moves
         is_red_piece = self.is_red(piece)
-        
+        from_idx = r * 9 + c  # 直接算，或者用查表
+
         def is_teammate(nr, nc):
             p = self.board[nr][nc]
             return p != '.' and self.is_red(p) == is_red_piece
@@ -729,9 +761,10 @@ class XiangqiCLI:
             for dr, dc in [(0,1),(0,-1),(1,0),(-1,0)]:
                 nr, nc = r+dr, c+dc
                 while self.in_board(nr, nc):
-                    if self.board[nr][nc] == '.': moves.append((nr, nc))
+                    target_idx = nr * 9 + nc
+                    if self.board[nr][nc] == '.': moves.append(from_idx | (target_idx << 7))
                     else:
-                        if not is_teammate(nr, nc): moves.append((nr, nc))
+                        if not is_teammate(nr, nc): moves.append(from_idx | (target_idx << 7))
                         break
                     nr, nc = nr+dr, nc+dc
         # 马 (带撇脚)
@@ -740,19 +773,23 @@ class XiangqiCLI:
                                    (-1,-2,0,-1), (1,-2,0,-1), (-1,2,0,1), (1,2,0,1)]:
                 nr, nc, lr, lc = r+dr, c+dc, r+lr, c+lc
                 if self.in_board(nr, nc) and self.board[lr][lc] == '.' and not is_teammate(nr, nc):
-                    moves.append((nr, nc))
+                    target_idx = nr * 9 + nc
+                    moves.append(from_idx | (target_idx << 7))
         # 炮
         elif piece.lower() == 'c':
             for dr, dc in [(0,1),(0,-1),(1,0),(-1,0)]:
                 nr, nc = r+dr, c+dc
                 platform = False
                 while self.in_board(nr, nc):
+                    target_idx = nr * 9 + nc
                     if self.board[nr][nc] == '.':
-                        if not platform: moves.append((nr, nc))
+                        if not platform: 
+                            moves.append(from_idx | (target_idx << 7))
                     else:
                         if not platform: platform = True
                         else:
-                            if not is_teammate(nr, nc): moves.append((nr, nc))
+                            if not is_teammate(nr, nc): 
+                                moves.append(from_idx | (target_idx << 7))
                             break
                     nr, nc = nr+dr, nc+dc
         # 相/象
@@ -761,21 +798,25 @@ class XiangqiCLI:
                 nr, nc, er, ec = r+dr, c+dc, r+er, c+ec
                 if self.in_board(nr, nc) and self.board[er][ec] == '.' and not is_teammate(nr, nc):
                     if (is_red_piece and nr>=5) or (not is_red_piece and nr<=4):
-                        moves.append((nr, nc))
+                        target_idx = nr * 9 + nc
+                        moves.append(from_idx | (target_idx << 7))
         # 士/仕
         elif piece.lower() == 'a':
             for dr, dc in [(-1,-1),(-1,1),(1,-1),(1,1)]:
                 nr, nc = r+dr, c+dc
                 if self.in_board(nr, nc) and 3<=nc<=5 and not is_teammate(nr, nc):
                     if (is_red_piece and 7<=nr<=9) or (not is_red_piece and 0<=nr<=2):
-                        moves.append((nr, nc))
+                        target_idx = nr * 9 + nc
+                        moves.append(from_idx | (target_idx << 7))
+
         # 帅/将
         elif piece.lower() == 'k':
             for dr, dc in [(0,1),(0,-1),(1,0),(-1,0)]:
                 nr, nc = r+dr, c+dc
                 if self.in_board(nr, nc) and 3<=nc<=5 and not is_teammate(nr, nc):
                     if (is_red_piece and 7<=nr<=9) or (not is_red_piece and 0<=nr<=2):
-                        moves.append((nr, nc))
+                        target_idx = nr * 9 + nc
+                        moves.append(from_idx | (target_idx << 7))
             # 2. 飞将逻辑 (King Facing King)
             # 红方向上找(-1)，黑方向下找(+1)
             direction = -1 if is_red_piece else 1
@@ -791,17 +832,23 @@ class XiangqiCLI:
                     # 如果碰到的是敌方的将/帅，说明可以飞将！
                     enemy_king = 'k' if is_red_piece else 'K'
                     if target_piece == enemy_king:
-                        moves.append((check_r, c))
+                        target_idx = check_r * 9 + c
+                        moves.append(from_idx | (target_idx << 7))
                     # 无论碰到什么子（不管是敌是友，还是敌方老将），
                     # 只要中间有阻隔或已经找到了老将，搜索就结束
                     break
         # 兵/卒
         elif piece.lower() == 'p':
             dr = -1 if is_red_piece else 1
-            if self.in_board(r+dr, c) and not is_teammate(r+dr, c): moves.append((r+dr, c))
+            if self.in_board(r+dr, c) and not is_teammate(r+dr, c): 
+                target_idx = (r+dr) * 9 + c
+                moves.append(from_idx | (target_idx << 7))
+                
             if (is_red_piece and r<=4) or (not is_red_piece and r>=5): # 过河后允许平移
                 for dc in [-1, 1]:
-                    if self.in_board(r, c+dc) and not is_teammate(r, c+dc): moves.append((r, c+dc))
+                    if self.in_board(r, c+dc) and not is_teammate(r, c+dc): 
+                        target_idx = r * 9 + (c+dc)
+                        moves.append(from_idx | (target_idx << 7))
         return moves
 
     def get_all_moves(self, is_red_turn):
@@ -810,8 +857,7 @@ class XiangqiCLI:
             for c in range(COLS):
                 p = self.board[r][c]
                 if p != '.' and self.is_red(p) == is_red_turn:
-                    ms = self.get_valid_moves(r, c)
-                    for m in ms: moves.append(((r,c), m))
+                    moves.extend(self.get_valid_moves(r, c))
         return moves
 
 
@@ -849,33 +895,40 @@ class XiangqiCLI:
             # 这里建议优化你的底层代码，不要生成所有步再过滤，直接只生成吃子步效率高很多
             all_moves = self.get_all_moves(maximizing_player)
             moves = []
-            for start, end in all_moves:
-                # 目标格有子 = 吃子
-                if self.board[end[0]][end[1]] != '.':
-                    moves.append((start, end))
+            for m  in all_moves:
+                # [修复] 从整数 m 中解包出 to_idx 来判断吃子
+                to_idx = (m >> 7) & 127
+                tr, tc = IDX_TO_ROW[to_idx], IDX_TO_COL[to_idx]
+                if self.board[tr][tc] != '.':
+                    moves.append(m)
 
-        # MVV-LVA 排序
-        moves.sort(key=lambda m: PIECE_VALUES.get(self.board[m[1][0]][m[1][1]], 0), reverse=True)
+        # MVV-LVA 排序 (需要解包)
+        def qs_sorter(m):
+            to_idx = (m >> 7) & 127
+            tr, tc = IDX_TO_ROW[to_idx], IDX_TO_COL[to_idx]
+            return PIECE_VALUES.get(self.board[tr][tc], 0)
+            
+        moves.sort(key=qs_sorter, reverse=True)
 
         # 5. 遍历着法
         has_legal_move = False
         
-        for start, end in moves:
+        for move  in moves:
             # 模拟走棋
-            captured = self.make_move(start, end)
+            captured = self.make_move(move) # [修复] 传入 int
             
             # 【重要】走完之后检查自己是否还在被将军（处理非法的逃生步）
             # 如果你的 get_all_moves 已经是伪合法的（可能包含送将），需要这一步
             # 如果你的 get_all_moves 严格保证合法，这步可省略，但在 QS 中通常是伪合法生成
             if self.is_in_check(maximizing_player):
-                self.undo_move(start, end, captured)
+                self.undo_move(move, captured)
                 continue
             
             has_legal_move = True
             
             score = self.quiescence_search(alpha, beta, not maximizing_player, qs_depth + 1)
             
-            self.undo_move(start, end, captured)
+            self.undo_move(move, captured)
             
             if maximizing_player:
                 if score >= beta: return beta
@@ -1004,15 +1057,15 @@ class XiangqiCLI:
             val = self.quiescence_search(alpha, beta, maximizing_player)
             return val, None
 
-        # 3. 检查胜负 (防止绝杀时死循环)
-        kings = [False, False]
-        # 这一步其实比较耗时，但在 Python 简易引擎中为了安全保留
-        for r in range(ROWS):
-            for c in range(COLS):
-                if self.board[r][c] == 'K': kings[0] = True
-                if self.board[r][c] == 'k': kings[1] = True
-        if not kings[0]: return -SCORE_INF + depth, None 
-        if not kings[1]: return SCORE_INF - depth, None 
+        # # 3. 检查胜负 (防止绝杀时死循环)其实好像没必要
+        # kings = [False, False]
+        # # 这一步其实比较耗时，但在 Python 简易引擎中为了安全保留
+        # for r in range(ROWS):
+        #     for c in range(COLS):
+        #         if self.board[r][c] == 'K': kings[0] = True
+        #         if self.board[r][c] == 'k': kings[1] = True
+        # if not kings[0]: return -SCORE_INF + depth, None 
+        # if not kings[1]: return SCORE_INF - depth, None 
 
         in_check = self.is_in_check(maximizing_player)
         
@@ -1063,21 +1116,24 @@ class XiangqiCLI:
             return (-SCORE_INF if maximizing_player else SCORE_INF), None
 
         # 排序
-        killers = self.killer_moves[depth] if depth < 64 else [None, None]
+        killers = self.killer_moves[depth] if depth < 64 else [0, 0] 
         def move_sorter(m):
-            start, end = m
-            if tt_move and (start, end) == tt_move: return 2000000 # TT Move
+            if m == tt_move: return 2000000 
+            fx = m & 127
+            tx = (m >> 7) & 127
+            tr, tc = IDX_TO_ROW[tx], IDX_TO_COL[tx]
             
-            victim = self.board[end[0]][end[1]]
+            victim = self.board[tr][tc]
             if victim != '.': # MVV-LVA
                 val = PIECE_VALUES.get(victim, 0)
-                attacker = self.board[start[0]][start[1]]
+                fr, fc = IDX_TO_ROW[fx], IDX_TO_COL[fx]
+                attacker = self.board[fr][fc]
                 attacker_val = PIECE_VALUES.get(attacker, 0)
                 return 100000 + val * 10 - attacker_val
             
             if m == killers[0]: return 90000
             if m == killers[1]: return 80000
-            return self.history_table[start[0]][start[1]][end[0]][end[1]]
+            return self.history_table[fx * 90 + tx]
 
         moves.sort(key=move_sorter, reverse=True)#5 8在第12
 
@@ -1086,18 +1142,18 @@ class XiangqiCLI:
         moves_count = 0
         
         # 5. 遍历
-        for start, end in moves:
+        for move  in moves:
             moves_count += 1
-            captured = self.make_move(start, end)
+            captured = self.make_move(move )
             
-            score = 0
-            is_killer = ((start, end) == killers[0] or (start, end) == killers[1])
+            is_killer = (move  == killers[0] or move  == killers[1])
             
             # --- PVS & LMR ---
             # 只有当不是被将军状态时，才敢大胆进行 LMR 裁剪
             do_lmr = (depth >= 3 and moves_count > 4 and 
                       captured == '.' and not in_check and 
                       not is_killer)
+            score = 0
             
             if maximizing_player:
                 if moves_count == 1:
@@ -1137,7 +1193,7 @@ class XiangqiCLI:
                         if score < beta and score > alpha:
                             score, _ = self.minimax(depth - 1, alpha, beta, True)
 
-            self.undo_move(start, end, captured)
+            self.undo_move(move, captured)
             
             if self.stop_search: return 0, None
 
@@ -1145,28 +1201,32 @@ class XiangqiCLI:
             if maximizing_player:
                 if score > best_score:
                     best_score = score
-                    best_move = (start, end)
+                    best_move =move
                     if best_score > alpha:
                         alpha = best_score
                         if alpha >= beta:
                             if captured == '.':
-                                self.history_table[start[0]][start[1]][end[0]][end[1]] += depth * depth
-                                if self.killer_moves[depth][0] != (start, end):
+                                fx = best_move & 127
+                                tx = (best_move >> 7) & 127
+                                self.history_table[fx * 90 + tx] += depth * depth
+                                if self.killer_moves[depth][0] != best_move:
                                     self.killer_moves[depth][1] = self.killer_moves[depth][0]
-                                    self.killer_moves[depth][0] = (start, end)
+                                    self.killer_moves[depth][0] =best_move
                             break
             else:
                 if score < best_score:
                     best_score = score
-                    best_move = (start, end)
+                    best_move = move
                     if best_score < beta:
                         beta = best_score
                         if beta <= alpha:
                             if captured == '.':
-                                self.history_table[start[0]][start[1]][end[0]][end[1]] += depth * depth
-                                if self.killer_moves[depth][0] != (start, end):
+                                fx = best_move & 127
+                                tx = (best_move >> 7) & 127
+                                self.history_table[fx * 90 + tx] += depth * depth
+                                if self.killer_moves[depth][0] != best_move:
                                     self.killer_moves[depth][1] = self.killer_moves[depth][0]
-                                    self.killer_moves[depth][0] = (start, end)
+                                    self.killer_moves[depth][0] =best_move
                             break
 
         # 6. 存表
@@ -1184,7 +1244,9 @@ class XiangqiCLI:
             book_move, book_score = cloud_data # 解构获取真实分数
             with open("log.txt", "a", encoding="utf-8") as f:
                 print(f"使用云库走法: {book_move}, 云库分数: {book_score}", file=f)
-            return book_score, book_move # 返回真实的分数和走法
+            (r1, c1), (r2, c2) = book_move
+            best_move_int = pack_move(r1*9+c1, r2*9+c2)
+            return book_score, best_move_int # 返回真实的分数和走法
         self.start_time = time.time()
         self.time_limit = max_time
         self.stop_search = False
@@ -1257,10 +1319,11 @@ class XiangqiCLI:
                         if len(coords)==4:
                             r1,c1,r2,c2 = coords
                             if self.in_board(r1,c1) and self.in_board(r2,c2):
+                                user_move = pack_move(r1*9+c1, r2*9+c2)
                                 if self.is_red(self.board[r1][c1]) == (self.player_side=='red'):
                                     valid_moves = self.get_valid_moves(r1,c1)
-                                    if (r2,c2) in valid_moves:
-                                        captured_piece = self.make_move((r1,c1),(r2,c2))
+                                    if user_move in valid_moves:
+                                        captured_piece = self.make_move(user_move)
                                         move_ok = True
                                     else: print("违规移动：不符合走法规则")
                                 else: print("违规：这不是你的棋子")
@@ -1288,7 +1351,7 @@ class XiangqiCLI:
                 print(f"思考耗时: {time.time()-t0:.2f}s, 评估分: {val}")
                 
                 if best:
-                    captured_piece = self.make_move(best[0], best[1])
+                    captured_piece = self.make_move(best)
                     # AI 走完稍微暂停一下让人看清
                     time.sleep(1)
                 else:
@@ -1404,7 +1467,8 @@ def start_engine():
         elif cmd.startswith("move"):
             # move r1 c1 r2 c2
             _, r1, c1, r2, c2 = cmd.split()
-            captured_piece = engine.make_move((int(r1),int(c1)), (int(r2),int(c2)))
+            m_int = pack_move(int(r1)*9+int(c1), int(r2)*9+int(c2))
+            captured_piece = engine.make_move(m_int)
             if captured_piece != '.':
                 engine.history = [engine.current_hash]
 
@@ -1424,10 +1488,15 @@ def start_engine():
                 val, best = engine.search_main(MAX_TIME, is_ai_red)
 
             if best:
-                (r1,c1),(r2,c2) = best
-                captured_piece=engine.make_move(best[0], best[1])
-                if captured_piece != '.':
+                # [修改] AI 返回的是 int，需要转换回坐标打印给 GUI/界面
+                captured = engine.make_move(best)
+                if captured != '.':
                     engine.history = [engine.current_hash]
+                
+                f, t = unpack_move(best)
+                r1, c1 = IDX_TO_ROW[f], IDX_TO_COL[f]
+                r2, c2 = IDX_TO_ROW[t], IDX_TO_COL[t]
+                
                 print(f"move {r1} {c1} {r2} {c2}", flush=True)
             else:
                 print("resign", flush=True)
