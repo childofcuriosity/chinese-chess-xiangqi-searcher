@@ -1,0 +1,43 @@
+PIECE_CHARS = {
+    'R': '车', 'N': '马', 'B': '相', 'A': '仕', 'K': '帅', 'C': '炮', 'P': '兵',
+    'r': '车', 'n': '马', 'b': '象', 'a': '士', 'k': '将', 'c': '炮', 'p': '卒',
+    '.': '．' 
+}
+# 1. 开中局、有进攻机会的帅(将)和兵(卒)
+cucvlKingPawnMidgameAttacking 
+# 2. 开中局、没有进攻机会的帅(将)和兵(卒)
+cucvlKingPawnMidgameAttackless 
+
+# 3. 残局、有进攻机会的帅(将)和兵(卒)
+cucvlKingPawnEndgameAttacking 
+
+# 4. 残局、没有进攻机会的帅(将)和兵(卒)
+cucvlKingPawnEndgameAttackless 
+
+
+
+
+
+# 5. 没受威胁的仕(士)和相(象)
+cucvlAdvisorBishopThreatless
+
+# 6. 受到威胁的仕(士)和相(象)
+cucvlAdvisorBishopThreatened
+
+
+
+# 7. 开中局的马
+cucvlKnightMidgame 
+
+# 8. 残局的马
+cucvlKnightEndgame 
+
+# 9. 开中局的车
+cucvlRookMidgame
+# 10. 残局的车
+cucvlRookEndgame 
+# 11. 开中局的炮
+cucvlCannonMidgame 
+
+# 12. 残局的炮
+cucvlCannonEndgame
