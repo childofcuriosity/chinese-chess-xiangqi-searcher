@@ -11,7 +11,7 @@ USE_PIKAFISH=0  # 全局开关，是否使用皮卡鱼引擎进行评估
 USE_DEPTH=0  # 是否使用固定深度搜索 (否则使用迭代加深)
 CLOUD_BOOK_ENABLED=1 # 是否启用云开局库查询
 OPEN_NMP=1  # 是否启用空步裁剪 (Null Move Pruning)
-LONG_MAX_TIME=60.0 # 非固定深度时的3步后默认最大思考时间 (秒)，可以根据需要调整
+LONG_MAX_TIME=75.0 # 非固定深度时的3步后默认最大思考时间 (秒)，可以根据需要调整
 
 RESET = "\033[0m"
 RED_TXT = "\033[31m"
@@ -1210,7 +1210,7 @@ class XiangqiCLI:
                 print(f"完成深度 {depth} | 耗时 {elapsed:.2f}s | 评估 {last_completed_val}", file=f)
 
             if abs(last_completed_val) > 20000: break # 发现绝杀
-            if elapsed > max_time * 0.2: break # 剩余时间预警
+            if elapsed > max_time * 0.16: break # 剩余时间预警
 
         # 哪怕深度 6 失败了，我们返回的也是深度 5 的最佳走法
         return last_completed_val, last_completed_move
