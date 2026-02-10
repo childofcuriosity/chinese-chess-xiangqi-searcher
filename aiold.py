@@ -8,7 +8,7 @@ import random
 import urllib.request
 # --- 1. 配置与显示颜色 ---
 USE_PIKAFISH=0  # 全局开关，是否使用皮卡鱼引擎进行评估
-USE_DEPTH=0  # 是否使用固定深度搜索 (否则使用迭代加深) （测棋力对打要开）
+USE_DEPTH=1  # 是否使用固定深度搜索 (否则使用迭代加深)
 LONG_MAX_DEPTH=6  # 非固定深度时的最大搜索深度
 CLOUD_BOOK_ENABLED=0 # 是否启用云开局库查询
 OPEN_NMP=1  # 是否启用空步裁剪 (Null Move Pruning)
@@ -55,7 +55,7 @@ PIECE_VALUES = {
     'a': 2,  
     'b': 2,  
     'p': 1, 
-    'K': 10000, 'R': 4, 'N': 3, 'C': 3, 'A': 2, 'B': 2, 'P': 1,'.': 0
+    'K': 10000, 'R': 4, 'N': 3, 'C': 3, 'A': 2, 'B': 2, 'P': 1
 }
 #看象眼，子力价值都是靠位置价值表（PST）来体现的。我就简单只给王加分为了保王
 # --- PST (Piece-Square Tables) 位置价值表 ---
@@ -93,16 +93,6 @@ pst_pawn = [
     [  0,  0,  0,  0,  0,  0,  0,  0,  0], # Row 8
     [  0,  0,  0,  0,  0,  0,  0,  0,  0]  # Row 9
 ]
-
-for i in range(len(pst_pawn)):
-    for j in range(len(pst_pawn[i])):
-        pst_pawn[i][j] += 5 #补丁
-
-# === 最终结果 ===
-# AI (New): 5 (250.0%)
-# AI (Old): 2 (100.0%)
-# Draws   : 3 (150.0%)
-# 结论: 新版 AI 更强！
 
 # [帅/将] King
 # 融合了中局与残局
@@ -164,7 +154,7 @@ pst_knight = [
     [  90,100, 99,103,104,103, 99,100, 90, ], # Row 5: 我河口
     [ 90, 98,101,102,103,102,101, 98, 90, ], # Row 6: 巡河
     [92, 94, 98, 95, 98, 95, 98, 94, 92,], # Row 7: 兵林
-    [  85, 90, 92, 93, 73, 93, 92, 90, 85, ], # Row 8
+    [  85, 90, 92, 93, 78, 93, 92, 90, 85, ], # Row 8
     [  88, 85, 90, 88, 90, 88, 90, 85, 88,]  # Row 9: 归心/底线
 ]
 
@@ -292,46 +282,7 @@ class PikafishEvaluator:
                 break
                 
         return score
-    # 在你的 Pikafish 包装类里添加
-    def get_best_move(self, fen, movetime=1000):
-        """
-        发送 FEN 并获取最佳走法
-        """
-        self.send(f"position fen {fen}")
-        self.send(f"go movetime {movetime}")
-        
-        best_move = None
-        score = 0
-        
-        while True:
-            line = self.process.stdout.readline().strip()
-            if not line: break
-            
-            # 解析分数 (info ... score cp 100 ...)
-            if "score cp" in line:
-                parts = line.split()
-                try:
-                    idx = parts.index("cp")
-                    score = int(parts[idx+1])
-                except:
-                    pass
-            # 处理杀棋分数 (score mate 5)
-            elif "score mate" in line:
-                parts = line.split()
-                try:
-                    idx = parts.index("mate")
-                    mate_step = int(parts[idx+1])
-                    # 杀棋给个极大值
-                    score = 9999 if mate_step > 0 else -9999
-                except:
-                    pass
 
-            # 解析最佳走法
-            if line.startswith("bestmove"):
-                best_move = line.split()[1]
-                break
-            
-        return best_move, score
     def close(self):
         self.process.terminate()
 
@@ -352,16 +303,16 @@ class XiangqiCLI:
             ['R', 'N', 'B', 'A', 'K', 'A', 'B', 'N', 'R']
         ]
         # self.board = [
-        #     ['.', 'r', '.', 'a', 'k', 'a', 'b', '.', '.'],
-        #     ['c', 'C', '.', '.', 'n', '.', '.', '.', '.'],
-        #     ['.', '.', '.', '.', 'b', '.', 'n', '.', '.'],
-        #     ['p', '.', 'p', '.', 'p', '.', 'p', '.', 'p'],
-        #     ['.', '.', '.', 'N', '.', '.', '.', '.', '.'],
-        #     ['.', '.', 'P', '.', '.', '.', 'P', '.', '.'],
-        #     ['P', '.', '.', '.', 'P', '.', '.', '.', 'P'],
-        #     ['.', '.', 'N', '.', 'B', '.', '.', '.', '.'],
-        #     ['.', '.', '.', '.', 'A', '.', '.', '.', '.'],
-        #     ['.', 'R', 'B', 'A', 'K', '.', 'c', '.', '.']
+        #     ['r', '.', '.', '.', 'k', 'a', 'b', '.', 'r'],
+        #     ['.', '.', '.', 'n', 'a', '.', '.', '.', '.'],
+        #     ['.', 'c', '.', '.', 'b', '.', 'n', 'c', '.'],
+        #     ['p', '.', 'p', '.', '.', '.', 'p', '.', 'p'],
+        #     ['.', '.', '.', '.', 'C', '.', '.', '.', '.'],
+        #     ['.', '.', '.', '.', '.', '.', '.', 'C', '.'],
+        #     ['P', '.', 'P', '.', 'P', '.', 'P', '.', 'P'],
+        #     ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        #     ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        #     ['R', 'N', 'B', 'A', 'K', 'A', 'B', 'N', 'R']
         # ]
         self.turn = 'red'
         self.player_side = None
@@ -403,12 +354,33 @@ class XiangqiCLI:
 
         # 2. 添加一个评估缓存 (非常重要！否则太慢)
         self.eval_cache = {} 
-    def evaluate(self,use_pikafish=USE_PIKAFISH):
+    # def evaluate(self):
+    #     """
+    #     新的综合评估入口
+    #     """
+    #     # 1. 基础分 (增量维护的子力+PST)
+    #     base = self.current_score
+        
+    #     # 2. 关系与阵型分 (实时计算)
+    #     # 注意：这里如果太慢，可以考虑只在 depth > X 时调用，或者简化
+    #     relation = self.get_relation_score()
+        
+    #     total = base + relation
+        
+    #     # 如果当前轮到黑方走，minimax 视角需要取反吗？
+    #     # 注意：你的 minimax 实现中，maximize_player 是布尔值。
+    #     # 如果你的 current_score 已经是 "红优则正，黑优则负"，
+    #     # 那么这里直接返回 total 即可。minimax 内部会根据 maximizing_player 处理。
+    #     # 这里假设 total 是相对于红方的净胜分。
+        
+    #     return total
+    # 3. 彻底替换 evaluate 函数
+    def evaluate(self):
         """
         使用皮卡鱼进行静态评估
         """
         # 如果皮卡鱼没启动，回退到原来的逻辑（或者直接返回0）
-        if not use_pikafish:
+        if not USE_PIKAFISH:
             base = self.current_score
             total = base
             # 2. 关系与阵型分 (实时计算)
@@ -833,16 +805,14 @@ class XiangqiCLI:
                     if self.in_board(r, c+dc) and not is_teammate(r, c+dc): moves.append((r, c+dc))
         return moves
 
-    def get_all_moves(self, is_red_turn,only_captures=False):
+    def get_all_moves(self, is_red_turn):
         moves = []
         for r in range(ROWS):
             for c in range(COLS):
                 p = self.board[r][c]
                 if p != '.' and self.is_red(p) == is_red_turn:
                     ms = self.get_valid_moves(r, c)
-                    for m in ms: 
-                        if (not only_captures) or (self.board[m[0]][m[1]] != '.'):
-                            moves.append(((r,c), m))
+                    for m in ms: moves.append(((r,c), m))
         return moves
 
 
@@ -866,18 +836,27 @@ class XiangqiCLI:
         # 3. 深度限制防止爆炸
         # 如果搜太深，强制返回。注意：如果被将军且无路可走，这里返回评估分可能不准，
         # 但为了防止死循环只能妥协。通常 10 层 QS 已经极深了。
-        if qs_depth > 6:
+        if qs_depth > 10:
             return self.evaluate()
 
         # 4. 生成着法
+        # 优化：通常引擎会有 generate_capture_moves() 和 generate_all_moves() 两个方法
         if in_check:
+            # 被将军：必须生成所有逃生步（包括不吃子的移动）
+            # 这里的 get_all_moves 必须包含挡将、躲将
             moves = self.get_all_moves(maximizing_player)
         else:
-            moves = self.get_all_moves(maximizing_player, only_captures=True)
-        board = self.board
-        values = PIECE_VALUES
+            # 未被将军：只生成吃子步
+            # 这里建议优化你的底层代码，不要生成所有步再过滤，直接只生成吃子步效率高很多
+            all_moves = self.get_all_moves(maximizing_player)
+            moves = []
+            for start, end in all_moves:
+                # 目标格有子 = 吃子
+                if self.board[end[0]][end[1]] != '.':
+                    moves.append((start, end))
+
         # MVV-LVA 排序
-        moves.sort(key=lambda m: values[board[m[1][0]][m[1][1]]], reverse=True)
+        moves.sort(key=lambda m: PIECE_VALUES.get(self.board[m[1][0]][m[1][1]], 0), reverse=True)
 
         # 5. 遍历着法
         has_legal_move = False
@@ -988,24 +967,7 @@ class XiangqiCLI:
         self.history.pop() # 新增
         self.turn = 'black' if self.turn == 'red' else 'red'
         self.current_hash ^= self.zobrist_turn
-
-
-    def move_gives_check(self, start, end, maximizing_player):
-        """
-        判断 start->end 这一步是否对对方造成将军
-        """
-        # 执行走子
-        captured = self.make_move(start, end)
-
-        # 走完后，轮到对方，对方是否被将军
-        gives_check = self.is_in_check(not maximizing_player)
-
-        # 撤销走子
-        self.undo_move(start, end, captured)
-
-        return gives_check
-
-    def minimax(self, depth, alpha, beta, maximizing_player, allow_null=True,check_ext_left=1):
+    def minimax(self, depth, alpha, beta, maximizing_player, allow_null=True):
         self.nodes += 1
         # --- 新增：检测重复局面 ---
         # 如果当前 Hash 在历史列表中出现的次数大于1（包含刚才 make_move 加入的那次），说明重复了
@@ -1019,16 +981,6 @@ class XiangqiCLI:
         # 0. 检查超时
         if self.is_time_up():
             return 0, None
-
-        in_check = self.is_in_check(maximizing_player)
-        ext = 0
-        if check_ext_left > 0 and in_check:
-            ext = 1
-        # 2. 基础结束条件
-        # 如果深度耗尽，进入静态搜索 (QS)
-        if depth+ ext <= 0:
-            val = self.quiescence_search(alpha, beta, maximizing_player)
-            return val, None
 
         # 1. 查表 (TT Lookup)
         original_alpha = alpha
@@ -1047,6 +999,12 @@ class XiangqiCLI:
                 elif tt_flag == TT_BETA and tt_score >= beta:
                     return tt_score, tt_move
 
+        # 2. 基础结束条件
+        # 如果深度耗尽，进入静态搜索 (QS)
+        if depth <= 0:
+            val = self.quiescence_search(alpha, beta, maximizing_player)
+            return val, None
+
         # 3. 检查胜负 (防止绝杀时死循环)
         kings = [False, False]
         # 这一步其实比较耗时，但在 Python 简易引擎中为了安全保留
@@ -1057,7 +1015,13 @@ class XiangqiCLI:
         if not kings[0]: return -SCORE_INF + depth, None 
         if not kings[1]: return SCORE_INF - depth, None 
 
-        # --- Futility Pruning (空费剪枝) ---非常容易看不到弃子。弃用
+        in_check = self.is_in_check(maximizing_player)
+        
+        # --- 移除死循环风险的 Check Extension ---
+        # 原来的 if in_check: depth += 1 会导致无限递归。
+        # 这里改为：如果被将军，我们不做空步裁剪(NMP)，
+        # 并且依靠 QS 在 depth=0 时处理将军，或者仅在 depth 较小时才极少量延伸(这里为了稳定，暂不延伸)。
+
         # --- Null Move Pruning (空步裁剪) ---
         # 只有在：没被将军 + 深度足够 + 没到残局(简单判断) 时才启用
         if OPEN_NMP and depth >= 3 and not in_check and allow_null:
@@ -1076,7 +1040,7 @@ class XiangqiCLI:
             if maximizing_player:
                 # 当前是红方：希望证明 即使空步，局势依然 >= beta
                 # 交给黑方搜，使用 (beta-1, beta) 窗口
-                val, _ = self.minimax(next_depth, beta - 1, beta, False, allow_null=False, check_ext_left=0)
+                val, _ = self.minimax(next_depth, beta - 1, beta, False, allow_null=False)
                 self.undo_null_move() # 记得恢复
                 
                 if self.stop_search: return 0, None
@@ -1085,7 +1049,7 @@ class XiangqiCLI:
             else:
                 # 当前是黑方：希望证明 即使空步，局势依然 <= alpha
                 # 交给红方搜，使用 (alpha, alpha+1) 窗口
-                val, _ = self.minimax(next_depth, alpha, alpha + 1, True, allow_null=False,check_ext_left=0)
+                val, _ = self.minimax(next_depth, alpha, alpha + 1, True, allow_null=False)
                 self.undo_null_move() # 记得恢复
 
                 if self.stop_search: return 0, None
@@ -1103,19 +1067,20 @@ class XiangqiCLI:
         killers = self.killer_moves[depth] if depth < 64 else [None, None]
         def move_sorter(m):
             start, end = m
-            if tt_move and (start, end) == tt_move: return 300000000 # TT Move
+            if tt_move and (start, end) == tt_move: return 2000000 # TT Move
+            
             victim = self.board[end[0]][end[1]]
             if victim != '.': # MVV-LVA
                 val = PIECE_VALUES.get(victim, 0)
                 attacker = self.board[start[0]][start[1]]
                 attacker_val = PIECE_VALUES.get(attacker, 0)
-                return 10000000 + val * 10 - attacker_val
+                return 100000 + val * 10 - attacker_val
             
-            if m == killers[0]: return 9000000
-            if m == killers[1]: return 8000000
+            if m == killers[0]: return 90000
+            if m == killers[1]: return 80000
             return self.history_table[start[0]][start[1]][end[0]][end[1]]
 
-        moves.sort(key=move_sorter, reverse=True)
+        moves.sort(key=move_sorter, reverse=True)#5 8在第12
 
         best_move = moves[0]
         best_score = -float(SCORE_INF) if maximizing_player else float(SCORE_INF)
@@ -1137,46 +1102,41 @@ class XiangqiCLI:
             
             if maximizing_player:
                 if moves_count == 1:
-                    score, _ = self.minimax(depth - 1+ ext, alpha, beta, False,check_ext_left=check_ext_left - ext)
+                    score, _ = self.minimax(depth - 1, alpha, beta, False)
                 else:
                     reduction = 1 if do_lmr else 0
-                    if moves_count > 10 and do_lmr: 
-                        reduction = 2
-                        if moves_count > 20: 
-                            reduction = 3
+                    if moves_count > 15 and do_lmr: reduction = 2
                     
                     search_depth = depth - 1 - reduction
                     # 确保深度不会变成负数导致逻辑混乱(虽然 minimax 入口有判断，但保持清醒很好)
                     if search_depth < 0: search_depth = 0
 
                     # 1. 尝试零窗口搜索
-                    score, _ = self.minimax(search_depth+ ext, alpha, alpha + 1, False,check_ext_left=check_ext_left - ext)
+                    score, _ = self.minimax(search_depth, alpha, alpha + 1, False)
                     
                     # 2. 如果 Fail High (在这个深度居然比 alpha 好)，说明可能过度剪枝了
                     if score > alpha:
                         if do_lmr: # 恢复深度重搜
-                            score, _ = self.minimax(depth - 1+ ext, alpha, alpha + 1, False,check_ext_left=check_ext_left - ext)
+                            score, _ = self.minimax(depth - 1, alpha, alpha + 1, False)
                         if score > alpha and score < beta: # 全窗口重搜
-                            score, _ = self.minimax(depth - 1+ ext, alpha, beta, False,check_ext_left=check_ext_left - ext)
+                            score, _ = self.minimax(depth - 1, alpha, beta, False)
             else:
                 if moves_count == 1:
-                    score, _ = self.minimax(depth - 1+ ext, alpha, beta, True,check_ext_left=check_ext_left - ext)
+                    score, _ = self.minimax(depth - 1, alpha, beta, True)
                 else:
                     reduction = 1 if do_lmr else 0
-                    if moves_count > 10 and do_lmr: 
-                        reduction = 2
-                        if moves_count > 20: 
-                            reduction = 3
+                    if moves_count > 15 and do_lmr: reduction = 2
                     
                     search_depth = depth - 1 - reduction
                     if search_depth < 0: search_depth = 0
-                    score, _ = self.minimax(search_depth+ ext, beta - 1, beta, True,check_ext_left=check_ext_left - ext)
+
+                    score, _ = self.minimax(search_depth, beta - 1, beta, True)
                     
                     if score < beta:
                         if do_lmr:
-                            score, _ = self.minimax(depth - 1+ ext, beta - 1, beta, True,check_ext_left=check_ext_left - ext)
+                            score, _ = self.minimax(depth - 1, beta - 1, beta, True)
                         if score < beta and score > alpha:
-                            score, _ = self.minimax(depth - 1+ ext, alpha, beta, True,check_ext_left=check_ext_left - ext)
+                            score, _ = self.minimax(depth - 1, alpha, beta, True)
 
             self.undo_move(start, end, captured)
             
@@ -1226,12 +1186,6 @@ class XiangqiCLI:
             with open("log.txt", "a", encoding="utf-8") as f:
                 print(f"使用云库走法: {book_move}, 云库分数: {book_score}", file=f)
             return book_score, book_move # 返回真实的分数和走法
-        pikafish_data = self.query_pikafish_book()
-        if pikafish_data:
-            pikafish_move, pikafish_score = pikafish_data # 解构获取真实分数
-            with open("log.txt", "a", encoding="utf-8") as f:
-                print(f"使用皮卡鱼走法: {pikafish_move}, 分数: {pikafish_score}", file=f)
-            return pikafish_score, pikafish_move # 返回真实的分数和走法
         self.start_time = time.time()
         self.time_limit = max_time
         self.stop_search = False
@@ -1327,7 +1281,7 @@ class XiangqiCLI:
                     print(f">>> AI 正在思考 (深度 {DEPTH})...")
                     val, best = self.minimax(DEPTH, -float(SCORE_INF ), float(SCORE_INF ), is_ai_red)
                 else:
-                    MAX_TIME = 100.0 if  cnt<=3 else LONG_MAX_TIME  # 每步最多思考 10 秒(仅在非固定深度时生效) 
+                    MAX_TIME = 10.0 if  cnt<=3 else LONG_MAX_TIME  # 每步最多思考 10 秒(仅在非固定深度时生效) 
                     print(f">>> AI 正在思考 (限时 {MAX_TIME} 秒)...")
                     val, best = self.search_main(MAX_TIME, is_ai_red)
                 
@@ -1391,55 +1345,6 @@ class XiangqiCLI:
             return (r1, c1), (r2, c2)
         except:
             return None
-    def query_pikafish_book(self):
-        """
-        向皮卡鱼查询最佳走法，模拟'开局库'的行为，但在中局也能用。
-        返回: (move, score) 或者 None
-        """
-        # 1. 安全检查：如果没启用或引擎没加载，直接返回
-        if not USE_PIKAFISH :
-            return None
-
-        # 2. 获取当前 FEN
-        fen = self.to_fen()
-
-        try:
-            # 3. 调用皮卡鱼获取最佳走法
-            # 假设你的 pikafish 包装类有一个 get_best_move 方法
-            # 参数: (fen字符串, 思考时间ms)
-            # 这里给它 500ms~1000ms，既比单纯 evaluate 准，又不会像深搜那么慢
-            # 返回值期望是: ("h2e2", 150) -> (uci走法字符串, cp分数)
-            result = self.pikafish.get_best_move(fen, movetime=1000)
-            
-            if not result:
-                return None
-                
-            uci_move_str, engine_score = result
-
-            # 4. 分数视角修正 (至关重要！)
-            # 引擎返回的分数通常是"当前走子方"的优势分。
-            # 例如：轮到黑方走，引擎返回 +200，意思是黑方优势 200 分。
-            # 而你的全局 search_main 可能是基于 "红正黑负" 的。
-            # 所以如果当前是黑方，我们需要把分数取反。
-            final_score = engine_score
-            if self.turn == 'black':
-                final_score = -engine_score
-
-            # 5. 将 UCI 字符串 (如 "h2e2") 转换为你的 Move 对象
-            # 必须从当前合法走法列表中找到对应的那个对象，才能保证后续逻辑不出错
-            best_move = self.uci_to_move(uci_move_str)
-            
-            if best_move:
-                return best_move, final_score
-            else:
-                # 如果转换失败（比如引擎走法不合法），返回 None
-                print(f"警告: 皮卡鱼返回了非法走法 {uci_move_str}")
-                return None
-
-        except Exception as e:
-            # 避免引擎崩溃影响主程序
-            print(f"皮卡鱼查询失败: {e}")
-            return None
     def query_cloud_book(self):
         if not CLOUD_BOOK_ENABLED:
             return None
@@ -1447,7 +1352,6 @@ class XiangqiCLI:
         fen = self.to_fen()
         encoded_fen = urllib.parse.quote(fen)
         url = f"http://www.chessdb.cn/chessdb.php?action=queryall&learn=1&board={encoded_fen}"
-        # import pdb  ;pdb.set_trace()
         try:
             with urllib.request.urlopen(url, timeout=2) as response:
                 data = response.read().decode('utf-8')
