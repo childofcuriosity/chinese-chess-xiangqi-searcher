@@ -11,6 +11,7 @@ USE_PIKAFISH=0  # 全局开关，是否使用皮卡鱼引擎进行评估
 USE_DEPTH=0  # 是否使用固定深度搜索 (否则使用迭代加深) （测棋力对打要开）
 LONG_MAX_DEPTH=6  # 非固定深度时的最大搜索深度
 CLOUD_BOOK_ENABLED=1 # 是否启用云开局库查询
+QUERY_SCORE_THRESHOLD=20 # 云开局库查询时的分数筛选阈值 (单位：分)，只考虑分数在最高分QUERY_SCORE_THRESHOLD分以内的走法
 OPEN_NMP=1  # 是否启用空步裁剪 (Null Move Pruning)
 LONG_MAX_TIME=75.0 # 非固定深度时的3步后默认最大思考时间 (秒)，可以根据需要调整
 
@@ -346,29 +347,17 @@ class XiangqiCLI:
 
     def __init__(self):
         self.board = [
-            ['.', '.', 'b', '.', 'k', 'a', '.', '.', '.'],
-            ['.', '.', '.', 'C', 'a', '.', '.', '.', '.'],
-            ['n', '.', 'R', '.', 'b', '.', '.', '.', '.'],
-            ['p', '.', '.', '.', '.', '.', '.', '.', 'p'],
-            ['.', '.', '.', '.', '.', '.', 'p', '.', '.'],
-            ['.', '.', 'B', '.', 'p', '.', '.', '.', '.'],
-            ['P', '.', '.', '.', '.', '.', 'P', 'n', 'P'],
+            ['r', 'n', 'b', 'a', 'k', 'a', 'b', 'n', 'r'],
             ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-            ['N', 'r', '.', '.', 'A', 'r', '.', '.', '.'],
-            ['.', '.', 'B', 'A', 'K', '.', '.', '.', 'R']
+            ['.', 'c', '.', '.', '.', '.', '.', 'c', '.'],
+            ['p', '.', 'p', '.', 'p', '.', 'p', '.', 'p'],
+            ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
+            ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
+            ['P', '.', 'P', '.', 'P', '.', 'P', '.', 'P'],
+            ['.', 'C', '.', '.', '.', '.', '.', 'C', '.'],
+            ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
+            ['R', 'N', 'B', 'A', 'K', 'A', 'B', 'N', 'R']
         ]
-        # self.board = [
-        #     ['r', 'n', 'b', 'a', 'k', 'a', 'b', 'n', 'r'],
-        #     ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-        #     ['.', 'c', '.', '.', '.', '.', '.', 'c', '.'],
-        #     ['p', '.', 'p', '.', 'p', '.', 'p', '.', 'p'],
-        #     ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-        #     ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-        #     ['P', '.', 'P', '.', 'P', '.', 'P', '.', 'P'],
-        #     ['.', 'C', '.', '.', '.', '.', '.', 'C', '.'],
-        #     ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-        #     ['R', 'N', 'B', 'A', 'K', 'A', 'B', 'N', 'R']
-        # ]
         self.turn = 'red'
         self.player_side = None
         self.game_over = False
@@ -1287,7 +1276,7 @@ class XiangqiCLI:
         last_completed_move = None
         last_completed_val = 0
         
-        for depth in range(1, 7):
+        for depth in range(1, 64):
             # 尝试搜索当前深度
             current_val, current_move = self.minimax(depth, -float(SCORE_INF), float(SCORE_INF), is_ai_red)
             
@@ -1511,9 +1500,9 @@ class XiangqiCLI:
                 
                 if not moves: return None
                 
-                # 筛选规则：分数不低于最高分 5 分
+                # 筛选规则：分数不低于最高分 QUERY_SCORE_THRESHOLD 分
                 max_score = moves[0]['score']
-                candidates = [m for m in moves if m['score'] >= max_score - 5]
+                candidates = [m for m in moves if m['score'] >= max_score - QUERY_SCORE_THRESHOLD]
                 
                 # 随机选一个高分走法
                 selected = random.choice(candidates)
