@@ -19,6 +19,8 @@ import queue
 import os
 
 # --- GUI 配置 ---
+ENGINE_TYPE = 'cpp'  # 'python' or 'cpp'
+
 SCREEN_WIDTH = 640
 SCREEN_HEIGHT = 720
 BOARD_OFFSET_X = 50
@@ -82,14 +84,24 @@ class AIClient:
 
     def connect(self):
         try:
-            self.process = subprocess.Popen(
-                [self.pypy_path, self.ai_filename],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True, encoding='utf-8', errors='replace',
-                bufsize=1
-            )
+            if ENGINE_TYPE == "python":
+                self.process = subprocess.Popen(
+                    [self.pypy_path, self.ai_filename],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True, encoding='utf-8', errors='replace',
+                    bufsize=1
+                )
+            elif ENGINE_TYPE == "cpp":
+                self.process = subprocess.Popen(
+                    ['./xiangqi_ai'],  # Assuming the C++ engine is compiled to this executable
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True, encoding='utf-8', errors='replace',
+                    bufsize=1
+                )
         except FileNotFoundError:
             print(f"错误: 找不到命令 '{self.pypy_path}'。请确保已安装 PyPy3 或更改为 'python'。")
             sys.exit(1)

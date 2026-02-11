@@ -6,10 +6,27 @@ import copy
 import time
 import random
 import urllib.request
+# x深度此程序对y深度皮卡鱼26年1月版胜负情况：(默认深度少的先下)
+# x=3,y=1 和棋
+# x=4,y=2 pika 赢
+# x=6,y=2 pika 赢
+# x=8,y=2 ai 赢
+# x=8,y=3 ai赢
+# 还可以，有皮卡鱼1/3功力。
+# Scores: 1 (AI win 2/2 or big advantage), 0 (Draw/Even), -1 (AI lose)
+# AI\PF | D1 | D2 | D3 | D4
+# -------------------------
+#  D1    | -1  |  0  |  1  |  0  |
+#  D2    |  1  | -1  | -1  |  1  |
+#  D3    | -1  |  0  |  1  |  1  |
+#  D4    | -1  |  0  | -1  |  1  | 
+#  D5    |  1  |  1  |  1  |  1  | 
+#  D6    |  0  |  1  | -1  |  1  | 
+
 # --- 1. 配置与显示颜色 ---
 USE_PIKAFISH=0  # 全局开关，是否使用皮卡鱼引擎进行评估
-USE_DEPTH=0  # 是否使用固定深度搜索 (否则使用迭代加深) （测棋力对打要开）
-LONG_MAX_DEPTH=6  # 非固定深度时的最大搜索深度
+USE_DEPTH=0 # 是否使用固定深度搜索 (否则使用迭代加深) （测棋力对打要开）
+LONG_MAX_DEPTH=8  # 非固定深度时的最大搜索深度
 CLOUD_BOOK_ENABLED=1 # 是否启用云开局库查询
 QUERY_SCORE_THRESHOLD=20 # 云开局库查询时的分数筛选阈值 (单位：分)，只考虑分数在最高分QUERY_SCORE_THRESHOLD分以内的走法
 OPEN_NMP=1  # 是否启用空步裁剪 (Null Move Pruning)
@@ -179,7 +196,7 @@ pst_knight = adjust_pst(pst_knight, 'n')
 # 开中局与残局的平均值
 # 霸王车位置(Row 4)得分最高，底车(Row 0)次之
 pst_rook = [
-    [206,208,207,213,214,213,207,208,206,], # Row 0: 敌底 (沉底)
+    [208,210,209,215,216,215,209,210,208,], # Row 0: 敌底 (沉底)
     [206,212,209,216,233,216,209,212,206, ], # Row 1: 敌下二路
     [206,208,207,214,216,214,207,208,206, ], # Row 2
     [206,213,213,216,216,216,213,213,206,], # Row 3: 捉子/压制
@@ -196,7 +213,7 @@ pst_rook = adjust_pst(pst_rook, 'r')
 # 开中局与残局的平均值
 # 炮在底线(Row 0)和中路/肋道(Col 3,4,5)比较稳健
 pst_cannon = [
-    [100,100, 96, 91, 90, 91, 96,100,100, ], # Row 0: 敌底
+    [103,103, 99, 91, 90, 91, 99,103,103, ], # Row 0: 敌底
     [98, 98, 96, 92, 89, 92, 96, 98, 98,], # Row 1
     [ 97, 97, 96, 91, 92, 91, 96, 97, 97, ], # Row 2: 炮架位
     [ 96, 99, 99, 98,100, 98, 99, 99, 96,], # Row 3
@@ -1357,7 +1374,7 @@ class XiangqiCLI:
                 is_ai_red = (self.player_side == 'black')
                 if USE_DEPTH:
                     if cnt<=3:
-                        DEPTH =2
+                        DEPTH =LONG_MAX_DEPTH
                     else:
                         DEPTH = LONG_MAX_DEPTH # 中后期加深到6层
                     print(f">>> AI 正在思考 (深度 {DEPTH})...")
@@ -1546,7 +1563,7 @@ def start_engine(long_max_depth=LONG_MAX_DEPTH):
             is_ai_red = (engine.player_side == 'black')
             if USE_DEPTH:
                 if cnt<=3:
-                    DEPTH = 6
+                    DEPTH = long_max_depth
                 else:
                     DEPTH = long_max_depth # 中后期加深到6层
                 val, best = engine.minimax(DEPTH, -float(SCORE_INF ), float(SCORE_INF ), is_ai_red)

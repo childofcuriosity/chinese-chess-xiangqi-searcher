@@ -6,11 +6,29 @@ import copy
 import time
 import random
 import urllib.request
+# x深度此程序对y深度皮卡鱼26年1月版胜负情况：(默认深度少的先下)
+# x=3,y=1 和棋
+# x=4,y=2 pika 赢
+# x=6,y=2 pika 赢
+# x=8,y=2 ai 赢
+# x=8,y=3 ai赢
+# 还可以，有皮卡鱼1/3功力。
+# Scores: 1 (AI win 2/2 or big advantage), 0 (Draw/Even), -1 (AI lose)
+# AI\PF | D1 | D2 | D3 | D4
+# -------------------------
+#  D1    | -1  |  0  |  1  |  0  |
+#  D2    |  1  | -1  | -1  |  1  |
+#  D3    | -1  |  0  |  1  |  1  |
+#  D4    | -1  |  0  | -1  |  1  | 
+#  D5    |  1  |  1  |  1  |  1  | 
+#  D6    |  0  |  1  | -1  |  1  | 
+
 # --- 1. 配置与显示颜色 ---
 USE_PIKAFISH=0  # 全局开关，是否使用皮卡鱼引擎进行评估
-USE_DEPTH=0  # 是否使用固定深度搜索 (否则使用迭代加深) （测棋力对打要开）
-LONG_MAX_DEPTH=6  # 非固定深度时的最大搜索深度
-CLOUD_BOOK_ENABLED=0 # 是否启用云开局库查询
+USE_DEPTH=0 # 是否使用固定深度搜索 (否则使用迭代加深) （测棋力对打要开）
+LONG_MAX_DEPTH=8  # 非固定深度时的最大搜索深度
+CLOUD_BOOK_ENABLED=1 # 是否启用云开局库查询
+QUERY_SCORE_THRESHOLD=20 # 云开局库查询时的分数筛选阈值 (单位：分)，只考虑分数在最高分QUERY_SCORE_THRESHOLD分以内的走法
 OPEN_NMP=1  # 是否启用空步裁剪 (Null Move Pruning)
 LONG_MAX_TIME=75.0 # 非固定深度时的3步后默认最大思考时间 (秒)，可以根据需要调整
 
@@ -77,6 +95,11 @@ PIECE_VALUES = {
 # K: 0
 # C: 694
 # P: 178
+def adjust_pst(pst, piece_char):
+    for i in range(len(pst)):
+        for j in range(len(pst[i])):
+            pst[i][j] -= PIECE_VALUES[piece_char]
+    return pst
 
 # [兵/卒] Pawn
 # 融合了开中局(攻/守)与残局(攻/守)的平均值
@@ -94,9 +117,7 @@ pst_pawn = [
     [  0,  0,  0,  0,  0,  0,  0,  0,  0]  # Row 9
 ]
 
-for i in range(len(pst_pawn)):
-    for j in range(len(pst_pawn[i])):
-        pst_pawn[i][j] += 5 #补丁
+pst_pawn = adjust_pst(pst_pawn, 'p')
 
 # === 最终结果 ===
 # AI (New): 5 (250.0%)
@@ -136,6 +157,8 @@ pst_advisor = [
     [  0,  0,  0, 30,  0, 30,  0,  0,  0]  # Row 9: 底士
 ]
 
+pst_advisor = adjust_pst(pst_advisor, 'a')
+
 # [相/象] Bishop
 # 采用 PromotionThreatless 表
 # 仅保留相位的有效位置 (含河口象，虽危险但原表有分值30)
@@ -152,6 +175,7 @@ pst_bishop = [
     [  0,  0, 30,  0,  0,  0, 30,  0,  0]  # Row 9: 底相
 ]
 
+pst_bishop = adjust_pst(pst_bishop, 'b')
 # [马] Knight
 # 开中局与残局的平均值
 # 卧槽马(Row 1, 2)和河口马(Row 3, 4)分值很高
@@ -167,12 +191,12 @@ pst_knight = [
     [  85, 90, 92, 93, 73, 93, 92, 90, 85, ], # Row 8
     [  88, 85, 90, 88, 90, 88, 90, 85, 88,]  # Row 9: 归心/底线
 ]
-
+pst_knight = adjust_pst(pst_knight, 'n')
 # [车] Rook
 # 开中局与残局的平均值
 # 霸王车位置(Row 4)得分最高，底车(Row 0)次之
 pst_rook = [
-    [206,208,207,213,214,213,207,208,206,], # Row 0: 敌底 (沉底)
+    [208,210,209,215,216,215,209,210,208,], # Row 0: 敌底 (沉底)
     [206,212,209,216,233,216,209,212,206, ], # Row 1: 敌下二路
     [206,208,207,214,216,214,207,208,206, ], # Row 2
     [206,213,213,216,216,216,213,213,206,], # Row 3: 捉子/压制
@@ -184,11 +208,12 @@ pst_rook = [
     [194,206,204,212,200,212,204,206,194,]  # Row 9: 我底
 ]
 
+pst_rook = adjust_pst(pst_rook, 'r')
 # [炮] Cannon
 # 开中局与残局的平均值
 # 炮在底线(Row 0)和中路/肋道(Col 3,4,5)比较稳健
 pst_cannon = [
-    [100,100, 96, 91, 90, 91, 96,100,100, ], # Row 0: 敌底
+    [103,103, 99, 91, 90, 91, 99,103,103, ], # Row 0: 敌底
     [98, 98, 96, 92, 89, 92, 96, 98, 98,], # Row 1
     [ 97, 97, 96, 91, 92, 91, 96, 97, 97, ], # Row 2: 炮架位
     [ 96, 99, 99, 98,100, 98, 99, 99, 96,], # Row 3
@@ -199,7 +224,7 @@ pst_cannon = [
     [96, 97, 98, 98, 98, 98, 98, 97, 96,], # Row 8
     [ 96, 96, 97, 99, 99, 99, 97, 96, 96,]  # Row 9: 我底 (担子炮)
 ]
-
+pst_cannon = adjust_pst(pst_cannon, 'c')
 PST_MAP = {
     'k': pst_king,   'K': pst_king,
     'r': pst_rook,   'R': pst_rook,
@@ -338,7 +363,6 @@ class PikafishEvaluator:
 class XiangqiCLI:
 
     def __init__(self):
-
         self.board = [
             ['r', 'n', 'b', 'a', 'k', 'a', 'b', 'n', 'r'],
             ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
@@ -351,22 +375,12 @@ class XiangqiCLI:
             ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
             ['R', 'N', 'B', 'A', 'K', 'A', 'B', 'N', 'R']
         ]
-        # self.board = [
-        #     ['.', 'r', '.', 'a', 'k', 'a', 'b', '.', '.'],
-        #     ['c', 'C', '.', '.', 'n', '.', '.', '.', '.'],
-        #     ['.', '.', '.', '.', 'b', '.', 'n', '.', '.'],
-        #     ['p', '.', 'p', '.', 'p', '.', 'p', '.', 'p'],
-        #     ['.', '.', '.', 'N', '.', '.', '.', '.', '.'],
-        #     ['.', '.', 'P', '.', '.', '.', 'P', '.', '.'],
-        #     ['P', '.', '.', '.', 'P', '.', '.', '.', 'P'],
-        #     ['.', '.', 'N', '.', 'B', '.', '.', '.', '.'],
-        #     ['.', '.', '.', '.', 'A', '.', '.', '.', '.'],
-        #     ['.', 'R', 'B', 'A', 'K', '.', 'c', '.', '.']
-        # ]
         self.turn = 'red'
         self.player_side = None
         self.game_over = False
         self.current_score = 0
+        self.king_pos = [None,None] # [red_king_pos, black_king_pos]
+        self.piece_places=[set(),set()] # 红位置、黑位置
         
 
         # --- 在类的 __init__ 中修改 ---
@@ -379,7 +393,8 @@ class XiangqiCLI:
         self.zobrist_turn = random.getrandbits(64) # 轮到黑方走棋的随机数
         self.current_hash = 0
         # --- 新增：历史局面 Hash 表 ---
-        self.history = [] 
+        self.hash_count = {}
+
         self.init_zobrist() # 生成随机数表
         self.init_score_and_hash() # 计算初始分数和初始Hash
 
@@ -392,7 +407,7 @@ class XiangqiCLI:
         self.killer_moves = [[None, None] for _ in range(64)]
 
 
-        
+                
         # 1. 启动皮卡鱼 (确保 exe 在同级目录)
         try:
             self.pikafish = PikafishEvaluator("pikafish.exe")
@@ -496,10 +511,7 @@ class XiangqiCLI:
         pst_val = 0
         if piece in PST_MAP:
             table = PST_MAP[piece]
-            if self.is_red(piece):
-                pst_val = table[r][c]
-            else:
-                pst_val = table[9-r][c] # 黑方翻转
+            pst_val = table[r][c] if self.is_red(piece) else table[9 - r][c]
         
         total = val + pst_val
         return total if self.is_red(piece) else -total
@@ -514,24 +526,47 @@ class XiangqiCLI:
                 if p != '.':
                     self.current_score += self.get_piece_value(p, r, c)
                     self.current_hash ^= self.zobrist_table[(r, c, p)]
+                    self.piece_places_add(p,r,c)
+                if p == 'K':
+                    self.king_pos[0] = (r, c)
+                elif p == 'k':
+                    self.king_pos[1] = (r, c)
+                    
         
         # 如果初始是黑方走，需要异或 turn 的随机数（通常开局是红方，不做处理）
         if self.turn == 'black':
             self.current_hash ^= self.zobrist_turn
-        self.history = [self.current_hash]    
-
+        self.hash_count = {self.current_hash: 1}
+    def piece_places_remove(self,p,r,c):
+        self.piece_places[int(not self.is_red(p))].remove((r,c))
+    def piece_places_add(self,p,r,c):
+        self.piece_places[int(not self.is_red(p))].add((r,c))
+        
+    
     def make_move(self, start, end):
         r1, c1 = start
         r2, c2 = end
         moving_piece = self.board[r1][c1]
         captured_piece = self.board[r2][c2]
-
+        # --- 新增：更新 king_pos ---
+        if moving_piece == 'K':
+            self.king_pos[0] = (r2, c2)
+        elif moving_piece == 'k':
+            self.king_pos[1] = (r2, c2)
+        if captured_piece == 'K':
+            self.king_pos[0] = None
+        elif captured_piece == 'k':
+            self.king_pos[1] = None
+        # --- 新增结束 ---
+        
         # 1. 更新分数 (增量)
         self.current_score -= self.get_piece_value(moving_piece, r1, c1)
+        self.piece_places_remove(moving_piece,r1,c1)
         if captured_piece != '.':
             self.current_score -= self.get_piece_value(captured_piece, r2, c2)
+            self.piece_places_remove(captured_piece,r2,c2)
         self.current_score += self.get_piece_value(moving_piece, r2, c2)
-
+        self.piece_places_add(moving_piece, r2, c2)
         # 2. 更新 Hash (核心优化: XOR 是可逆的)
         # 移出起点棋子
         self.current_hash ^= self.zobrist_table[(r1, c1, moving_piece)]
@@ -547,22 +582,35 @@ class XiangqiCLI:
         self.board[r2][c2] = moving_piece
         self.board[r1][c1] = '.'
         self.turn = 'black' if self.turn == 'red' else 'red'
-        
-        self.history.append(self.current_hash)
+        self.hash_count[self.current_hash] = self.hash_count.get(self.current_hash, 0) + 1
 
         return captured_piece
 
     def undo_move(self, start, end, captured):
-        self.history.pop()
+        self.hash_count[self.current_hash] -= 1
         r1, c1 = start
         r2, c2 = end
         moved_piece = self.board[r2][c2]
 
+        # --- 新增：恢复 king_pos ---
+        if moved_piece == 'K':
+            self.king_pos[0] = (r1, c1)
+        elif moved_piece == 'k':
+            self.king_pos[1] = (r1, c1)
+
+        if captured == 'K':
+            self.king_pos[0] = (r2, c2)
+        elif captured == 'k':
+            self.king_pos[1] = (r2, c2)
+        # --- 新增结束 ---
         # 1. 还原分数
         self.current_score -= self.get_piece_value(moved_piece, r2, c2)
+        self.piece_places_remove(moved_piece, r2, c2)
         self.current_score += self.get_piece_value(moved_piece, r1, c1)
+        self.piece_places_add(moved_piece, r1, c1)
         if captured != '.':
             self.current_score += self.get_piece_value(captured, r2, c2)
+            self.piece_places_add(captured, r2, c2)
 
         # 2. 还原 Hash (操作完全对称)
         self.current_hash ^= self.zobrist_turn # 换回原来的行动方
@@ -835,14 +883,13 @@ class XiangqiCLI:
 
     def get_all_moves(self, is_red_turn,only_captures=False):
         moves = []
-        for r in range(ROWS):
-            for c in range(COLS):
-                p = self.board[r][c]
-                if p != '.' and self.is_red(p) == is_red_turn:
-                    ms = self.get_valid_moves(r, c)
-                    for m in ms: 
-                        if (not only_captures) or (self.board[m[0]][m[1]] != '.'):
-                            moves.append(((r,c), m))
+        for place in self.piece_places[int(not is_red_turn)]:
+            r,c=place
+            p = self.board[r][c]
+            ms = self.get_valid_moves(r, c)
+            for m in ms: 
+                if (not only_captures) or (self.board[m[0]][m[1]] != '.'):
+                    moves.append(((r,c), m))
         return moves
 
 
@@ -889,6 +936,7 @@ class XiangqiCLI:
             # 【重要】走完之后检查自己是否还在被将军（处理非法的逃生步）
             # 如果你的 get_all_moves 已经是伪合法的（可能包含送将），需要这一步
             # 如果你的 get_all_moves 严格保证合法，这步可省略，但在 QS 中通常是伪合法生成
+            # 确实，比如闪将
             if self.is_in_check(maximizing_player):
                 self.undo_move(start, end, captured)
                 continue
@@ -918,12 +966,8 @@ class XiangqiCLI:
 
     # --- 新增：判断是否允许空步裁剪的辅助函数 ---
     def find_king(self, is_red_king):
-        target = 'K' if is_red_king else 'k'
-        for r in range(ROWS):
-            for c in range(COLS):
-                if self.board[r][c] == target:
-                    return r, c
-        return None
+        target_idx = 0 if is_red_king else 1
+        return self.king_pos[target_idx]
 
     def is_in_check(self, is_red_turn):
         """判断当前行动方是否被将军（简化版检测，用于NMP安全检查）"""
@@ -955,15 +999,26 @@ class XiangqiCLI:
                 nr, nc = nr + dr, nc + dc
         
         # 2. 检查马
-        knight_checks = [(-2, -1), (-2, 1), (2, -1), (2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2)]
-        knight_legs   = [(-1, 0), (-1, 0), (1, 0), (1, 0), (0, -1), (0, 1), (0, -1), (0, 1)]
+        knight_checks = [
+            (-2, -1), (-2, 1),   # 上方纵向
+            (2, -1),  (2, 1),    # 下方纵向
+            (-1, -2), (-1, 2),   # 上方横向
+            (1, -2),  (1, 2)     # 下方横向
+        ]
+        # 修正后的马脚：所有点都应该是对角线位置 (±1, ±1)，是对帅来说的。
+        knight_legs = [
+            (-1, -1), (-1, 1),   # 对应 (-2, -1), (-2, 1)
+            (1, -1),  (1, 1),    # 对应 (2, -1),  (2, 1)
+            (-1, -1), (-1, 1),   # 对应 (-1, -2), (-1, 2)
+            (1, -1),  (1, 1)     # 对应 (1, -2),  (1, 2)
+        ]
         for (dr, dc), (lr, lc) in zip(knight_checks, knight_legs):
             nr, nc = kr + dr, kc + dc
-            lr, lc = kr + lr, kc + lc
-            if self.in_board(nr, nc) and self.in_board(lr, lc):
+            legr, legc = kr + lr, kc + lc
+            if self.in_board(nr, nc) and self.in_board(legr, legc):
                 p = self.board[nr][nc]
                 if p != '.' and self.is_red(p) != is_red_turn and p.lower() == 'n':
-                    if self.board[lr][lc] == '.': # 必须无蹩脚
+                    if self.board[legr][legc] == '.': # 必须无蹩脚
                         return True
                         
         # 3. 检查兵/卒 (老将只在九宫，只看周围一步即可)
@@ -981,11 +1036,11 @@ class XiangqiCLI:
         """执行空步：只交换出子权和Hash"""
         self.turn = 'black' if self.turn == 'red' else 'red'
         self.current_hash ^= self.zobrist_turn
-        self.history.append(self.current_hash) # 新增
+        self.hash_count[self.current_hash] = self.hash_count.get(self.current_hash, 0) + 1
 
     def undo_null_move(self):
         """撤销空步：操作完全一样"""
-        self.history.pop() # 新增
+        self.hash_count[self.current_hash] -= 1
         self.turn = 'black' if self.turn == 'red' else 'red'
         self.current_hash ^= self.zobrist_turn
 
@@ -1010,7 +1065,7 @@ class XiangqiCLI:
         # --- 新增：检测重复局面 ---
         # 如果当前 Hash 在历史列表中出现的次数大于1（包含刚才 make_move 加入的那次），说明重复了
         # 这意味着：如果走了这一步，局面与之前的某个时候一模一样
-        if self.history.count(self.current_hash) > 1:
+        if  self.hash_count.get(self.current_hash, 0) > 1:
             # 这是一个重复局面。
             # 通常判为和棋 (0分)。如果AI发现 0分 比输棋(-10000)好，它就会选择重复（长将保命）。
             # 如果AI有赢棋走法(+100)，它就不会走这一步。
@@ -1048,14 +1103,8 @@ class XiangqiCLI:
                     return tt_score, tt_move
 
         # 3. 检查胜负 (防止绝杀时死循环)
-        kings = [False, False]
-        # 这一步其实比较耗时，但在 Python 简易引擎中为了安全保留
-        for r in range(ROWS):
-            for c in range(COLS):
-                if self.board[r][c] == 'K': kings[0] = True
-                if self.board[r][c] == 'k': kings[1] = True
-        if not kings[0]: return -SCORE_INF + depth, None 
-        if not kings[1]: return SCORE_INF - depth, None 
+        if self.king_pos[0] is None: return -SCORE_INF + depth, None 
+        if self.king_pos[1] is None: return SCORE_INF - depth, None 
 
         # --- Futility Pruning (空费剪枝) ---非常容易看不到弃子。弃用
         # --- Null Move Pruning (空步裁剪) ---
@@ -1120,11 +1169,15 @@ class XiangqiCLI:
         best_move = moves[0]
         best_score = -float(SCORE_INF) if maximizing_player else float(SCORE_INF)
         moves_count = 0
-        
         # 5. 遍历
         for start, end in moves:
+
             moves_count += 1
             captured = self.make_move(start, end)
+
+            if self.is_in_check(maximizing_player):
+                self.undo_move(start, end, captured)
+                continue
             
             score = 0
             is_killer = ((start, end) == killers[0] or (start, end) == killers[1])
@@ -1171,7 +1224,7 @@ class XiangqiCLI:
                     search_depth = depth - 1 - reduction
                     if search_depth < 0: search_depth = 0
                     score, _ = self.minimax(search_depth+ ext, beta - 1, beta, True,check_ext_left=check_ext_left - ext)
-                    
+                    # tt
                     if score < beta:
                         if do_lmr:
                             score, _ = self.minimax(depth - 1+ ext, beta - 1, beta, True,check_ext_left=check_ext_left - ext)
@@ -1321,13 +1374,13 @@ class XiangqiCLI:
                 is_ai_red = (self.player_side == 'black')
                 if USE_DEPTH:
                     if cnt<=3:
-                        DEPTH =2
+                        DEPTH =LONG_MAX_DEPTH
                     else:
                         DEPTH = LONG_MAX_DEPTH # 中后期加深到6层
                     print(f">>> AI 正在思考 (深度 {DEPTH})...")
                     val, best = self.minimax(DEPTH, -float(SCORE_INF ), float(SCORE_INF ), is_ai_red)
                 else:
-                    MAX_TIME = 100.0 if  cnt<=3 else LONG_MAX_TIME  # 每步最多思考 10 秒(仅在非固定深度时生效) 
+                    MAX_TIME = 10.0 if  cnt<=3 else LONG_MAX_TIME  # 每步最多思考 10 秒(仅在非固定深度时生效) 
                     print(f">>> AI 正在思考 (限时 {MAX_TIME} 秒)...")
                     val, best = self.search_main(MAX_TIME, is_ai_red)
                 
@@ -1342,7 +1395,7 @@ class XiangqiCLI:
                     print("AI 认输 (被绝杀或无棋可走)")
                     self.game_over = True
             if captured_piece != '.':
-                self.history = [self.current_hash]
+                self.hash_count = {self.current_hash: 1}
             # 简单的胜负检查
             ks = [0,0]
             for r in range(ROWS):
@@ -1447,7 +1500,6 @@ class XiangqiCLI:
         fen = self.to_fen()
         encoded_fen = urllib.parse.quote(fen)
         url = f"http://www.chessdb.cn/chessdb.php?action=queryall&learn=1&board={encoded_fen}"
-        # import pdb  ;pdb.set_trace()
         try:
             with urllib.request.urlopen(url, timeout=2) as response:
                 data = response.read().decode('utf-8')
@@ -1465,9 +1517,9 @@ class XiangqiCLI:
                 
                 if not moves: return None
                 
-                # 筛选规则：分数不低于最高分 5 分
+                # 筛选规则：分数不低于最高分 QUERY_SCORE_THRESHOLD 分
                 max_score = moves[0]['score']
-                candidates = [m for m in moves if m['score'] >= max_score - 5]
+                candidates = [m for m in moves if m['score'] >= max_score - QUERY_SCORE_THRESHOLD]
                 
                 # 随机选一个高分走法
                 selected = random.choice(candidates)
@@ -1511,7 +1563,7 @@ def start_engine(long_max_depth=LONG_MAX_DEPTH):
             is_ai_red = (engine.player_side == 'black')
             if USE_DEPTH:
                 if cnt<=3:
-                    DEPTH = 5
+                    DEPTH = long_max_depth
                 else:
                     DEPTH = long_max_depth # 中后期加深到6层
                 val, best = engine.minimax(DEPTH, -float(SCORE_INF ), float(SCORE_INF ), is_ai_red)
@@ -1540,4 +1592,3 @@ if __name__ == "__main__":
         start_engine(int(sys.argv[1]))
     else:
         start_engine()
-
