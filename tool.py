@@ -14,7 +14,7 @@ def remove_comments(src: str) -> str:
 
 
 if __name__ == "__main__":
-    with open("aicp.py", "r", encoding="utf-8") as f:
+    with open("ai.py", "r", encoding="utf-8") as f:
         src = f.read()
 
     cleaned = remove_comments(src)
