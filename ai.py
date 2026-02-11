@@ -362,6 +362,7 @@ class XiangqiCLI:
         self.game_over = False
         self.current_score = 0
         self.king_pos = [None,None] # [red_king_pos, black_king_pos]
+        self.piece_places=[set(),set()] # 红位置、黑位置
         
 
         # --- 在类的 __init__ 中修改 ---
@@ -507,16 +508,23 @@ class XiangqiCLI:
                 if p != '.':
                     self.current_score += self.get_piece_value(p, r, c)
                     self.current_hash ^= self.zobrist_table[(r, c, p)]
+                    self.piece_places_add(p,r,c)
                 if p == 'K':
                     self.king_pos[0] = (r, c)
                 elif p == 'k':
                     self.king_pos[1] = (r, c)
+                    
         
         # 如果初始是黑方走，需要异或 turn 的随机数（通常开局是红方，不做处理）
         if self.turn == 'black':
             self.current_hash ^= self.zobrist_turn
         self.hash_count = {self.current_hash: 1}
-
+    def piece_places_remove(self,p,r,c):
+        self.piece_places[int(not self.is_red(p))].remove((r,c))
+    def piece_places_add(self,p,r,c):
+        self.piece_places[int(not self.is_red(p))].add((r,c))
+        
+    
     def make_move(self, start, end):
         r1, c1 = start
         r2, c2 = end
@@ -532,12 +540,15 @@ class XiangqiCLI:
         elif captured_piece == 'k':
             self.king_pos[1] = None
         # --- 新增结束 ---
+        
         # 1. 更新分数 (增量)
         self.current_score -= self.get_piece_value(moving_piece, r1, c1)
+        self.piece_places_remove(moving_piece,r1,c1)
         if captured_piece != '.':
             self.current_score -= self.get_piece_value(captured_piece, r2, c2)
+            self.piece_places_remove(captured_piece,r2,c2)
         self.current_score += self.get_piece_value(moving_piece, r2, c2)
-
+        self.piece_places_add(moving_piece, r2, c2)
         # 2. 更新 Hash (核心优化: XOR 是可逆的)
         # 移出起点棋子
         self.current_hash ^= self.zobrist_table[(r1, c1, moving_piece)]
@@ -576,9 +587,12 @@ class XiangqiCLI:
         # --- 新增结束 ---
         # 1. 还原分数
         self.current_score -= self.get_piece_value(moved_piece, r2, c2)
+        self.piece_places_remove(moved_piece, r2, c2)
         self.current_score += self.get_piece_value(moved_piece, r1, c1)
+        self.piece_places_add(moved_piece, r1, c1)
         if captured != '.':
             self.current_score += self.get_piece_value(captured, r2, c2)
+            self.piece_places_add(captured, r2, c2)
 
         # 2. 还原 Hash (操作完全对称)
         self.current_hash ^= self.zobrist_turn # 换回原来的行动方
@@ -851,14 +865,13 @@ class XiangqiCLI:
 
     def get_all_moves(self, is_red_turn,only_captures=False):
         moves = []
-        for r in range(ROWS):
-            for c in range(COLS):
-                p = self.board[r][c]
-                if p != '.' and self.is_red(p) == is_red_turn:
-                    ms = self.get_valid_moves(r, c)
-                    for m in ms: 
-                        if (not only_captures) or (self.board[m[0]][m[1]] != '.'):
-                            moves.append(((r,c), m))
+        for place in self.piece_places[int(not is_red_turn)]:
+            r,c=place
+            p = self.board[r][c]
+            ms = self.get_valid_moves(r, c)
+            for m in ms: 
+                if (not only_captures) or (self.board[m[0]][m[1]] != '.'):
+                    moves.append(((r,c), m))
         return moves
 
 
@@ -1551,4 +1564,3 @@ if __name__ == "__main__":
         start_engine(int(sys.argv[1]))
     else:
         start_engine()
-
