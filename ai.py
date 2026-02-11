@@ -346,17 +346,29 @@ class XiangqiCLI:
 
     def __init__(self):
         self.board = [
-            ['r', 'n', 'b', 'a', 'k', 'a', 'b', 'n', 'r'],
+            ['.', '.', 'b', '.', 'k', 'a', '.', '.', '.'],
+            ['.', '.', '.', 'C', 'a', '.', '.', '.', '.'],
+            ['n', '.', 'R', '.', 'b', '.', '.', '.', '.'],
+            ['p', '.', '.', '.', '.', '.', '.', '.', 'p'],
+            ['.', '.', '.', '.', '.', '.', 'p', '.', '.'],
+            ['.', '.', 'B', '.', 'p', '.', '.', '.', '.'],
+            ['P', '.', '.', '.', '.', '.', 'P', 'n', 'P'],
             ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-            ['.', 'c', '.', '.', '.', '.', '.', 'c', '.'],
-            ['p', '.', 'p', '.', 'p', '.', 'p', '.', 'p'],
-            ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-            ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-            ['P', '.', 'P', '.', 'P', '.', 'P', '.', 'P'],
-            ['.', 'C', '.', '.', '.', '.', '.', 'C', '.'],
-            ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-            ['R', 'N', 'B', 'A', 'K', 'A', 'B', 'N', 'R']
+            ['N', 'r', '.', '.', 'A', 'r', '.', '.', '.'],
+            ['.', '.', 'B', 'A', 'K', '.', '.', '.', 'R']
         ]
+        # self.board = [
+        #     ['r', 'n', 'b', 'a', 'k', 'a', 'b', 'n', 'r'],
+        #     ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        #     ['.', 'c', '.', '.', '.', '.', '.', 'c', '.'],
+        #     ['p', '.', 'p', '.', 'p', '.', 'p', '.', 'p'],
+        #     ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        #     ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        #     ['P', '.', 'P', '.', 'P', '.', 'P', '.', 'P'],
+        #     ['.', 'C', '.', '.', '.', '.', '.', 'C', '.'],
+        #     ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        #     ['R', 'N', 'B', 'A', 'K', 'A', 'B', 'N', 'R']
+        # ]
         self.turn = 'red'
         self.player_side = None
         self.game_over = False
@@ -981,15 +993,26 @@ class XiangqiCLI:
                 nr, nc = nr + dr, nc + dc
         
         # 2. 检查马
-        knight_checks = [(-2, -1), (-2, 1), (2, -1), (2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2)]
-        knight_legs   = [(-1, 0), (-1, 0), (1, 0), (1, 0), (0, -1), (0, 1), (0, -1), (0, 1)]
+        knight_checks = [
+            (-2, -1), (-2, 1),   # 上方纵向
+            (2, -1),  (2, 1),    # 下方纵向
+            (-1, -2), (-1, 2),   # 上方横向
+            (1, -2),  (1, 2)     # 下方横向
+        ]
+        # 修正后的马脚：所有点都应该是对角线位置 (±1, ±1)，是对帅来说的。
+        knight_legs = [
+            (-1, -1), (-1, 1),   # 对应 (-2, -1), (-2, 1)
+            (1, -1),  (1, 1),    # 对应 (2, -1),  (2, 1)
+            (-1, -1), (-1, 1),   # 对应 (-1, -2), (-1, 2)
+            (1, -1),  (1, 1)     # 对应 (1, -2),  (1, 2)
+        ]
         for (dr, dc), (lr, lc) in zip(knight_checks, knight_legs):
             nr, nc = kr + dr, kc + dc
-            lr, lc = kr + lr, kc + lc
-            if self.in_board(nr, nc) and self.in_board(lr, lc):
+            legr, legc = kr + lr, kc + lc
+            if self.in_board(nr, nc) and self.in_board(legr, legc):
                 p = self.board[nr][nc]
                 if p != '.' and self.is_red(p) != is_red_turn and p.lower() == 'n':
-                    if self.board[lr][lc] == '.': # 必须无蹩脚
+                    if self.board[legr][legc] == '.': # 必须无蹩脚
                         return True
                         
         # 3. 检查兵/卒 (老将只在九宫，只看周围一步即可)
@@ -1140,9 +1163,9 @@ class XiangqiCLI:
         best_move = moves[0]
         best_score = -float(SCORE_INF) if maximizing_player else float(SCORE_INF)
         moves_count = 0
-        
         # 5. 遍历
         for start, end in moves:
+
             moves_count += 1
             captured = self.make_move(start, end)
 
@@ -1195,7 +1218,7 @@ class XiangqiCLI:
                     search_depth = depth - 1 - reduction
                     if search_depth < 0: search_depth = 0
                     score, _ = self.minimax(search_depth+ ext, beta - 1, beta, True,check_ext_left=check_ext_left - ext)
-                    
+                    # tt
                     if score < beta:
                         if do_lmr:
                             score, _ = self.minimax(depth - 1+ ext, beta - 1, beta, True,check_ext_left=check_ext_left - ext)
@@ -1264,7 +1287,7 @@ class XiangqiCLI:
         last_completed_move = None
         last_completed_val = 0
         
-        for depth in range(1, 64):
+        for depth in range(1, 7):
             # 尝试搜索当前深度
             current_val, current_move = self.minimax(depth, -float(SCORE_INF), float(SCORE_INF), is_ai_red)
             
@@ -1351,7 +1374,7 @@ class XiangqiCLI:
                     print(f">>> AI 正在思考 (深度 {DEPTH})...")
                     val, best = self.minimax(DEPTH, -float(SCORE_INF ), float(SCORE_INF ), is_ai_red)
                 else:
-                    MAX_TIME = 100.0 if  cnt<=3 else LONG_MAX_TIME  # 每步最多思考 10 秒(仅在非固定深度时生效) 
+                    MAX_TIME = 10.0 if  cnt<=3 else LONG_MAX_TIME  # 每步最多思考 10 秒(仅在非固定深度时生效) 
                     print(f">>> AI 正在思考 (限时 {MAX_TIME} 秒)...")
                     val, best = self.search_main(MAX_TIME, is_ai_red)
                 
@@ -1471,7 +1494,6 @@ class XiangqiCLI:
         fen = self.to_fen()
         encoded_fen = urllib.parse.quote(fen)
         url = f"http://www.chessdb.cn/chessdb.php?action=queryall&learn=1&board={encoded_fen}"
-        # import pdb  ;pdb.set_trace()
         try:
             with urllib.request.urlopen(url, timeout=2) as response:
                 data = response.read().decode('utf-8')
@@ -1535,7 +1557,7 @@ def start_engine(long_max_depth=LONG_MAX_DEPTH):
             is_ai_red = (engine.player_side == 'black')
             if USE_DEPTH:
                 if cnt<=3:
-                    DEPTH = 5
+                    DEPTH = 6
                 else:
                     DEPTH = long_max_depth # 中后期加深到6层
                 val, best = engine.minimax(DEPTH, -float(SCORE_INF ), float(SCORE_INF ), is_ai_red)
