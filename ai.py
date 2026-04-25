@@ -27,10 +27,10 @@ import urllib.request
 USE_PIKAFISH=0  # 全局开关，是否使用皮卡鱼引擎进行评估
 USE_DEPTH=0 # 是否使用固定深度搜索 (否则使用迭代加深) （测棋力对打要开）
 LONG_MAX_DEPTH=8  # 非固定深度时的最大搜索深度
-CLOUD_BOOK_ENABLED=1 # 是否启用云开局库查询
+CLOUD_BOOK_ENABLED=0 # 是否启用云开局库查询
 QUERY_SCORE_THRESHOLD=20 # 云开局库查询时的分数筛选阈值 (单位：分)，只考虑分数在最高分QUERY_SCORE_THRESHOLD分以内的走法
 OPEN_NMP=1  # 是否启用空步裁剪 (Null Move Pruning)
-LONG_MAX_TIME=75.0 # 非固定深度时的3步后默认最大思考时间 (秒)，可以根据需要调整
+LONG_MAX_TIME=10.0 # 非固定深度时的3步后默认最大思考时间 (秒)，可以根据需要调整
 
 RESET = "\033[0m"
 RED_TXT = "\033[31m"

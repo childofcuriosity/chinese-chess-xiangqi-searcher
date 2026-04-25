@@ -166,8 +166,16 @@ class Button:
 class XiangqiGUI:
     def __init__(self):
         pygame.init()
-        self.font = pygame.font.SysFont(['simhei', 'microsoftyahei', 'arial'], 28)
-        self.title_font = pygame.font.SysFont(['simhei', 'arial'], 36, bold=True)
+        
+        font_path = r"simhei.ttf" 
+        
+        # 2. 改用 pygame.font.Font 强制加载该文件
+        self.font = pygame.font.Font(font_path, 28)
+        self.title_font = pygame.font.Font(font_path, 36)
+        
+        # 3. 注意：Font 对象不能在括号里直接写 bold=True，需要单独调用方法加粗
+        self.title_font.set_bold(True)
+        
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Python 象棋 (GUI)")
 
