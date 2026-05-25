@@ -918,9 +918,26 @@ class XiangqiCLI:
 
         # 4. 生成着法
         if in_check:
+            # 被将军时必须搜所有走法; 但 QS 中将军应将限深, 防被无限将军骗时间
+            if qs_depth > 3:
+                return self.evaluate()
             moves = self.get_all_moves(maximizing_player)
         else:
             moves = self.get_all_moves(maximizing_player, only_captures=True)
+            # SEE 过滤: 把亏吃过滤掉 (核心提速点)
+            board_ref = self.board
+            filtered = []
+            for m in moves:
+                start, end = m
+                victim = board_ref[end[0]][end[1]]
+                attacker = board_ref[start[0]][start[1]]
+                # 小子吃大子或等价交换 直接放行
+                if PIECE_VALUES.get(victim, 0) >= PIECE_VALUES.get(attacker, 0):
+                    filtered.append(m)
+                else:
+                    if self.see(start, end) >= 0:
+                        filtered.append(m)
+            moves = filtered
         board = self.board
         values = PIECE_VALUES
         # MVV-LVA 排序
@@ -1032,6 +1049,147 @@ class XiangqiCLI:
 
         return False
 
+    # =========================================================
+    # SEE (Static Exchange Evaluation)
+    # 估算在 (tr,tc) 这一格上的吃子序列净收益 (从 side_to_move 视角)
+    # 正值 = side_to_move 赚到; 负值 = 亏
+    # =========================================================
+    # SEE 用的简化子力价值 (车马炮兵士象帅)
+    SEE_VALUE = {
+        'k': 10000, 'K': 10000,
+        'r': 900,   'R': 900,
+        'n': 400,   'N': 400,
+        'c': 400,   'C': 400,
+        'a': 200,   'A': 200,
+        'b': 200,   'B': 200,
+        'p': 100,   'P': 100,
+        '.': 0,
+    }
+
+    def _attackers_to(self, tr, tc, by_red):
+        """返回所有能攻击 (tr,tc) 格的【by_red 方】棋子位置列表 [(r,c,piece), ...]"""
+        atk = []
+        board = self.board
+        # 1. 车 / 帅(直线相邻) / 炮
+        # 沿四个方向扫描，第一个子若是车/帅(相邻) 算直接攻击；翻一个山的炮 算攻击。
+        for dr, dc in [(0,1),(0,-1),(1,0),(-1,0)]:
+            nr, nc = tr+dr, tc+dc
+            first = None
+            first_pos = None
+            while self.in_board(nr, nc):
+                p = board[nr][nc]
+                if p != '.':
+                    if first is None:
+                        first = p
+                        first_pos = (nr, nc)
+                        # 车
+                        if self.is_red(p) == by_red and p.lower() == 'r':
+                            atk.append((nr, nc, p))
+                        # 帅相邻 / 飞将
+                        elif self.is_red(p) == by_red and p.lower() == 'k':
+                            # 相邻
+                            if abs(nr - tr) + abs(nc - tc) == 1:
+                                atk.append((nr, nc, p))
+                    else:
+                        # 第二个子: 隔山炮
+                        if self.is_red(p) == by_red and p.lower() == 'c':
+                            atk.append((nr, nc, p))
+                        break
+                nr, nc = nr+dr, nc+dc
+        # 2. 马 (反向算: 哪些位置的马可以跳到 tr,tc, 同时蹩脚要空)
+        knight_from = [
+            (tr-2, tc-1, tr-1, tc), (tr-2, tc+1, tr-1, tc),
+            (tr+2, tc-1, tr+1, tc), (tr+2, tc+1, tr+1, tc),
+            (tr-1, tc-2, tr,   tc-1), (tr+1, tc-2, tr,   tc-1),
+            (tr-1, tc+2, tr,   tc+1), (tr+1, tc+2, tr,   tc+1),
+        ]
+        for nr, nc, lr, lc in knight_from:
+            if self.in_board(nr, nc) and self.in_board(lr, lc):
+                p = board[nr][nc]
+                if p != '.' and self.is_red(p) == by_red and p.lower() == 'n':
+                    if board[lr][lc] == '.':
+                        atk.append((nr, nc, p))
+        # 3. 兵 / 卒
+        if by_red:
+            # 红兵 'P' 攻击方向: 向上(r-1)。所以红兵在 (tr+1, tc) 能攻击 (tr,tc)
+            cands = [(tr+1, tc)]
+            # 过河兵能横走攻击
+            cands += [(tr, tc-1), (tr, tc+1)]
+            for nr, nc in cands:
+                if not self.in_board(nr, nc): continue
+                if board[nr][nc] != 'P': continue
+                # 必须过河 (红兵过河条件: nr <= 4)
+                if nr <= 4 or nr == tr+1:  # 未过河也能直冲
+                    if nr == tr+1:
+                        atk.append((nr, nc, 'P'))
+                    elif nr == tr and (nc == tc-1 or nc == tc+1) and nr <= 4:
+                        atk.append((nr, nc, 'P'))
+        else:
+            cands = [(tr-1, tc), (tr, tc-1), (tr, tc+1)]
+            for nr, nc in cands:
+                if not self.in_board(nr, nc): continue
+                if board[nr][nc] != 'p': continue
+                if nr == tr-1:
+                    atk.append((nr, nc, 'p'))
+                elif nr == tr and (nc == tc-1 or nc == tc+1) and nr >= 5:
+                    atk.append((nr, nc, 'p'))
+        return atk
+
+    def see(self, start, end):
+        """
+        估算 start->end 这步吃子的净收益 (从发起方视角)。
+        try/finally 保证棋盘 100% 还原。
+        """
+        board = self.board
+        attacker = board[start[0]][start[1]]
+        victim   = board[end[0]][end[1]]
+        if attacker == '.':
+            return 0
+        attacker_is_red = self.is_red(attacker)
+        tr, tc = end
+        sr, sc = start
+
+        gain = [self.SEE_VALUE.get(victim, 0)]
+        removed = []  # [(r,c,piece)] 还原用
+        try:
+            removed.append((sr, sc, board[sr][sc]))
+            board[sr][sc] = '.'
+            on_square_value = self.SEE_VALUE.get(attacker, 0)
+            side = not attacker_is_red
+
+            while True:
+                attackers = self._attackers_to(tr, tc, side)
+                if not attackers:
+                    break
+                attackers.sort(key=lambda x: self.SEE_VALUE.get(x[2], 0))
+                ar, ac, ap = attackers[0]
+                if ap.lower() == 'k':
+                    # 帅去吃前先看对方还有没有反击, 有就视为非法
+                    removed.append((ar, ac, board[ar][ac]))
+                    board[ar][ac] = '.'
+                    if self._attackers_to(tr, tc, not side):
+                        rr, rc, rp = removed.pop()
+                        board[rr][rc] = rp
+                        break
+                    gain.append(on_square_value - gain[-1])
+                    on_square_value = self.SEE_VALUE.get(ap, 0)
+                    side = not side
+                    break
+                removed.append((ar, ac, board[ar][ac]))
+                board[ar][ac] = '.'
+                gain.append(on_square_value - gain[-1])
+                on_square_value = self.SEE_VALUE.get(ap, 0)
+                side = not side
+        finally:
+            for (r, cc, p) in reversed(removed):
+                board[r][cc] = p
+
+        d = len(gain) - 1
+        while d > 0:
+            gain[d-1] = -max(-gain[d-1], gain[d])
+            d -= 1
+        return gain[0]
+
     def make_null_move(self):
         """执行空步：只交换出子权和Hash"""
         self.turn = 'black' if self.turn == 'red' else 'red'
@@ -1060,7 +1218,10 @@ class XiangqiCLI:
 
         return gives_check
 
-    def minimax(self, depth, alpha, beta, maximizing_player, allow_null=True,check_ext_left=1):
+    def minimax(self, depth, alpha, beta, maximizing_player, allow_null=True,check_ext_left=None):
+        # check_ext_left = None 时按 depth//2 初始化, 作为整条路径的 总扩展预算
+        if check_ext_left is None:
+            check_ext_left = max(1, depth // 2)
         self.nodes += 1
         # --- 新增：检测重复局面 ---
         # 如果当前 Hash 在历史列表中出现的次数大于1（包含刚才 make_move 加入的那次），说明重复了
@@ -1154,10 +1315,14 @@ class XiangqiCLI:
             start, end = m
             if tt_move and (start, end) == tt_move: return 300000000 # TT Move
             victim = self.board[end[0]][end[1]]
-            if victim != '.': # MVV-LVA
+            if victim != '.': # MVV-LVA + SEE
                 val = PIECE_VALUES.get(victim, 0)
                 attacker = self.board[start[0]][start[1]]
                 attacker_val = PIECE_VALUES.get(attacker, 0)
+                # 大子吃小子时若 SEE<0 视为亏吃, 排到 killer 之后
+                if val < attacker_val:
+                    if self.see(start, end) < 0:
+                        return 1000000 + val * 10 - attacker_val  # 亏吃
                 return 10000000 + val * 10 - attacker_val
             
             if m == killers[0]: return 9000000

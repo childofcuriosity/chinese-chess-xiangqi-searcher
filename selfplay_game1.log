@@ -1,0 +1,38 @@
+Traceback (most recent call last):
+  File "E:\copyofxhy\after2024\2025-1\xq\selfplay.py", line 138, in <module>
+    main()
+    ~~~~^^
+  File "E:\copyofxhy\after2024\2025-1\xq\selfplay.py", line 95, in main
+    black = Engine(black_exe, plays_red=False)
+  File "E:\copyofxhy\after2024\2025-1\xq\selfplay.py", line 43, in __init__
+    self.p = subprocess.Popen(
+             ~~~~~~~~~~~~~~~~^
+        [exe_abs], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        stderr=subprocess.STDOUT, bufsize=1, text=True, encoding='utf-8',
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        errors='replace'
+        ^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "E:\miniforge\Lib\subprocess.py", line 1039, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        pass_fds, cwd, env,
+                        ^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+                        gid, gids, uid, umask,
+                        ^^^^^^^^^^^^^^^^^^^^^^
+                        start_new_session, process_group)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\miniforge\Lib\subprocess.py", line 1554, in _execute_child
+    hp, ht, pid, tid = _winapi.CreateProcess(executable, args,
+                       ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+                             # no special security
+                             ^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                             cwd,
+                             ^^^^
+                             startupinfo)
+                             ^^^^^^^^^^^^
+FileNotFoundError: [WinError 2] 系统找不到指定的文件。

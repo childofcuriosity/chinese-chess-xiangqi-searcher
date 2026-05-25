@@ -27,14 +27,14 @@ const double LONG_MAX_TIME = 5.0;
 const int ROWS = 10;
 const int COLS = 9;
 const int SCORE_INF = 30000;
-const int MATE_BOUND = 20000;          // 绝对�?> �?即视为杀棋分
+const int MATE_BOUND = 20000;          // 绝对值 > 此 即视为杀棋分
 
 const int TT_EXACT = 0;
 const int TT_ALPHA = 1;
 const int TT_BETA = 2;
 const int TT_INVALID = -1;
 
-const size_t TT_BITS = 23;             // 8M�? �?80MB
+const size_t TT_BITS = 21;             // 2M 项, 约 80MB
 const size_t TT_SIZE = (size_t)1 << TT_BITS;
 const size_t TT_MASK = TT_SIZE - 1;
 
@@ -60,25 +60,15 @@ struct TTEntry {
     int age;
 };
 
-int PIECE_VALUES[256];
+std::map<char, int> PIECE_VALUES = {
+    {'k', 10000}, {'r', 1000}, {'n', 450}, {'c', 450}, {'a', 120}, {'b', 120}, {'p', 100},
+    {'K', 10000}, {'R', 1000}, {'N', 450}, {'C', 450}, {'A', 120}, {'B', 120}, {'P', 100}, {'.', 0}
+};
 
-void init_piece_values() {
-    for (int i = 0; i < 256; ++i) PIECE_VALUES[i] = 0;
-    PIECE_VALUES[(unsigned char)'k'] = PIECE_VALUES[(unsigned char)'K'] = 10000;
-    PIECE_VALUES[(unsigned char)'r'] = PIECE_VALUES[(unsigned char)'R'] = 1000;
-    PIECE_VALUES[(unsigned char)'n'] = PIECE_VALUES[(unsigned char)'N'] = 450;
-    PIECE_VALUES[(unsigned char)'c'] = PIECE_VALUES[(unsigned char)'C'] = 450;
-    PIECE_VALUES[(unsigned char)'a'] = PIECE_VALUES[(unsigned char)'A'] = 120;
-    PIECE_VALUES[(unsigned char)'b'] = PIECE_VALUES[(unsigned char)'B'] = 120;
-    PIECE_VALUES[(unsigned char)'p'] = PIECE_VALUES[(unsigned char)'P'] = 100;
+int get_base_value(char p) {
+    auto it = PIECE_VALUES.find(p);
+    return (it != PIECE_VALUES.end()) ? it->second : 0;
 }
-
-inline int get_base_value(char p) {
-    return PIECE_VALUES[(unsigned char)p];
-}
-
-// 小写�?(仅用�?ASCII 字母): 等价 std::tolower 但无 locale 开销
-static inline char to_lower_ascii(char p) { return (char)(p | 0x20); }
 
 int PST[256][10][9];
 
@@ -174,77 +164,6 @@ void init_zobrist() {
     ZOBRIST_TURN = rng();
 }
 
-// ============================================================
-// RankMask 攻击表 (车/炮)
-// ============================================================
-// 行表: [源列 0..8][9位行占位] -> 9位攻击掩码 (该方向可达列)
-// 列表: [源行 0..9][10位列占位] -> 10位攻击掩码
-uint16_t ROOK_ROW_ATT[9][512];
-uint16_t ROOK_COL_ATT[10][1024];
-uint16_t CANNON_ROW_ATT[9][512];
-uint16_t CANNON_COL_ATT[10][1024];
-
-void init_attack_tables() {
-    static const int dirs[2] = {-1, +1};
-    // 行表 (长度 9)
-    for (int sc = 0; sc < 9; ++sc) {
-        for (int occ = 0; occ < 512; ++occ) {
-            int rk = 0, cn = 0;
-            for (int di = 0; di < 2; ++di) {
-                int d = dirs[di];
-                // 车: 滑到第一个阻挡子(含)为止
-                int nc = sc + d;
-                while (nc >= 0 && nc < 9) {
-                    rk |= 1 << nc;
-                    if ((occ >> nc) & 1) break;
-                    nc += d;
-                }
-                // 炮: 阶段1 滑过空格 (这些是 quiet)
-                nc = sc + d;
-                while (nc >= 0 && nc < 9 && !((occ >> nc) & 1)) {
-                    cn |= 1 << nc;
-                    nc += d;
-                }
-                // 阶段2: 跳过炮架, 找第二个子作为吃子目标
-                if (nc >= 0 && nc < 9) {
-                    nc += d;
-                    while (nc >= 0 && nc < 9 && !((occ >> nc) & 1)) nc += d;
-                    if (nc >= 0 && nc < 9) cn |= 1 << nc;
-                }
-            }
-            ROOK_ROW_ATT[sc][occ]   = (uint16_t)rk;
-            CANNON_ROW_ATT[sc][occ] = (uint16_t)cn;
-        }
-    }
-    // 列表 (长度 10)
-    for (int sr = 0; sr < 10; ++sr) {
-        for (int occ = 0; occ < 1024; ++occ) {
-            int rk = 0, cn = 0;
-            for (int di = 0; di < 2; ++di) {
-                int d = dirs[di];
-                int nr = sr + d;
-                while (nr >= 0 && nr < 10) {
-                    rk |= 1 << nr;
-                    if ((occ >> nr) & 1) break;
-                    nr += d;
-                }
-                nr = sr + d;
-                while (nr >= 0 && nr < 10 && !((occ >> nr) & 1)) {
-                    cn |= 1 << nr;
-                    nr += d;
-                }
-                if (nr >= 0 && nr < 10) {
-                    nr += d;
-                    while (nr >= 0 && nr < 10 && !((occ >> nr) & 1)) nr += d;
-                    if (nr >= 0 && nr < 10) cn |= 1 << nr;
-                }
-            }
-            ROOK_COL_ATT[sr][occ]   = (uint16_t)rk;
-            CANNON_COL_ATT[sr][occ] = (uint16_t)cn;
-        }
-    }
-}
-
 int LMR_TABLE[64][64];
 void init_lmr() {
     for (int d = 0; d < 64; ++d) {
@@ -259,7 +178,7 @@ class XiangqiEngine {
 public:
     Move forbidden_move;
     char board[10][9];
-    int  turn;            // 0=red, 1=black
+    std::string turn;
     std::string player_side;
     bool game_over;
     int current_score;
@@ -269,22 +188,7 @@ public:
     static const int PATH_CAP = 2048;
     uint64_t path_hashes[PATH_CAP];
     Move     path_moves[PATH_CAP];
-    bool     path_gave_check[PATH_CAP];
     int      path_len;
-
-    // 增量子力列表: side 0=�? 1=�? 方格编码 sq = r*9 + c
-    int piece_sq[2][16];
-    int npieces[2];
-    int piece_idx[10][9];          // -1 表示空格
-    // 捕获撤销栈
-    int undo_cap_idx[PATH_CAP];
-    int undo_top;
-
-    // 行/列占位 (用于 RankMask)
-    uint16_t row_occ[10];           // bit c = 该行 c 列有子
-    uint16_t col_occ[9];            // bit r = 该列 r 行有子
-    uint16_t side_row_occ[2][10];   // 按方着色
-    uint16_t side_col_occ[2][9];
 
     std::vector<TTEntry> tt;
     int tt_age;
@@ -315,7 +219,7 @@ public:
             for(int j=0; j<9; ++j)
                 board[i][j] = initial[i][j];
 
-        turn = 0;
+        turn = "red";
         player_side = "red";
         forbidden_move = NO_MOVE;
         game_over = false;
@@ -339,17 +243,19 @@ public:
         init_score_and_hash();
     }
 
-    inline bool is_red(char p) const { return p >= 'A' && p <= 'Z'; }
-    inline bool in_board(int r, int c) const { return (unsigned)r < 10u && (unsigned)c < 9u; }
+    bool is_red(char p) { return p >= 'A' && p <= 'Z'; }
+    bool in_board(int r, int c) { return r >= 0 && r < 10 && c >= 0 && c < 9; }
 
-    inline int get_piece_value(char piece, int r, int c) const {
+    int get_piece_value(char piece, int r, int c) {
         if (piece == '.') return 0;
-        bool red = (piece >= 'A' && piece <= 'Z');
-        int val = PIECE_VALUES[(unsigned char)piece];
-        int pst_val = red ? PST[(unsigned char)piece][r][c]
-                          : PST[(unsigned char)piece][9-r][c];
+        int val = PIECE_VALUES[piece];
+        int pst_val = 0;
+        if (PST[(unsigned char)piece][0][0] != 0 || val > 0) {
+            if (is_red(piece)) pst_val = PST[(unsigned char)piece][r][c];
+            else               pst_val = PST[(unsigned char)piece][9-r][c];
+        }
         int total = val + pst_val;
-        return red ? total : -total;
+        return is_red(piece) ? total : -total;
     }
 
     void init_score_and_hash() {
@@ -357,15 +263,6 @@ public:
         current_hash = 0;
         king_pos[0] = {-1,-1};
         king_pos[1] = {-1,-1};
-        npieces[0] = npieces[1] = 0;
-        for (int r = 0; r < 10; ++r) for (int c = 0; c < 9; ++c) piece_idx[r][c] = -1;
-        undo_top = 0;
-        for (int r = 0; r < 10; ++r) row_occ[r] = 0;
-        for (int c = 0; c < 9; ++c) col_occ[c] = 0;
-        for (int s = 0; s < 2; ++s) {
-            for (int r = 0; r < 10; ++r) side_row_occ[s][r] = 0;
-            for (int c = 0; c < 9; ++c) side_col_occ[s][c] = 0;
-        }
         for(int r=0; r<10; ++r) {
             for(int c=0; c<9; ++c) {
                 char p = board[r][c];
@@ -374,22 +271,13 @@ public:
                     current_hash ^= ZOBRIST_TABLE[r][c][(unsigned char)p];
                     if (p == 'K') king_pos[0] = {r,c};
                     else if (p == 'k') king_pos[1] = {r,c};
-                    int side = is_red(p) ? 0 : 1;
-                    int idx = npieces[side]++;
-                    piece_sq[side][idx] = r * 9 + c;
-                    piece_idx[r][c] = idx;
-                    row_occ[r] |= (uint16_t)(1 << c);
-                    col_occ[c] |= (uint16_t)(1 << r);
-                    side_row_occ[side][r] |= (uint16_t)(1 << c);
-                    side_col_occ[side][c] |= (uint16_t)(1 << r);
                 }
             }
         }
-        if (turn == 1) current_hash ^= ZOBRIST_TURN;
+        if (turn == "black") current_hash ^= ZOBRIST_TURN;
         path_len = 0;
         path_hashes[path_len] = current_hash;
         path_moves[path_len]  = NO_MOVE;
-        path_gave_check[path_len] = false;
         path_len++;
     }
 
@@ -413,47 +301,13 @@ public:
         current_hash ^= ZOBRIST_TABLE[m.r2][m.c2][(unsigned char)moving_piece];
         current_hash ^= ZOBRIST_TURN;
 
-        // 增量子力列表维护
-        int mover_side = is_red(moving_piece) ? 0 : 1;
-        if (captured_piece != '.') {
-            int opp = mover_side ^ 1;
-            int cap_idx = piece_idx[m.r2][m.c2];
-            undo_cap_idx[undo_top++] = cap_idx;
-            int last = --npieces[opp];
-            if (cap_idx != last) {
-                int last_sq = piece_sq[opp][last];
-                piece_sq[opp][cap_idx] = last_sq;
-                piece_idx[last_sq / 9][last_sq % 9] = cap_idx;
-            }
-            // 占位: 清掉对方在目标格的位 (总占位 row/col_occ 该位仍然被 mover 占用)
-            side_row_occ[opp][m.r2] &= (uint16_t)~(1 << m.c2);
-            side_col_occ[opp][m.c2] &= (uint16_t)~(1 << m.r2);
-        } else {
-            // 非吃子: 总占位 r2,c2 之前为空, 需置位
-            row_occ[m.r2] |= (uint16_t)(1 << m.c2);
-            col_occ[m.c2] |= (uint16_t)(1 << m.r2);
-        }
-        int idx_m = piece_idx[m.r1][m.c1];
-        piece_sq[mover_side][idx_m] = m.r2 * 9 + m.c2;
-        piece_idx[m.r1][m.c1] = -1;
-        piece_idx[m.r2][m.c2] = idx_m;
-        // 占位: 源格清空, mover 着色更新
-        row_occ[m.r1] &= (uint16_t)~(1 << m.c1);
-        col_occ[m.c1] &= (uint16_t)~(1 << m.r1);
-        side_row_occ[mover_side][m.r1] &= (uint16_t)~(1 << m.c1);
-        side_col_occ[mover_side][m.c1] &= (uint16_t)~(1 << m.r1);
-        side_row_occ[mover_side][m.r2] |= (uint16_t)(1 << m.c2);
-        side_col_occ[mover_side][m.c2] |= (uint16_t)(1 << m.r2);
-
         board[m.r2][m.c2] = moving_piece;
         board[m.r1][m.c1] = '.';
-        turn ^= 1;
+        turn = (turn == "red" ? "black" : "red");
 
         if (path_len < PATH_CAP) {
             path_hashes[path_len] = current_hash;
             path_moves[path_len]  = m;
-            // turn 已翻转为对方; 检测对方(新走子方)是否被将, 即此着是否将军
-            path_gave_check[path_len] = is_in_check(turn == 0);
             path_len++;
         }
         return captured_piece;
@@ -479,58 +333,24 @@ public:
             current_hash ^= ZOBRIST_TABLE[m.r2][m.c2][(unsigned char)captured];
         current_hash ^= ZOBRIST_TABLE[m.r1][m.c1][(unsigned char)moved_piece];
 
-        // 增量子力列表撤销
-        int mover_side = is_red(moved_piece) ? 0 : 1;
-        int idx_m = piece_idx[m.r2][m.c2];
-        piece_sq[mover_side][idx_m] = m.r1 * 9 + m.c1;
-        piece_idx[m.r2][m.c2] = -1;
-        piece_idx[m.r1][m.c1] = idx_m;
-        // 占位撤销
-        row_occ[m.r1] |= (uint16_t)(1 << m.c1);
-        col_occ[m.c1] |= (uint16_t)(1 << m.r1);
-        side_row_occ[mover_side][m.r1] |= (uint16_t)(1 << m.c1);
-        side_col_occ[mover_side][m.c1] |= (uint16_t)(1 << m.r1);
-        side_row_occ[mover_side][m.r2] &= (uint16_t)~(1 << m.c2);
-        side_col_occ[mover_side][m.c2] &= (uint16_t)~(1 << m.r2);
-        if (captured != '.') {
-            int opp = mover_side ^ 1;
-            int cap_idx = undo_cap_idx[--undo_top];
-            int cur = npieces[opp]++;
-            // 恢复对方占位 (总占位仍 set, 不变)
-            side_row_occ[opp][m.r2] |= (uint16_t)(1 << m.c2);
-            side_col_occ[opp][m.c2] |= (uint16_t)(1 << m.r2);
-            // 当初�?swap-pop �?last_sq 放到�?cap_idx 位置, 需先搬回末�?
-            if (cap_idx != cur) {
-                int moved_pos = piece_sq[opp][cap_idx];
-                piece_sq[opp][cur] = moved_pos;
-                piece_idx[moved_pos / 9][moved_pos % 9] = cur;
-            }
-            piece_sq[opp][cap_idx] = m.r2 * 9 + m.c2;
-            piece_idx[m.r2][m.c2] = cap_idx;
-        } else {
-            row_occ[m.r2] &= (uint16_t)~(1 << m.c2);
-            col_occ[m.c2] &= (uint16_t)~(1 << m.r2);
-        }
-
         board[m.r1][m.c1] = moved_piece;
         board[m.r2][m.c2] = captured;
-        turn ^= 1;
+        turn = (turn == "red" ? "black" : "red");
     }
 
     void make_null_move() {
-        turn ^= 1;
+        turn = (turn == "red" ? "black" : "red");
         current_hash ^= ZOBRIST_TURN;
         if (path_len < PATH_CAP) {
             path_hashes[path_len] = current_hash;
             path_moves[path_len]  = NO_MOVE;
-            path_gave_check[path_len] = false;
             path_len++;
         }
     }
 
     void undo_null_move() {
         if (path_len > 0) path_len--;
-        turn ^= 1;
+        turn = (turn == "red" ? "black" : "red");
         current_hash ^= ZOBRIST_TURN;
     }
 
@@ -541,60 +361,34 @@ public:
         return false;
     }
 
-    // 天天象棋(亚洲规则) 长将判负的简化实现:
-    //   返回 0 表示无循环或正常和棋循环;
-    //   返回 +1 表示对手在循环中步步将军(对手判负, 当前走子方胜);
-    //   返回 -1 表示己方在循环中步步将军(己方判负).
-    // 不处理长捉/长杀/根分析等扩展规则.
-    int repetition_verdict() const {
-        int found = -1;
-        for (int i = path_len - 3; i >= 0; i -= 2) {
-            if (path_hashes[i] == current_hash) { found = i; break; }
-        }
-        if (found < 0) return 0;
-        // 循环内的着法: path_moves[found+1 .. path_len-1]
-        // 最后一着的走子方 = turn ^ 1 (turn 是当前待走方)
-        int last_mover = turn ^ 1;
-        int moves_cnt[2] = {0, 0};
-        int check_cnt[2] = {0, 0};
-        for (int k = path_len - 1; k >= found + 1; --k) {
-            int steps_from_last = (path_len - 1) - k; // 0,1,2,...
-            int mover = last_mover ^ (steps_from_last & 1);
-            moves_cnt[mover]++;
-            if (path_gave_check[k]) check_cnt[mover]++;
-        }
-        bool perp0 = moves_cnt[0] > 0 && check_cnt[0] == moves_cnt[0];
-        bool perp1 = moves_cnt[1] > 0 && check_cnt[1] == moves_cnt[1];
-        if (perp0 == perp1) return 0; // 双方都长将 or 都不长将 -> 和
-        int loser = perp0 ? 0 : 1;
-        return (loser == turn) ? -1 : +1;
-    }
-
-    inline bool is_teammate(int r, int c, bool is_red_piece) const {
+    bool is_teammate(int r, int c, bool is_red_piece) {
         char p = board[r][c];
         if (p == '.') return false;
         return is_red(p) == is_red_piece;
     }
 
-    int gen_moves_for(int r, int c, Move* out) {
-        int n = 0;
+    std::vector<Move> get_valid_moves(int r, int c) {
+        std::vector<Move> moves;
         char p = board[r][c];
-        if (p == '.') return 0;
+        if (p == '.') return moves;
         bool red_turn = is_red(p);
-        char lower_p = to_lower_ascii(p);
-        #define ADDM(R1,C1,R2,C2) out[n++] = {R1,C1,R2,C2}
+        char lower_p = std::tolower(p);
 
         if (lower_p == 'r') {
-            int side = red_turn ? 0 : 1;
-            uint16_t row_att = (uint16_t)(ROOK_ROW_ATT[c][row_occ[r]] & ~side_row_occ[side][r]);
-            while (row_att) {
-                int nc = __builtin_ctz(row_att); row_att &= (uint16_t)(row_att - 1);
-                ADDM(r, c, r, nc);
-            }
-            uint16_t col_att = (uint16_t)(ROOK_COL_ATT[r][col_occ[c]] & ~side_col_occ[side][c]);
-            while (col_att) {
-                int nr = __builtin_ctz(col_att); col_att &= (uint16_t)(col_att - 1);
-                ADDM(r, c, nr, c);
+            int dr[] = {0, 0, 1, -1};
+            int dc[] = {1, -1, 0, 0};
+            for(int i=0; i<4; ++i) {
+                int nr = r + dr[i], nc = c + dc[i];
+                while(in_board(nr, nc)) {
+                    if (board[nr][nc] == '.') {
+                        moves.push_back({r, c, nr, nc});
+                    } else {
+                        if (!is_teammate(nr, nc, red_turn))
+                            moves.push_back({r, c, nr, nc});
+                        break;
+                    }
+                    nr += dr[i]; nc += dc[i];
+                }
             }
         } else if (lower_p == 'n') {
             int dr[] = {-2, -2, 2, 2, -1, 1, -1, 1};
@@ -605,19 +399,27 @@ public:
                 int nr = r + dr[i], nc = c + dc[i];
                 int leg_r = r + lr[i], leg_c = c + lc[i];
                 if (in_board(nr, nc) && board[leg_r][leg_c] == '.' && !is_teammate(nr, nc, red_turn))
-                    ADDM(r, c, nr, nc);
+                    moves.push_back({r, c, nr, nc});
             }
         } else if (lower_p == 'c') {
-            int side = red_turn ? 0 : 1;
-            uint16_t row_att = (uint16_t)(CANNON_ROW_ATT[c][row_occ[r]] & ~side_row_occ[side][r]);
-            while (row_att) {
-                int nc = __builtin_ctz(row_att); row_att &= (uint16_t)(row_att - 1);
-                ADDM(r, c, r, nc);
-            }
-            uint16_t col_att = (uint16_t)(CANNON_COL_ATT[r][col_occ[c]] & ~side_col_occ[side][c]);
-            while (col_att) {
-                int nr = __builtin_ctz(col_att); col_att &= (uint16_t)(col_att - 1);
-                ADDM(r, c, nr, c);
+            int dr[] = {0, 0, 1, -1};
+            int dc[] = {1, -1, 0, 0};
+            for(int i=0; i<4; ++i) {
+                int nr = r + dr[i], nc = c + dc[i];
+                bool platform = false;
+                while(in_board(nr, nc)) {
+                    if (board[nr][nc] == '.') {
+                        if (!platform) moves.push_back({r, c, nr, nc});
+                    } else {
+                        if (!platform) platform = true;
+                        else {
+                            if (!is_teammate(nr, nc, red_turn))
+                                moves.push_back({r, c, nr, nc});
+                            break;
+                        }
+                    }
+                    nr += dr[i]; nc += dc[i];
+                }
             }
         } else if (lower_p == 'b') {
             int dr[] = {-2, -2, 2, 2};
@@ -629,7 +431,7 @@ public:
                 int eye_r = r + er[i], eye_c = c + ec[i];
                 if (in_board(nr, nc) && board[eye_r][eye_c] == '.' && !is_teammate(nr, nc, red_turn)) {
                     if ((red_turn && nr >= 5) || (!red_turn && nr <= 4))
-                        ADDM(r, c, nr, nc);
+                        moves.push_back({r, c, nr, nc});
                 }
             }
         } else if (lower_p == 'a') {
@@ -639,7 +441,7 @@ public:
                 int nr = r + dr[i], nc = c + dc[i];
                 if (in_board(nr, nc) && nc >= 3 && nc <= 5 && !is_teammate(nr, nc, red_turn)) {
                     if ((red_turn && nr >= 7) || (!red_turn && nr <= 2))
-                        ADDM(r, c, nr, nc);
+                        moves.push_back({r, c, nr, nc});
                 }
             }
         } else if (lower_p == 'k') {
@@ -649,7 +451,7 @@ public:
                 int nr = r + dr[i], nc = c + dc[i];
                 if (in_board(nr, nc) && nc >= 3 && nc <= 5 && !is_teammate(nr, nc, red_turn)) {
                     if ((red_turn && nr >= 7) || (!red_turn && nr <= 2))
-                        ADDM(r, c, nr, nc);
+                        moves.push_back({r, c, nr, nc});
                 }
             }
             int direction = red_turn ? -1 : 1;
@@ -660,7 +462,7 @@ public:
                     check_r += direction;
                 } else {
                     char enemy_king = red_turn ? 'k' : 'K';
-                    if (target == enemy_king) ADDM(r, c, check_r, c);
+                    if (target == enemy_king) moves.push_back({r, c, check_r, c});
                     break;
                 }
             }
@@ -668,34 +470,30 @@ public:
             int dr = red_turn ? -1 : 1;
             int nr = r + dr;
             if (in_board(nr, c) && !is_teammate(nr, c, red_turn))
-                ADDM(r, c, nr, c);
+                moves.push_back({r, c, nr, c});
             if ((red_turn && r <= 4) || (!red_turn && r >= 5)) {
-                if (in_board(r, c-1) && !is_teammate(r, c-1, red_turn)) ADDM(r, c, r, c-1);
-                if (in_board(r, c+1) && !is_teammate(r, c+1, red_turn)) ADDM(r, c, r, c+1);
+                if (in_board(r, c-1) && !is_teammate(r, c-1, red_turn)) moves.push_back({r, c, r, c-1});
+                if (in_board(r, c+1) && !is_teammate(r, c+1, red_turn)) moves.push_back({r, c, r, c+1});
             }
         }
-        #undef ADDM
-        return n;
+        return moves;
     }
 
-    // 写到 out, 返回数量; out 至少能容�?128 �?
-    int gen_all_moves(bool is_red_turn, bool only_captures, Move* out) {
-        int n = 0;
-        Move tmp[32];
-        int side = is_red_turn ? 0 : 1;
-        int np = npieces[side];
-        for (int i = 0; i < np; ++i) {
-            int sq = piece_sq[side][i];
-            int r = sq / 9, c = sq - r * 9;
-            int k = gen_moves_for(r, c, tmp);
-            if (only_captures) {
-                for (int j = 0; j < k; ++j)
-                    if (board[tmp[j].r2][tmp[j].c2] != '.') out[n++] = tmp[j];
-            } else {
-                for (int j = 0; j < k; ++j) out[n++] = tmp[j];
+    std::vector<Move> get_all_moves(bool is_red_turn, bool only_captures = false) {
+        std::vector<Move> moves;
+        for(int r=0; r<ROWS; ++r) {
+            for(int c=0; c<COLS; ++c) {
+                char p = board[r][c];
+                if (p != '.' && is_red(p) == is_red_turn) {
+                    std::vector<Move> ms = get_valid_moves(r, c);
+                    for(const auto& m : ms) {
+                        if (!only_captures || board[m.r2][m.c2] != '.')
+                            moves.push_back(m);
+                    }
+                }
             }
         }
-        return n;
+        return moves;
     }
 
     int evaluate() { return current_score; }
@@ -705,31 +503,27 @@ public:
         int kc = king_pos[is_red_turn ? 0 : 1].second;
         if (kr == -1) return true;
 
-        // 车/将面对面/炮: 用 RankMask
-        int enemy_side = is_red_turn ? 1 : 0;
-        // 行方向上的车 (将面对面只能同列, 行方向不检查 king)
-        uint16_t row_hit = (uint16_t)(ROOK_ROW_ATT[kc][row_occ[kr]] & side_row_occ[enemy_side][kr]);
-        while (row_hit) {
-            int nc = __builtin_ctz(row_hit); row_hit &= (uint16_t)(row_hit - 1);
-            if (to_lower_ascii(board[kr][nc]) == 'r') return true;
-        }
-        // 列方向上的车或将 (将面对面)
-        uint16_t col_hit = (uint16_t)(ROOK_COL_ATT[kr][col_occ[kc]] & side_col_occ[enemy_side][kc]);
-        while (col_hit) {
-            int nr = __builtin_ctz(col_hit); col_hit &= (uint16_t)(col_hit - 1);
-            char lp = to_lower_ascii(board[nr][kc]);
-            if (lp == 'r' || lp == 'k') return true;
-        }
-        // 行/列上的炮 (对称性: 从将位看炮跳吃命中的就是攻击它的敌炮)
-        uint16_t crow = (uint16_t)(CANNON_ROW_ATT[kc][row_occ[kr]] & side_row_occ[enemy_side][kr]);
-        while (crow) {
-            int nc = __builtin_ctz(crow); crow &= (uint16_t)(crow - 1);
-            if (to_lower_ascii(board[kr][nc]) == 'c') return true;
-        }
-        uint16_t ccol = (uint16_t)(CANNON_COL_ATT[kr][col_occ[kc]] & side_col_occ[enemy_side][kc]);
-        while (ccol) {
-            int nr = __builtin_ctz(ccol); ccol &= (uint16_t)(ccol - 1);
-            if (to_lower_ascii(board[nr][kc]) == 'c') return true;
+        int drs[] = {0, 0, 1, -1};
+        int dcs[] = {1, -1, 0, 0};
+        for(int i=0; i<4; ++i) {
+            int nr = kr + drs[i], nc = kc + dcs[i];
+            char first = 0;
+            while(in_board(nr, nc)) {
+                char p = board[nr][nc];
+                if (p != '.') {
+                    if (first == 0) {
+                        first = p;
+                        if (is_red(p) != is_red_turn) {
+                            char lp = std::tolower(p);
+                            if (lp == 'r' || lp == 'k') return true;
+                        }
+                    } else {
+                        if (is_red(p) != is_red_turn && std::tolower(p) == 'c') return true;
+                        break;
+                    }
+                }
+                nr += drs[i]; nc += dcs[i];
+            }
         }
 
         int ndr[] = {-2, -2, 2, 2, -1, 1, -1, 1};
@@ -742,7 +536,7 @@ public:
             int lr = kr + leg_check_r[i], lc = kc + leg_check_c[i];
             if (in_board(nr, nc) && in_board(lr, lc)) {
                 char p = board[nr][nc];
-                if (p != '.' && is_red(p) != is_red_turn && to_lower_ascii(p) == 'n') {
+                if (p != '.' && is_red(p) != is_red_turn && std::tolower(p) == 'n') {
                     if (board[lr][lc] == '.') return true;
                 }
             }
@@ -769,10 +563,8 @@ public:
         }
     }
 
-    struct Attacker { int r, c; char p; };
-    // 写入 out, 返回数量; out 至少能容 17 �?
-    int attackers_to(int tr, int tc, bool by_red, Attacker* out) {
-        int n = 0;
+    void attackers_to(int tr, int tc, bool by_red, std::vector<std::tuple<int,int,char>>& out) {
+        out.clear();
         int drs[4] = {0,0,1,-1};
         int dcs[4] = {1,-1,0,0};
         for (int i = 0; i < 4; ++i) {
@@ -783,15 +575,15 @@ public:
                 if (p != '.') {
                     if (seen == 0) {
                         if (is_red(p) == by_red) {
-                            char lp = to_lower_ascii(p);
-                            if (lp == 'r') out[n++] = {nr, nc, p};
+                            char lp = std::tolower(p);
+                            if (lp == 'r') out.push_back(std::make_tuple(nr, nc, p));
                             else if (lp == 'k' && std::abs(nr - tr) + std::abs(nc - tc) == 1)
-                                out[n++] = {nr, nc, p};
+                                out.push_back(std::make_tuple(nr, nc, p));
                         }
                         seen = 1;
                     } else {
-                        if (is_red(p) == by_red && to_lower_ascii(p) == 'c')
-                            out[n++] = {nr, nc, p};
+                        if (is_red(p) == by_red && std::tolower(p) == 'c')
+                            out.push_back(std::make_tuple(nr, nc, p));
                         break;
                     }
                 }
@@ -807,21 +599,20 @@ public:
             int lr = tr + kfrom[i][2], lc = tc + kfrom[i][3];
             if (in_board(nr,nc) && in_board(lr,lc)) {
                 char p = board[nr][nc];
-                if (p != '.' && is_red(p) == by_red && to_lower_ascii(p) == 'n' && board[lr][lc] == '.')
-                    out[n++] = {nr, nc, p};
+                if (p != '.' && is_red(p) == by_red && std::tolower(p) == 'n' && board[lr][lc] == '.')
+                    out.push_back(std::make_tuple(nr, nc, p));
             }
         }
         char pawn = by_red ? 'P' : 'p';
         int fwd = by_red ? 1 : -1;
         int rfront = tr + fwd;
         if (in_board(rfront, tc) && board[rfront][tc] == pawn)
-            out[n++] = {rfront, tc, pawn};
+            out.push_back(std::make_tuple(rfront, tc, pawn));
         bool pawn_crossed_at_tr = by_red ? (tr <= 4) : (tr >= 5);
         if (pawn_crossed_at_tr) {
-            if (in_board(tr, tc-1) && board[tr][tc-1] == pawn) out[n++] = {tr, tc-1, pawn};
-            if (in_board(tr, tc+1) && board[tr][tc+1] == pawn) out[n++] = {tr, tc+1, pawn};
+            if (in_board(tr, tc-1) && board[tr][tc-1] == pawn) out.push_back(std::make_tuple(tr, tc-1, pawn));
+            if (in_board(tr, tc+1) && board[tr][tc+1] == pawn) out.push_back(std::make_tuple(tr, tc+1, pawn));
         }
-        return n;
     }
 
     int see(const Move& mv) {
@@ -832,53 +623,52 @@ public:
         int tr = mv.r2, tc = mv.c2;
         int sr = mv.r1, sc = mv.c1;
 
-        int gain[40]; int gn = 0;
-        gain[gn++] = see_value(victim);
-        struct Rem { int r, c; char p; };
-        Rem removed[40]; int rn = 0;
-        removed[rn++] = {sr, sc, board[sr][sc]};
+        std::vector<int> gain;
+        gain.push_back(see_value(victim));
+        std::vector<std::tuple<int,int,char>> removed;
+        removed.push_back(std::make_tuple(sr, sc, board[sr][sc]));
         board[sr][sc] = '.';
         int on_sq = see_value(attacker);
         bool side = !attacker_is_red;
 
-        Attacker atk_buf[20];
+        std::vector<std::tuple<int,int,char>> atk_buf;
         while (true) {
-            int an = attackers_to(tr, tc, side, atk_buf);
-            if (an == 0) break;
+            attackers_to(tr, tc, side, atk_buf);
+            if (atk_buf.empty()) break;
             int best = 0;
-            int best_v = see_value(atk_buf[0].p);
-            for (int i = 1; i < an; ++i) {
-                int v = see_value(atk_buf[i].p);
-                if (v < best_v) { best_v = v; best = i; }
+            int best_v = see_value(std::get<2>(atk_buf[0]));
+            for (size_t i = 1; i < atk_buf.size(); ++i) {
+                int v = see_value(std::get<2>(atk_buf[i]));
+                if (v < best_v) { best_v = v; best = (int)i; }
             }
-            int ar = atk_buf[best].r;
-            int ac = atk_buf[best].c;
-            char ap = atk_buf[best].p;
-            if (to_lower_ascii(ap) == 'k') {
-                removed[rn++] = {ar, ac, board[ar][ac]};
+            int ar = std::get<0>(atk_buf[best]);
+            int ac = std::get<1>(atk_buf[best]);
+            char ap = std::get<2>(atk_buf[best]);
+            if (std::tolower(ap) == 'k') {
+                removed.push_back(std::make_tuple(ar, ac, board[ar][ac]));
                 board[ar][ac] = '.';
-                Attacker chk[20];
-                int cn = attackers_to(tr, tc, !side, chk);
-                if (cn > 0) {
-                    Rem t = removed[--rn];
-                    board[t.r][t.c] = t.p;
+                std::vector<std::tuple<int,int,char>> chk;
+                attackers_to(tr, tc, !side, chk);
+                if (!chk.empty()) {
+                    auto t = removed.back(); removed.pop_back();
+                    board[std::get<0>(t)][std::get<1>(t)] = std::get<2>(t);
                     break;
                 }
-                gain[gn] = on_sq - gain[gn-1]; gn++;
+                gain.push_back(on_sq - gain.back());
                 on_sq = see_value(ap);
                 side = !side;
                 break;
             }
-            removed[rn++] = {ar, ac, board[ar][ac]};
+            removed.push_back(std::make_tuple(ar, ac, board[ar][ac]));
             board[ar][ac] = '.';
-            gain[gn] = on_sq - gain[gn-1]; gn++;
+            gain.push_back(on_sq - gain.back());
             on_sq = see_value(ap);
             side = !side;
         }
-        for (int i = rn - 1; i >= 0; --i)
-            board[removed[i].r][removed[i].c] = removed[i].p;
+        for (auto it = removed.rbegin(); it != removed.rend(); ++it)
+            board[std::get<0>(*it)][std::get<1>(*it)] = std::get<2>(*it);
 
-        int d = gn - 1;
+        int d = (int)gain.size() - 1;
         while (d > 0) {
             gain[d-1] = -std::max(-gain[d-1], gain[d]);
             d--;
@@ -902,34 +692,33 @@ public:
 
         if (qs_depth > 6) return evaluate();
 
-        Move moves[128];
-        int nm = 0;
+        std::vector<Move> moves;
         if (in_check) {
             if (qs_depth > 3) return evaluate();
-            nm = gen_all_moves(maximizing_player, false, moves);
+            moves = get_all_moves(maximizing_player, false);
         } else {
-            Move raw[128];
-            int rn = gen_all_moves(maximizing_player, true, raw);
-            for (int i = 0; i < rn; ++i) {
-                const Move& m = raw[i];
+            moves = get_all_moves(maximizing_player, true);
+            std::vector<Move> filtered;
+            filtered.reserve(moves.size());
+            for (const auto& m : moves) {
                 char victim = board[m.r2][m.c2];
                 char atk = board[m.r1][m.c1];
-                int vv = PIECE_VALUES[(unsigned char)victim];
-                int av = PIECE_VALUES[(unsigned char)atk];
-                if (vv >= av) moves[nm++] = m;
-                else if (see(m) >= 0) moves[nm++] = m;
+                int vv = PIECE_VALUES[victim];
+                int av = PIECE_VALUES[atk];
+                if (vv >= av) filtered.push_back(m);
+                else if (see(m) >= 0) filtered.push_back(m);
             }
+            moves = std::move(filtered);
         }
 
-        std::sort(moves, moves + nm, [&](const Move& a, const Move& b) {
-            int val_a = PIECE_VALUES[(unsigned char)board[a.r2][a.c2]];
-            int val_b = PIECE_VALUES[(unsigned char)board[b.r2][b.c2]];
+        std::sort(moves.begin(), moves.end(), [&](const Move& a, const Move& b) {
+            int val_a = PIECE_VALUES[board[a.r2][a.c2]];
+            int val_b = PIECE_VALUES[board[b.r2][b.c2]];
             return val_a > val_b;
         });
 
         bool has_legal = false;
-        for (int mi = 0; mi < nm; ++mi) {
-            const Move& m = moves[mi];
+        for (const auto& m : moves) {
             char captured = make_move(m);
             if (is_in_check(maximizing_player)) {
                 undo_move(m, captured);
@@ -963,17 +752,7 @@ public:
         if (check_ext_left < 0) check_ext_left = std::max(1, depth / 2);
         nodes++;
 
-        if (!is_root) {
-            int rv = repetition_verdict();
-            if (rv != 0) {
-                // 当前待走方=turn. rv=+1 表示对手(turn^1)长将判负, 即 turn 一方胜.
-                // 分数采用绝对视角: 红正黑负.
-                int winner = (rv > 0) ? turn : (turn ^ 1);
-                int sc = (winner == 0) ? (SCORE_INF - ply) : (-SCORE_INF + ply);
-                return {sc, NO_MOVE};
-            }
-            if (is_repetition()) return {0, NO_MOVE};
-        }
+        if (!is_root && is_repetition()) return {0, NO_MOVE};
 
         if (stop_search) return {0, NO_MOVE};
         if ((nodes & 2047) == 0) {
@@ -1083,17 +862,17 @@ public:
             if (stop_search) return {0, NO_MOVE};
         }
 
-        Move moves[128];
-        int nm = gen_all_moves(maximizing_player, false, moves);
-        if (nm == 0) {
+        std::vector<Move> moves = get_all_moves(maximizing_player);
+        if (moves.empty()) {
             return {maximizing_player ? -SCORE_INF + ply : SCORE_INF - ply, NO_MOVE};
         }
 
         if (is_root && forbidden_move.is_valid()) {
-            int w = 0;
-            for (int i = 0; i < nm; ++i)
-                if (!(moves[i] == forbidden_move)) moves[w++] = moves[i];
-            if (w > 0) nm = w;
+            std::vector<Move> filtered;
+            filtered.reserve(moves.size());
+            for (const auto& mv : moves)
+                if (!(mv == forbidden_move)) filtered.push_back(mv);
+            if (!filtered.empty()) moves = std::move(filtered);
         }
 
         Move prev_played = NO_MOVE;
@@ -1104,8 +883,8 @@ public:
 
         Move k1 = killer_moves[ply][0];
         Move k2 = killer_moves[ply][1];
-        int mscore[128];
-        for (int i = 0; i < nm; ++i) {
+        std::vector<int> mscore(moves.size(), 0);
+        for (size_t i = 0; i < moves.size(); ++i) {
             const Move& m = moves[i];
             int sc;
             if (tt_move.is_valid() && m == tt_move) {
@@ -1113,8 +892,8 @@ public:
             } else {
                 char victim = board[m.r2][m.c2];
                 if (victim != '.') {
-                    int vv = PIECE_VALUES[(unsigned char)victim];
-                    int av = PIECE_VALUES[(unsigned char)board[m.r1][m.c1]];
+                    int vv = PIECE_VALUES[victim];
+                    int av = PIECE_VALUES[board[m.r1][m.c1]];
                     if (vv < av && see(m) < 0)
                         sc = 1000000 + vv * 10 - av;
                     else
@@ -1131,12 +910,14 @@ public:
             }
             mscore[i] = sc;
         }
-        // 同步�?moves[] �?mscore[] 做按分数降序排序 (插入排序, nm 通常 < 50)
-        for (int i = 1; i < nm; ++i) {
-            int s = mscore[i]; Move mv = moves[i]; int j = i - 1;
-            while (j >= 0 && mscore[j] < s) { mscore[j+1] = mscore[j]; moves[j+1] = moves[j]; --j; }
-            mscore[j+1] = s; moves[j+1] = mv;
-        }
+        std::vector<size_t> order(moves.size());
+        for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+        std::sort(order.begin(), order.end(),
+                  [&](size_t a, size_t b) { return mscore[a] > mscore[b]; });
+        std::vector<Move> sorted_moves;
+        sorted_moves.reserve(moves.size());
+        for (size_t i : order) sorted_moves.push_back(moves[i]);
+        moves = std::move(sorted_moves);
 
         Move best_move = moves[0];
         int best_score = maximizing_player ? -SCORE_INF - 100 : SCORE_INF + 100;
@@ -1144,12 +925,9 @@ public:
         int original_alpha = alpha;
         int original_beta  = beta;
 
-        Move quiet_tried[128];
-        int qt_n = 0;
-        int legal_count = 0;
+        std::vector<Move> quiet_tried;
 
-        for (int mi = 0; mi < nm; ++mi) {
-            const Move& m = moves[mi];
+        for (const auto& m : moves) {
             moves_count++;
             char captured = board[m.r2][m.c2];
             bool is_capture = (captured != '.');
@@ -1173,8 +951,8 @@ public:
 
             // SEE pruning
             if (!is_root && depth <= 4 && is_capture && !in_check) {
-                int vv = PIECE_VALUES[(unsigned char)captured];
-                int av = PIECE_VALUES[(unsigned char)board[m.r1][m.c1]];
+                int vv = PIECE_VALUES[captured];
+                int av = PIECE_VALUES[board[m.r1][m.c1]];
                 if (vv < av && see(m) < -50) continue;
             }
 
@@ -1183,7 +961,6 @@ public:
                 undo_move(m, cap);
                 continue;
             }
-            legal_count++;
 
             bool gives_check = is_in_check(!maximizing_player);
             bool do_lmr = (depth >= 3 && moves_count > 3 && !is_capture && !in_check
@@ -1239,7 +1016,7 @@ public:
             undo_move(m, cap);
             if (stop_search) return {0, NO_MOVE};
 
-            if (!is_capture) quiet_tried[qt_n++] = m;
+            if (!is_capture) quiet_tried.push_back(m);
 
             if (maximizing_player) {
                 if (score > best_score) {
@@ -1260,7 +1037,7 @@ public:
                                 if (prev_played.is_valid())
                                     counter_move[prev_played.r1][prev_played.c1]
                                                 [prev_played.r2][prev_played.c2] = m;
-                                for (int i = 0; i + 1 < qt_n; ++i) {
+                                for (size_t i = 0; i + 1 < quiet_tried.size(); ++i) {
                                     const Move& q = quiet_tried[i];
                                     int& hq = history_table[q.r1][q.c1][q.r2][q.c2];
                                     hq -= bonus;
@@ -1290,7 +1067,7 @@ public:
                                 if (prev_played.is_valid())
                                     counter_move[prev_played.r1][prev_played.c1]
                                                 [prev_played.r2][prev_played.c2] = m;
-                                for (int i = 0; i + 1 < qt_n; ++i) {
+                                for (size_t i = 0; i + 1 < quiet_tried.size(); ++i) {
                                     const Move& q = quiet_tried[i];
                                     int& hq = history_table[q.r1][q.c1][q.r2][q.c2];
                                     hq -= bonus;
@@ -1302,11 +1079,6 @@ public:
                     }
                 }
             }
-        }
-
-        // 所有伪合法走法都自将 = 杀棋 (象棋中 stalemate 也按输处理)
-        if (legal_count == 0) {
-            return {maximizing_player ? -SCORE_INF + ply : SCORE_INF - ply, NO_MOVE};
         }
 
         int flag;
@@ -1398,11 +1170,9 @@ public:
 int main() {
     std::ios::sync_with_stdio(false);
     std::cin.tie(nullptr);
-    init_piece_values();
     init_pst_raw();
     init_zobrist();
     init_lmr();
-    init_attack_tables();
 
     XiangqiEngine engine;
     std::string line;
@@ -1473,53 +1243,7 @@ int main() {
                 std::cout << std::endl;
             }
         }
-        else if (line.substr(0, 8) == "setboard") {
-            // setboard <fen-rows> <side>      (side: 'w' or 'b'; 默认 'w')
-            // 例: setboard 1cbakabr1/3RR4/9/p1p1C3p/6p2/2P6/P3P1ncP/4B1r2/1C2A4/4KAB2 b
-            std::string rest = line.size() > 8 ? line.substr(9) : "";
-            for (int r = 0; r < 10; ++r)
-                for (int c = 0; c < 9; ++c)
-                    engine.board[r][c] = '.';
-            int r = 0, c = 0;
-            size_t i = 0;
-            while (i < rest.size() && rest[i] != ' ') {
-                char ch = rest[i++];
-                if (ch == '/')                      { r++; c = 0; }
-                else if (ch >= '1' && ch <= '9')    { c += (ch - '0'); }
-                else if (r < 10 && c < 9)           { engine.board[r][c++] = ch; }
-            }
-            engine.turn = 0;
-            while (i < rest.size() && rest[i] == ' ') i++;
-            if (i < rest.size() && (rest[i] == 'b' || rest[i] == 'B')) engine.turn = 1;
-
-            // 重置搜索附属状态
-            engine.forbidden_move = NO_MOVE;
-            engine.game_over = false;
-            for (auto& e : engine.tt) { e.flag = TT_INVALID; e.age = 0; }
-            engine.tt_age = 0;
-            std::memset(engine.history_table, 0, sizeof(engine.history_table));
-            for (int d = 0; d < 64; ++d) {
-                engine.killer_moves[d][0] = NO_MOVE;
-                engine.killer_moves[d][1] = NO_MOVE;
-            }
-            for (int a = 0; a < 10; ++a)
-                for (int b = 0; b < 9; ++b)
-                    for (int cc = 0; cc < 10; ++cc)
-                        for (int d = 0; d < 9; ++d)
-                            engine.counter_move[a][b][cc][d] = NO_MOVE;
-
-            engine.init_score_and_hash();
-        }
     }
     return 0;
 }
-
-/*
-g++ -O3 -std=c++17 -march=native -mtune=native -funroll-loops -fno-exceptions -fno-rtti -flto -DNDEBUG -static -static-libgcc -static-libstdc++ -o xiangqi_ai.exe xiangqi_ai.cpp
-
-./xiangqi_ai 
-setboard 3ak4/4a4/2n4PC/9/4R4/9/1p2C4/4r4/1n2A4/4KA3 b
-side red
-search
-(电脑黑)
-*/
+// g++ -O3 -std=c++11 -o xiangqi_ai xiangqi_ai_v2.cpp
