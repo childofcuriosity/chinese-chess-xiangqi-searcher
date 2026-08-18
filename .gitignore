@@ -1,1 +1,31 @@
+# 日志和临时文件
 log.txt
+logs/
+engine_log.txt
+*.log
+*.stackdump
+tmp.txt
+build_err.txt
+
+# Python
+__pycache__/
+*.pyc
+
+# 编译产物
+*.exe
+*.o
+*.obj
+
+# 本地大文件/引擎资源(不进仓库)
+pikafish/
+pikafish.exe
+pikafish.nnue
+simhei.ttf
+dataset*.txt
+
+# 截图和本地记录
+捕获*.PNG
+和高手下赢/
+
+# 本地配置
+.claude/settings.local.json

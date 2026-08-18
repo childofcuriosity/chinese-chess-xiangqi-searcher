@@ -136,3 +136,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+# python selfplay.py <红方exe> <黑方exe> [最大回合数]

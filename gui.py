@@ -15,10 +15,10 @@ import urllib.parse
 import random
 
 # --- GUI 配置 ---
-ENGINE_TYPE = 'cpp'  # 'python' or 'cpp'
+ENGINE_TYPE = 'cpp'  # 'python' or 'cpp'，现在只更新cpp
 
 # --- 云库配置 (cpp 引擎不联网, 由 GUI 代查) ---
-CLOUD_BOOK_ENABLED =0       # 1=启用; 0=禁用
+CLOUD_BOOK_ENABLED =1    # 1=启用; 0=禁用
 QUERY_SCORE_THRESHOLD = 20
 CLOUD_TIMEOUT = 2.0
 
@@ -326,6 +326,7 @@ class AIClient:
         self.msg_queue = queue.Queue()
         self.running = False
         self.t = None
+        self.cmd_log = None
 
     def connect(self):
         try:
@@ -349,6 +350,12 @@ class AIClient:
         self.t = threading.Thread(target=self._reader_thread, daemon=True)
         self.t.start()
 
+        # 打开命令日志，方便复刻调试
+        import datetime, os
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        os.makedirs("logs", exist_ok=True)
+        self.cmd_log = open(f"logs/engine_cmds_{ts}.log", "w", encoding="utf-8")
+
     def _reader_thread(self):
         while self.running:
             try:
@@ -365,6 +372,9 @@ class AIClient:
             try:
                 self.process.stdin.write(cmd + "\n")
                 self.process.stdin.flush()
+                if self.cmd_log:
+                    self.cmd_log.write(cmd + "\n")
+                    self.cmd_log.flush()
             except Exception as e:
                 print("Send error:", e)
 
@@ -382,6 +392,9 @@ class AIClient:
                 self.process.terminate()
             except Exception:
                 pass
+        if self.cmd_log:
+            self.cmd_log.close()
+            self.cmd_log = None
 
 # --- 小型 UI 组件 ---
 class Button:
@@ -424,6 +437,13 @@ class XiangqiGUI:
         self.game_over = False
         self.ai_thinking = False
         self.running = True
+
+        # 代替AI 调试开关
+        self.replace_ai_mode = False
+        self.replace_ai_pending = False
+        self.btn_replace_ai = Button((SCREEN_WIDTH - 170, 60, 150, 36), "代替AI: 关", self.small_font)
+        # self.btn_print_engine = Button((SCREEN_WIDTH - 170, 100, 150, 36), "每步打印: 关", self.small_font)
+        # self.auto_print_engine = False
 
         # 禁招输入槽
         self.forbid_text = "1 1 1 1"
@@ -534,6 +554,14 @@ class XiangqiGUI:
             txt = self.font.render("AI 思考中...", True, (0,0,255))
             self.screen.blit(txt, (20, 80))
 
+        if self.replace_ai_pending:
+            txt = self.font.render("请代替AI落子...", True, (255, 0, 0))
+            self.screen.blit(txt, (20, 80))
+
+        # 代替AI 按钮
+        self.btn_replace_ai.draw(self.screen, pygame.mouse.get_pos())
+        # self.btn_print_engine.draw(self.screen, pygame.mouse.get_pos())
+
         turn_txt = f"当前回合: {'红' if self.board.turn=='red' else '黑'}"
         ttxt = self.font.render(turn_txt, True, COLOR_UI)
         self.screen.blit(ttxt, (SCREEN_WIDTH - 220, 18))
@@ -572,10 +600,23 @@ class XiangqiGUI:
 
         self.btn_start.draw(self.screen, mouse_pos)
 
+        self.btn_replace_ai.draw(self.screen, mouse_pos)
+
         hint = self.font.render("点击格子选择棋子，再点击目的地下子。", True, COLOR_UI)
         self.screen.blit(hint, (SCREEN_WIDTH//2 - hint.get_width()//2, SCREEN_HEIGHT - 80))
 
+    def _maybe_print_engine(self, label=""):
+        # if self.auto_print_engine and self.ai:
+        #     self.ai.send("print")
+        #     print(f"[每步打印] {label}")
+        pass
+
     def request_ai_move(self):
+        # 代替AI模式：跳过云库和引擎，等人手动落子
+        if self.replace_ai_mode:
+            self.replace_ai_pending = True
+            return
+
         fen = self.board.to_fen()
         forbid = self.parse_forbid()
 
@@ -585,6 +626,7 @@ class XiangqiGUI:
             print(f"[云库] 命中: ({r1},{c1})->({r2},{c2})  score={sc}")
             self.board.move(r1, c1, r2, c2)
             self.ai.send(f"move {r1} {c1} {r2} {c2}")
+            # self._maybe_print_engine(f"云库: {r1},{c1}->{r2},{c2}")
             self.ai_thinking = False
             return
 
@@ -617,8 +659,14 @@ class XiangqiGUI:
         r, c = coord
         piece = self.board.board[r][c]
 
-        # 情况 A: 点了己方棋子 → 切换选中
-        if piece != '.' and self.board.is_red(piece) == (self.player_side == 'red'):
+        # 代替AI模式：允许点击AI方的棋子
+        allow_enemy = self.replace_ai_pending
+        can_select = piece != '.' and (
+            self.board.is_red(piece) == (self.player_side == 'red') or allow_enemy
+        )
+
+        # 情况 A: 点了己方棋子（或代替AI时点AI方棋子）→ 切换选中
+        if can_select:
             self.selected = (r, c)
             self.valid_moves_cache = self.board.get_valid_moves(r, c)
             return
@@ -632,7 +680,11 @@ class XiangqiGUI:
                 self.selected = None
                 self.valid_moves_cache = []
                 self.ai.send(f"move {r1} {c1} {r} {c}")
-                self.request_ai_move()
+                # self._maybe_print_engine(f"人走: {r1},{c1}->{r},{c}")
+                if self.replace_ai_pending:
+                    self.replace_ai_pending = False
+                else:
+                    self.request_ai_move()
             else:
                 # 非法目标：取消选中（点空地或点到禁止格）
                 self.selected = None
@@ -656,6 +708,9 @@ class XiangqiGUI:
                             self.choice_side = 'black'
                         elif self.btn_toggle_orient.clicked(pos):
                             self.choice_red_bottom = not self.choice_red_bottom
+                        elif self.btn_replace_ai.clicked(pos):
+                            self.replace_ai_mode = not self.replace_ai_mode
+                            self.btn_replace_ai.text = "代替AI: 开" if self.replace_ai_mode else "代替AI: 关"
                         elif self.btn_start.clicked(pos):
                             self.player_side = self.choice_side
                             self.flip_view = not self.choice_red_bottom
@@ -667,6 +722,13 @@ class XiangqiGUI:
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         if self.forbid_rect.collidepoint(event.pos):
                             self.forbid_focused = True
+                        elif self.btn_replace_ai.clicked(event.pos):
+                            self.replace_ai_mode = not self.replace_ai_mode
+                            self.btn_replace_ai.text = "代替AI: 开" if self.replace_ai_mode else "代替AI: 关"
+                            self.replace_ai_pending = False
+                        # elif self.btn_print_engine.clicked(event.pos):
+                        #     self.auto_print_engine = not self.auto_print_engine
+                        #     self.btn_print_engine.text = "每步打印: 开" if self.auto_print_engine else "每步打印: 关"
                         else:
                             self.forbid_focused = False
 
@@ -674,11 +736,13 @@ class XiangqiGUI:
                         self.handle_forbid_key(event)
                         continue
 
-                    if not self.game_over and not self.ai_thinking and self.board.turn == self.player_side:
-                        if event.type == pygame.MOUSEBUTTONDOWN:
-                            coord = self.get_click_coord(event.pos)
-                            if coord:
-                                self.handle_board_click(coord)
+                    if not self.game_over and not self.ai_thinking:
+                        human_can_move = (self.board.turn == self.player_side) or self.replace_ai_pending
+                        if human_can_move:
+                            if event.type == pygame.MOUSEBUTTONDOWN:
+                                coord = self.get_click_coord(event.pos)
+                                if coord:
+                                    self.handle_board_click(coord)
 
             # 处理 AI 消息
             if not in_start_menu and self.ai:
@@ -691,6 +755,7 @@ class XiangqiGUI:
                         try:
                             r1, c1, r2, c2 = map(int, parts[1:5])
                             self.board.move(r1, c1, r2, c2)
+                            # self._maybe_print_engine(f"引擎走: {r1},{c1}->{r2},{c2}")
                         except Exception as e:
                             print("解析 bestmove 错误:", e)
                         self.ai_thinking = False

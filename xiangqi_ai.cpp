@@ -13,11 +13,13 @@
 #include <sstream>
 #include <fstream>
 #include <tuple>
+ int debug[10];
 
 std::ofstream logfile("engine_log.txt", std::ios::app);
-
+//int debugflag = 0; //��ʱ�ĵ���flag 
+//int cnt=0;
 // ============================================================
-// 全局配置
+// ȫ������
 // ============================================================
 const int USE_DEPTH = 0;
 const int LONG_MAX_DEPTH = 8;
@@ -27,14 +29,14 @@ const double LONG_MAX_TIME = 5.0;
 const int ROWS = 10;
 const int COLS = 9;
 const int SCORE_INF = 30000;
-const int MATE_BOUND = 20000;          // 绝对�?> �?即视为杀棋分
+const int MATE_BOUND = 20000;          // ����??> ??����Ϊɱ���?
 
 const int TT_EXACT = 0;
 const int TT_ALPHA = 1;
 const int TT_BETA = 2;
 const int TT_INVALID = -1;
 
-const size_t TT_BITS = 23;             // 8M�? �?80MB
+const size_t TT_BITS = 23;             // 8M?? ??80MB
 const size_t TT_SIZE = (size_t)1 << TT_BITS;
 const size_t TT_MASK = TT_SIZE - 1;
 
@@ -77,7 +79,7 @@ inline int get_base_value(char p) {
     return PIECE_VALUES[(unsigned char)p];
 }
 
-// 小写�?(仅用�?ASCII 字母): 等价 std::tolower 但无 locale 开销
+// Сд??(����??ASCII ��ĸ): �ȼ� std::tolower ���� locale ����
 static inline char to_lower_ascii(char p) { return (char)(p | 0x20); }
 
 int PST[256][10][9];
@@ -111,7 +113,7 @@ void init_pst_raw() {
     };
     int raw_n[10][9] = {
         {90, 90, 90, 96, 90, 96, 90, 90, 90},
-        {90, 96,103, 97, 94, 97,103, 96, 90},
+        {90, 96,109, 97, 94, 97,109, 96, 90},
         {92, 98, 99,103, 99,103, 99, 98, 92},
         {93,108,100,107,100,107,100,108, 93},
         {93, 99, 99,101,102,101, 99, 99, 93},
@@ -145,6 +147,13 @@ void init_pst_raw() {
         {96, 97, 98, 98, 98, 98, 98, 97, 96},
         {96, 96, 97, 99, 99, 99, 97, 96, 96}
     };
+    //����
+    for(int i=0; i<10; ++i)
+        for(int j=0; j<9; ++j){
+            raw_c[i][j] *=1.1;
+            raw_n[i][j] *=1.1;
+            raw_r[i][j] *=1.1;
+        }
 
     auto apply = [](int dest[10][9], int src[10][9], char p) {
         int base = get_base_value(p);
@@ -175,10 +184,10 @@ void init_zobrist() {
 }
 
 // ============================================================
-// RankMask 攻击表 (车/炮)
+// RankMask ������ (��/��)
 // ============================================================
-// 行表: [源列 0..8][9位行占位] -> 9位攻击掩码 (该方向可达列)
-// 列表: [源行 0..9][10位列占位] -> 10位攻击掩码
+// �б�: [Դ�� 0..8][9λ��ռλ] -> 9λ�������� (�÷���ɴ���?)
+// �б�: [Դ�� 0..9][10λ��ռλ] -> 10λ��������
 uint16_t ROOK_ROW_ATT[9][512];
 uint16_t ROOK_COL_ATT[10][1024];
 uint16_t CANNON_ROW_ATT[9][512];
@@ -186,26 +195,26 @@ uint16_t CANNON_COL_ATT[10][1024];
 
 void init_attack_tables() {
     static const int dirs[2] = {-1, +1};
-    // 行表 (长度 9)
+    // �б� (���� 9)
     for (int sc = 0; sc < 9; ++sc) {
         for (int occ = 0; occ < 512; ++occ) {
             int rk = 0, cn = 0;
             for (int di = 0; di < 2; ++di) {
                 int d = dirs[di];
-                // 车: 滑到第一个阻挡子(含)为止
+                // ��: ������һ���赲��(��)Ϊֹ
                 int nc = sc + d;
                 while (nc >= 0 && nc < 9) {
                     rk |= 1 << nc;
                     if ((occ >> nc) & 1) break;
                     nc += d;
                 }
-                // 炮: 阶段1 滑过空格 (这些是 quiet)
+                // ��: �׶�1 �����ո� (��Щ�� quiet)
                 nc = sc + d;
                 while (nc >= 0 && nc < 9 && !((occ >> nc) & 1)) {
                     cn |= 1 << nc;
                     nc += d;
                 }
-                // 阶段2: 跳过炮架, 找第二个子作为吃子目标
+                // �׶�2: �����ڼ�, �ҵڶ�������Ϊ����Ŀ��
                 if (nc >= 0 && nc < 9) {
                     nc += d;
                     while (nc >= 0 && nc < 9 && !((occ >> nc) & 1)) nc += d;
@@ -216,7 +225,7 @@ void init_attack_tables() {
             CANNON_ROW_ATT[sc][occ] = (uint16_t)cn;
         }
     }
-    // 列表 (长度 10)
+    // �б� (���� 10)
     for (int sr = 0; sr < 10; ++sr) {
         for (int occ = 0; occ < 1024; ++occ) {
             int rk = 0, cn = 0;
@@ -272,18 +281,18 @@ public:
     bool     path_gave_check[PATH_CAP];
     int      path_len;
 
-    // 增量子力列表: side 0=�? 1=�? 方格编码 sq = r*9 + c
+    // ���������б�: side 0=?? 1=?? �������? sq = r*9 + c
     int piece_sq[2][16];
     int npieces[2];
-    int piece_idx[10][9];          // -1 表示空格
-    // 捕获撤销栈
+    int piece_idx[10][9];          // -1 ��ʾ�ո�
+    // ������ջ
     int undo_cap_idx[PATH_CAP];
     int undo_top;
 
-    // 行/列占位 (用于 RankMask)
-    uint16_t row_occ[10];           // bit c = 该行 c 列有子
-    uint16_t col_occ[9];            // bit r = 该列 r 行有子
-    uint16_t side_row_occ[2][10];   // 按方着色
+    // ��/��ռλ (���� RankMask)
+    uint16_t row_occ[10];           // bit c = ���� c ������
+    uint16_t col_occ[9];            // bit r = ���� r ������
+    uint16_t side_row_occ[2][10];   // ������ɫ
     uint16_t side_col_occ[2][9];
 
     std::vector<TTEntry> tt;
@@ -413,7 +422,7 @@ public:
         current_hash ^= ZOBRIST_TABLE[m.r2][m.c2][(unsigned char)moving_piece];
         current_hash ^= ZOBRIST_TURN;
 
-        // 增量子力列表维护
+        // ���������б�ά��
         int mover_side = is_red(moving_piece) ? 0 : 1;
         if (captured_piece != '.') {
             int opp = mover_side ^ 1;
@@ -425,11 +434,11 @@ public:
                 piece_sq[opp][cap_idx] = last_sq;
                 piece_idx[last_sq / 9][last_sq % 9] = cap_idx;
             }
-            // 占位: 清掉对方在目标格的位 (总占位 row/col_occ 该位仍然被 mover 占用)
+            // ռλ: ����Է���Ŀ�����? (��ռλ row/col_occ ��λ��Ȼ�� mover ռ��)
             side_row_occ[opp][m.r2] &= (uint16_t)~(1 << m.c2);
             side_col_occ[opp][m.c2] &= (uint16_t)~(1 << m.r2);
         } else {
-            // 非吃子: 总占位 r2,c2 之前为空, 需置位
+            // �ǳ���: ��ռλ r2,c2 ֮ǰΪ��, ����λ
             row_occ[m.r2] |= (uint16_t)(1 << m.c2);
             col_occ[m.c2] |= (uint16_t)(1 << m.r2);
         }
@@ -437,7 +446,7 @@ public:
         piece_sq[mover_side][idx_m] = m.r2 * 9 + m.c2;
         piece_idx[m.r1][m.c1] = -1;
         piece_idx[m.r2][m.c2] = idx_m;
-        // 占位: 源格清空, mover 着色更新
+        // ռλ: Դ�����?, mover ��ɫ����
         row_occ[m.r1] &= (uint16_t)~(1 << m.c1);
         col_occ[m.c1] &= (uint16_t)~(1 << m.r1);
         side_row_occ[mover_side][m.r1] &= (uint16_t)~(1 << m.c1);
@@ -452,7 +461,7 @@ public:
         if (path_len < PATH_CAP) {
             path_hashes[path_len] = current_hash;
             path_moves[path_len]  = m;
-            // turn 已翻转为对方; 检测对方(新走子方)是否被将, 即此着是否将军
+            // turn �ѷ�תΪ�Է�; ���Է�(�����ӷ�)�Ƿ񱻽�, �������Ƿ񽫾�
             path_gave_check[path_len] = is_in_check(turn == 0);
             path_len++;
         }
@@ -479,13 +488,13 @@ public:
             current_hash ^= ZOBRIST_TABLE[m.r2][m.c2][(unsigned char)captured];
         current_hash ^= ZOBRIST_TABLE[m.r1][m.c1][(unsigned char)moved_piece];
 
-        // 增量子力列表撤销
+        // ���������б�����
         int mover_side = is_red(moved_piece) ? 0 : 1;
         int idx_m = piece_idx[m.r2][m.c2];
         piece_sq[mover_side][idx_m] = m.r1 * 9 + m.c1;
         piece_idx[m.r2][m.c2] = -1;
         piece_idx[m.r1][m.c1] = idx_m;
-        // 占位撤销
+        // ռλ����
         row_occ[m.r1] |= (uint16_t)(1 << m.c1);
         col_occ[m.c1] |= (uint16_t)(1 << m.r1);
         side_row_occ[mover_side][m.r1] |= (uint16_t)(1 << m.c1);
@@ -496,10 +505,10 @@ public:
             int opp = mover_side ^ 1;
             int cap_idx = undo_cap_idx[--undo_top];
             int cur = npieces[opp]++;
-            // 恢复对方占位 (总占位仍 set, 不变)
+            // �ָ��Է�ռλ (��ռλ�� set, ����)
             side_row_occ[opp][m.r2] |= (uint16_t)(1 << m.c2);
             side_col_occ[opp][m.c2] |= (uint16_t)(1 << m.r2);
-            // 当初�?swap-pop �?last_sq 放到�?cap_idx 位置, 需先搬回末�?
+            // ����??swap-pop ??last_sq �ŵ�??cap_idx λ��, ���Ȱ���???
             if (cap_idx != cur) {
                 int moved_pos = piece_sq[opp][cap_idx];
                 piece_sq[opp][cur] = moved_pos;
@@ -541,19 +550,19 @@ public:
         return false;
     }
 
-    // 天天象棋(亚洲规则) 长将判负的简化实现:
-    //   返回 0 表示无循环或正常和棋循环;
-    //   返回 +1 表示对手在循环中步步将军(对手判负, 当前走子方胜);
-    //   返回 -1 表示己方在循环中步步将军(己方判负).
-    // 不处理长捉/长杀/根分析等扩展规则.
+    // ��������(���޹���) �����и��ļ�ʵ��:
+    //   ���� 0 ��ʾ��ѭ������������ѭ��;
+    //   ���� +1 ��ʾ������ѭ���в�������(�����и�, ��ǰ���ӷ�ʤ);
+    //   ���� -1 ��ʾ������ѭ���в�������(�����и�).
+    // ��������׽/��ɱ/����������չ����.
     int repetition_verdict() const {
         int found = -1;
         for (int i = path_len - 3; i >= 0; i -= 2) {
             if (path_hashes[i] == current_hash) { found = i; break; }
         }
         if (found < 0) return 0;
-        // 循环内的着法: path_moves[found+1 .. path_len-1]
-        // 最后一着的走子方 = turn ^ 1 (turn 是当前待走方)
+        // ѭ���ڵ��ŷ�: path_moves[found+1 .. path_len-1]
+        // ���һ�ŵ����ӷ�? = turn ^ 1 (turn �ǵ�ǰ���߷�)
         int last_mover = turn ^ 1;
         int moves_cnt[2] = {0, 0};
         int check_cnt[2] = {0, 0};
@@ -565,7 +574,7 @@ public:
         }
         bool perp0 = moves_cnt[0] > 0 && check_cnt[0] == moves_cnt[0];
         bool perp1 = moves_cnt[1] > 0 && check_cnt[1] == moves_cnt[1];
-        if (perp0 == perp1) return 0; // 双方都长将 or 都不长将 -> 和
+        if (perp0 == perp1) return 0; // ˫�������� or �������� -> ��
         int loser = perp0 ? 0 : 1;
         return (loser == turn) ? -1 : +1;
     }
@@ -678,7 +687,7 @@ public:
         return n;
     }
 
-    // 写到 out, 返回数量; out 至少能容�?128 �?
+    // д�� out, ��������; out ��������??128 ??
     int gen_all_moves(bool is_red_turn, bool only_captures, Move* out) {
         int n = 0;
         Move tmp[32];
@@ -705,22 +714,22 @@ public:
         int kc = king_pos[is_red_turn ? 0 : 1].second;
         if (kr == -1) return true;
 
-        // 车/将面对面/炮: 用 RankMask
+        // ��/�������?/��: �� RankMask
         int enemy_side = is_red_turn ? 1 : 0;
-        // 行方向上的车 (将面对面只能同列, 行方向不检查 king)
+        // �з����ϵĳ� (�������ֻ��ͬ��?, �з��򲻼��? king)
         uint16_t row_hit = (uint16_t)(ROOK_ROW_ATT[kc][row_occ[kr]] & side_row_occ[enemy_side][kr]);
         while (row_hit) {
             int nc = __builtin_ctz(row_hit); row_hit &= (uint16_t)(row_hit - 1);
             if (to_lower_ascii(board[kr][nc]) == 'r') return true;
         }
-        // 列方向上的车或将 (将面对面)
+        // �з����ϵĳ��� (�������?)
         uint16_t col_hit = (uint16_t)(ROOK_COL_ATT[kr][col_occ[kc]] & side_col_occ[enemy_side][kc]);
         while (col_hit) {
             int nr = __builtin_ctz(col_hit); col_hit &= (uint16_t)(col_hit - 1);
             char lp = to_lower_ascii(board[nr][kc]);
             if (lp == 'r' || lp == 'k') return true;
         }
-        // 行/列上的炮 (对称性: 从将位看炮跳吃命中的就是攻击它的敌炮)
+        // ��/���ϵ��� (�Գ���: �ӽ�λ�����������еľ��ǹ������ĵ���)
         uint16_t crow = (uint16_t)(CANNON_ROW_ATT[kc][row_occ[kr]] & side_row_occ[enemy_side][kr]);
         while (crow) {
             int nc = __builtin_ctz(crow); crow &= (uint16_t)(crow - 1);
@@ -770,7 +779,7 @@ public:
     }
 
     struct Attacker { int r, c; char p; };
-    // 写入 out, 返回数量; out 至少能容 17 �?
+    // д�� out, ��������; out �������� 17 ??
     int attackers_to(int tr, int tc, bool by_red, Attacker* out) {
         int n = 0;
         int drs[4] = {0,0,1,-1};
@@ -844,6 +853,35 @@ public:
         Attacker atk_buf[20];
         while (true) {
             int an = attackers_to(tr, tc, side, atk_buf);
+			/*���﷢�������⣺ 
+�� 
+. . b a k a b . .
+. . . . n . . . .
+. . n . c . . . .
+p . p . p . P . p
+c r . . . . . . .
+C . P . . N . . .
+P . . . P r . C P
+. . N . B . . . .
+. . . . . . . . .
+R . . A K A B R .
+
+���? 
+. . b a k a b . .
+. . . . n . . . .
+. . n . c . . . .
+p . p . p . P . p
+. r . . . . . . . 
+. . P . . C . . . 
+P . . . P . . C P 
+. . N . B . . . .
+. . . . . . . . .
+c . . A K A B R .
+
+�����������еĶ����ü������Ե�������Ϊû�п��ߵĶ����� 
+
+
+			*/
             if (an == 0) break;
             int best = 0;
             int best_v = see_value(atk_buf[0].p);
@@ -960,14 +998,14 @@ public:
     SearchResult minimax(int depth, int alpha, int beta, bool maximizing_player,
                          bool allow_null = true, int check_ext_left = -1,
                          bool is_root = false, int ply = 0) {
+
         if (check_ext_left < 0) check_ext_left = std::max(1, depth / 2);
         nodes++;
-
         if (!is_root) {
             int rv = repetition_verdict();
             if (rv != 0) {
-                // 当前待走方=turn. rv=+1 表示对手(turn^1)长将判负, 即 turn 一方胜.
-                // 分数采用绝对视角: 红正黑负.
+                // ��ǰ���߷�=turn. rv=+1 ��ʾ����(turn^1)�����и�, �� turn һ��ʤ.
+                // �������þ����ӽ�: �����ڸ�.
                 int winner = (rv > 0) ? turn : (turn ^ 1);
                 int sc = (winner == 0) ? (SCORE_INF - ply) : (-SCORE_INF + ply);
                 return {sc, NO_MOVE};
@@ -981,7 +1019,6 @@ public:
             double elapsed = std::chrono::duration<double>(now - start_tp).count();
             if (elapsed > time_limit) stop_search = true;
         }
-
         bool in_check = is_in_check(maximizing_player);
         int ext = (check_ext_left > 0 && in_check) ? 1 : 0;
 
@@ -1005,12 +1042,12 @@ public:
             }
             tt_move = tte.best_move;
         }
-
+        
         if (king_pos[0].first == -1) return {-SCORE_INF + ply, NO_MOVE};
         if (king_pos[1].first == -1) return { SCORE_INF - ply, NO_MOVE};
-
+        
         int eval = evaluate();
-
+		
         // Reverse Futility Pruning
         if (!is_root && depth <= 7 && !in_check
             && std::abs(beta) < MATE_BOUND && std::abs(alpha) < MATE_BOUND) {
@@ -1131,7 +1168,7 @@ public:
             }
             mscore[i] = sc;
         }
-        // 同步�?moves[] �?mscore[] 做按分数降序排序 (插入排序, nm 通常 < 50)
+        // ͬ��??moves[] ??mscore[] ���������������� (��������, nm ͨ�� < 50)
         for (int i = 1; i < nm; ++i) {
             int s = mscore[i]; Move mv = moves[i]; int j = i - 1;
             while (j >= 0 && mscore[j] < s) { mscore[j+1] = mscore[j]; moves[j+1] = moves[j]; --j; }
@@ -1147,37 +1184,61 @@ public:
         Move quiet_tried[128];
         int qt_n = 0;
         int legal_count = 0;
+        bool pruned_any = false;
+        for (int pass = 0; pass < 2; ++pass) {
+            bool allow_pruning = (pass == 0);
+            
+            //��һ�������⣺�����һ���Ϸ�����29999�ˡ������ǲ�ok����breakҪ����
+            //有一个大问题：如果第一步合法但分29999了。。。那不ok不能break要再找
 
-        for (int mi = 0; mi < nm; ++mi) {
-            const Move& m = moves[mi];
-            moves_count++;
+            if (( maximizing_player ? best_score>=-MATE_BOUND : best_score<=MATE_BOUND)&&pass == 1 && (legal_count > 0 || !pruned_any)) break;
+            // debug[pass]++; 千分之一不到的pass==1
+			for (int mi = 0; mi < nm; ++mi) {
+            	
+                const Move& m = moves[mi];
+//					printf("\n%d\t%d\t%d\t%d\t%d\t",mi,m.r1,m.c1,m.r2,m.c2);
+
+
+
+                moves_count++;
             char captured = board[m.r2][m.c2];
             bool is_capture = (captured != '.');
             bool is_killer = (m == k1 || m == k2);
 
             // LMP
-            if (!is_root && depth <= 8 && !in_check && !is_capture && !is_killer
+            if (allow_pruning && !is_root && depth <= 8 && !in_check && !is_capture && !is_killer
                 && best_score > -MATE_BOUND
                 && moves_count > 3 + depth * depth) {
+                pruned_any = true;
                 continue;
             }
 
             // Futility
-            if (!is_root && depth <= 6 && !in_check && !is_capture
+            if (allow_pruning && !is_root && depth <= 6 && !in_check && !is_capture
                 && moves_count > 1
                 && best_score > -MATE_BOUND && best_score < MATE_BOUND) {
                 int fmargin = 100 + 100 * depth;
-                if (maximizing_player && eval + fmargin <= alpha) continue;
-                if (!maximizing_player && eval - fmargin >= beta) continue;
+                if (maximizing_player && eval + fmargin <= alpha) {
+                    pruned_any = true;
+                    continue;
+                }
+                if (!maximizing_player && eval - fmargin >= beta) {
+                    pruned_any = true;
+                    continue;
+                }
             }
-
+//			if (debugflag==2){
+//				cnt++;
+//			}
             // SEE pruning
-            if (!is_root && depth <= 4 && is_capture && !in_check) {
+            if (allow_pruning && !is_root && depth <= 4 && is_capture && !in_check) {
                 int vv = PIECE_VALUES[(unsigned char)captured];
                 int av = PIECE_VALUES[(unsigned char)board[m.r1][m.c1]];
-                if (vv < av && see(m) < -50) continue;
+                if (vv < av && see(m) < -50) {
+                    pruned_any = true;
+                    continue;
+                }
             }
-
             char cap = make_move(m);
             if (is_in_check(maximizing_player)) {
                 undo_move(m, cap);
@@ -1240,7 +1301,7 @@ public:
             if (stop_search) return {0, NO_MOVE};
 
             if (!is_capture) quiet_tried[qt_n++] = m;
-
+            
             if (maximizing_player) {
                 if (score > best_score) {
                     best_score = score;
@@ -1302,9 +1363,11 @@ public:
                     }
                 }
             }
+            //这句话要删除也是仅仅合法不够。
+//            if (!allow_pruning && legal_count) break;
         }
-
-        // 所有伪合法走法都自将 = 杀棋 (象棋中 stalemate 也按输处理)
+        }
+        // ����α�Ϸ��߷����Խ� = ɱ�� (������ stalemate Ҳ���䴦��)
         if (legal_count == 0) {
             return {maximizing_player ? -SCORE_INF + ply : SCORE_INF - ply, NO_MOVE};
         }
@@ -1329,9 +1392,8 @@ public:
             tte.score = store_score;
             tte.best_move = best_move;
             tte.age = tt_age;
-        }
-
-        return {best_score, best_move};
+        }      
+		return {best_score, best_move};
     }
 
     SearchResult search_main(double max_time, bool is_ai_red) {
@@ -1345,7 +1407,6 @@ public:
 
         for (int depth = 1; depth < 64; ++depth) {
             SearchResult res;
-
             if (depth < 4) {
                 res = minimax(depth, -SCORE_INF - 1, SCORE_INF + 1,
                               is_ai_red, true, -1, true, 0);
@@ -1381,12 +1442,13 @@ public:
 
             auto now = std::chrono::steady_clock::now();
             double elapsed = std::chrono::duration<double>(now - start_tp).count();
-
-            logfile << "info depth " << depth
-                    << " score " << res.score
-                    << " time " << (int)(elapsed * 1000)
-                    << " nodes " << nodes
-                    << std::endl;
+            // 发现全有pass1的。
+           logfile << "info depth " << depth
+                   << " score " << res.score
+                   << " time " << (int)(elapsed * 1000)
+                   << " nodes " << nodes
+                   << std::endl;
+            printf("%d %d\n",debug[0],debug[1]);
 
             if (std::abs(res.score) > MATE_BOUND) break;
             if (elapsed > max_time * 0.16 && depth >= 4) break;
@@ -1395,7 +1457,7 @@ public:
     }
 };
 
-int main() {
+int main(int argc, char** argv) {
     std::ios::sync_with_stdio(false);
     std::cin.tie(nullptr);
     init_piece_values();
@@ -1408,7 +1470,17 @@ int main() {
     std::string line;
     int cnt = 0;
 
-    while (std::getline(std::cin, line)) {
+    // 调试用: 加一个文件参数则从文件读命令, 方便 IDE 单步调试
+    // 例: xiangqi_ai_debug.exe engine_cmds_20260812_225910.log
+    std::ifstream debug_in;
+    std::istream* in = &std::cin;
+    if (argc > 1) {
+        debug_in.open(argv[1]);
+        if (!debug_in) { std::cerr << "cannot open " << argv[1] << std::endl; return 1; }
+        in = &debug_in;
+    }
+
+    while (std::getline(*in, line)) {
         if (line == "quit") break;
         if (line == "ready") std::cout << "readyok" << std::endl;
 
@@ -1474,8 +1546,8 @@ int main() {
             }
         }
         else if (line.substr(0, 8) == "setboard") {
-            // setboard <fen-rows> <side>      (side: 'w' or 'b'; 默认 'w')
-            // 例: setboard 1cbakabr1/3RR4/9/p1p1C3p/6p2/2P6/P3P1ncP/4B1r2/1C2A4/4KAB2 b
+            // setboard <fen-rows> <side>      (side: 'w' or 'b'; Ĭ�� 'w')
+            // ��: setboard 1cbakabr1/3RR4/9/p1p1C3p/6p2/2P6/P3P1ncP/4B1r2/1C2A4/4KAB2 b
             std::string rest = line.size() > 8 ? line.substr(9) : "";
             for (int r = 0; r < 10; ++r)
                 for (int c = 0; c < 9; ++c)
@@ -1492,7 +1564,7 @@ int main() {
             while (i < rest.size() && rest[i] == ' ') i++;
             if (i < rest.size() && (rest[i] == 'b' || rest[i] == 'B')) engine.turn = 1;
 
-            // 重置搜索附属状态
+            // ������������״̬
             engine.forbidden_move = NO_MOVE;
             engine.game_over = false;
             for (auto& e : engine.tt) { e.flag = TT_INVALID; e.age = 0; }
@@ -1516,10 +1588,15 @@ int main() {
 
 /*
 g++ -O3 -std=c++17 -march=native -mtune=native -funroll-loops -fno-exceptions -fno-rtti -flto -DNDEBUG -static -static-libgcc -static-libstdc++ -o xiangqi_ai.exe xiangqi_ai.cpp
+调试
+g++ -g -O0 -std=c++17 -march=native -static -static-libgcc -static-libstdc++ -o xiangqi_ai_debug.exe xiangqi_ai.cpp
 
 ./xiangqi_ai 
 setboard 3ak4/4a4/2n4PC/9/4R4/9/1p2C4/4r4/1n2A4/4KA3 b
 side red
 search
-(电脑黑)
+(���Ժ�)
+https://sachess.com/zh-cn/xiangqi-photo-to-fen/ ͼƬת��fen
+
+
 */
