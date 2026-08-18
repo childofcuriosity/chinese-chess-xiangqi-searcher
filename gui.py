@@ -18,7 +18,7 @@ import random
 ENGINE_TYPE = 'cpp'  # 'python' or 'cpp'，现在只更新cpp
 
 # --- 云库配置 (cpp 引擎不联网, 由 GUI 代查) ---
-CLOUD_BOOK_ENABLED =1    # 1=启用; 0=禁用
+CLOUD_BOOK_ENABLED =0 #1    # 1=启用; 0=禁用
 QUERY_SCORE_THRESHOLD = 20
 CLOUD_TIMEOUT = 2.0
 
