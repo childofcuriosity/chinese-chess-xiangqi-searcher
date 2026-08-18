@@ -16,7 +16,12 @@
 | :--- | :--- |
 | `xiangqi_ai.cpp` | C++ 引擎源码(核心) |
 | `xiangqi_ai.exe` | 编译好的引擎(仓库自带) |
+| `common.py` | 棋盘规则 + 引擎进程通信,被 `gui.py` 和 `webapp.py` 共用 |
 | `gui.py` | pygame 图形界面,通过 stdio 驱动引擎 |
+| `webapp.py` | 网页版后端(FastAPI + WebSocket) |
+| `static/index.html` | 网页版前端(canvas 棋盘) |
+| `deploy/` | 一键部署脚本(服务器信息在 `secrets.env`,已 gitignore) |
+| `tests/` | 网页版端到端测试(7 用例,含真实引擎对弈) |
 | `cross_arena.py` | 对战皮卡鱼测试脚本 |
 | `pikafish.exe` / `pikafish.nnue` | 皮卡鱼引擎及权重(测试用) |
 | `selfplay.py` | 自对弈回归仲裁工具 |
@@ -47,6 +52,27 @@
    python gui.py
    ```
 
+## 网页版
+
+浏览器在线对弈:[webapp.py](webapp.py)(FastAPI + WebSocket)+ [static/index.html](static/index.html)(canvas 棋盘)。服务端权威校验走法,每局一个独立引擎进程,多人可同时玩,刷新断线自动续局,手机也能玩。
+
+本地运行:
+
+```bash
+pip install fastapi "uvicorn[standard]"
+python webapp.py            # 浏览器打开 http://localhost:8000
+```
+
+部署到 Linux 服务器(一键脚本,服务器信息在 `deploy/secrets.env`,已被 gitignore 不上传):
+
+```bash
+cp deploy/secrets.env.example deploy/secrets.env   # 填入 ssh 别名/IP/端口
+bash deploy/deploy.sh                              # 或 PowerShell:
+                                                   # powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1
+```
+
+脚本自动完成:上传代码 → 引擎源码有变化才 g++ 重编译 → 更新 systemd 服务并重启 → HTTP 验证。并发上限/空闲回收可用环境变量 `XQ_MAX_GAMES` / `XQ_IDLE_TIMEOUT` 调整(见 [webapp.py](webapp.py) 头部注释)。
+
 ## 引擎功能
 
 - **搜索**:迭代加深 + PVS + Alpha-Beta 剪枝,置换表(800 万条目)+ Zobrist 哈希,空步裁剪,静态搜索,历史启发 + 杀手启发,MVV-LVA 着法排序
@@ -55,7 +81,7 @@
 
 ## 引擎协议(stdio)
 
-gui.py 与引擎通过标准输入输出通信:
+gui.py / webapp.py 与引擎通过标准输入输出通信:
 
 | 命令 | 说明 |
 | :--- | :--- |
