@@ -15,11 +15,12 @@ __pycache__/
 *.exe
 *.o
 *.obj
+# 主引擎和皮卡鱼二进制随仓库发布
+!xiangqi_ai.exe
+!pikafish.exe
 
 # 本地大文件/引擎资源(不进仓库)
 pikafish/
-pikafish.exe
-pikafish.nnue
 dataset*.txt
 
 # 本地记录
