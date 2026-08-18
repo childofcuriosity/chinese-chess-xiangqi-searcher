@@ -22,8 +22,7 @@ pikafish.exe
 pikafish.nnue
 dataset*.txt
 
-# 截图和本地记录
-捕获*.PNG
+# 本地记录
 和高手下赢/
 
 # 本地配置

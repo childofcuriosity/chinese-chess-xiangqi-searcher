@@ -1,82 +1,74 @@
-# Chinese Chess Xiangqi Searcher (Python版中国象棋AI)
+# 中国象棋 AI
 
-基于 Python 实现的传统算法中国象棋 AI 引擎，包含完整的图形化界面（GUI）。
+传统搜索算法实现的中国象棋 AI:C++ 引擎 [xiangqi_ai.cpp](xiangqi_ai.cpp) + pygame 图形界面 [gui.py](gui.py)。
 
-本项目旨在通过纯 Python 代码展示现代博弈程序的构建方式，使用了 Alpha-Beta 剪枝、置换表、启发式搜索等多种高级算法。棋力约为天天象棋专1水平。
+自测棋力可战胜固定深度 7 的皮卡鱼。
 
-## ✨ 功能特性
+## 截图
 
-*   **图形化界面 (GUI)**: 基于 `pygame` 开发，支持红黑选边、棋盘翻转、鼠标交互。
-*   **云开局库**: 集成 ChessDB 云库 API，开局阶段自动查询最优招法，提升开局水平。
-*   **核心算法**:
-    *   **搜索**: Minimax 算法 + Alpha-Beta 剪枝。
-    *   **优化**: 迭代加深 (Iterative Deepening)、空步裁剪 (Null Move Pruning)。
-    *   **缓存**: Zobrist Hashing + 置换表 (Transposition Table)，有效减少重复搜索。
-    *   **排序**: 历史启发 (History Heuristic) + 杀手启发 (Killer Heuristic) + MVV-LVA (最轻价值受害者/最有价值攻击者)。
-    *   **稳定性**: 静态搜索 (Quiescence Search) 防止水平线效应。
-*   **跨平台**: 支持 Windows, macOS, Linux。
-
-## 📸 运行截图
-
-| 游戏主界面 | 思考中 |
+| 开局界面 | 计算日志界面 |
 | :---: | :---: |
-| ![主界面](捕获.PNG) | ![思考中](捕获-1.PNG) |
+| ![开局界面](开局界面.png) | ![计算日志界面](计算日志界面.png) |
 
-## 🛠️ 环境依赖与安装
+## 目录结构
 
-为了获得最佳的 AI 思考速度，**强烈建议** 使用 PyPy3 来运行 AI 引擎，而 GUI 界面则使用标准 Python 运行。
+| 文件 | 说明 |
+| :--- | :--- |
+| `xiangqi_ai.cpp` | C++ 引擎源码(核心) |
+| `gui.py` | pygame 图形界面,通过 stdio 驱动引擎 |
+| `selfplay.py` | 自对弈回归仲裁工具 |
+| `simhei.ttf` | 界面字体 |
 
-### 1. 基础依赖
-确保你安装了 Python 3.x 和 Pygame：
+## 运行
+
+1. 编译引擎(需要 MSYS2 UCRT64 的 GCC):
+
+   ```bash
+   g++ -O3 -std=c++17 -march=native -DNDEBUG \
+       -fno-exceptions -fno-rtti \
+       -static -static-libgcc -static-libstdc++ \
+       -o xiangqi_ai.exe xiangqi_ai.cpp
+   ```
+
+   `-static*` 是必须的:gui.py 用 subprocess 启动引擎时不带 MSYS2 的 PATH,动态链接的 DLL 找不到会静默启动失败。
+
+2. 安装界面依赖:
+
+   ```bash
+   pip install pygame
+   ```
+
+3. 运行:
+
+   ```bash
+   python gui.py
+   ```
+
+## 引擎功能
+
+- **搜索**:迭代加深 + PVS + Alpha-Beta 剪枝,置换表(800 万条目)+ Zobrist 哈希,空步裁剪,静态搜索,历史启发 + 杀手启发,MVV-LVA 着法排序
+- **评估**:子力价值 + 中局/残局两套棋子位置表(PST,参考象眼)
+- **着法生成**:位运算维护行列占位,快速生成与合法性判断
+
+## 引擎协议(stdio)
+
+gui.py 与引擎通过标准输入输出通信:
+
+| 命令 | 说明 |
+| :--- | :--- |
+| `ready` | 引擎回复 `readyok` |
+| `side red` / `side black` | 设置**人类**执子方,引擎自动执相反色。注意:`side black` 表示引擎执红 |
+| `setboard <FEN>` | 设置局面 |
+| `move r1 c1 r2 c2` | 告知引擎对手的着法 |
+| `forbid r1 c1 r2 c2` | 设置禁手 |
+| `search` | 引擎思考并走自己一步,输出 `move r1 c1 r2 c2` 或 `resign` |
+| `print` | 输出当前棋盘 |
+| `quit` | 退出 |
+
+## 自对弈测试
+
+两个引擎互相对弈,检测吃王 / 长将 / 步数上限:
 
 ```bash
-pip install pygame
+python selfplay.py <红方exe> <黑方exe> [最大步数=200]
 ```
-
-### 2. 安装 PyPy3
-由于 Python 的解释执行特性，直接使用标准 Python (`CPython`) 运行 AI 计算会较慢。
-*   下载并安装 [PyPy3](https://www.pypy.org/download.html)。
-*   确保 `pypy3` 命令已添加到系统环境变量中。
-
-## 🚀 运行方法
-
-直接使用 Python 运行 GUI，它会调用默认配置启动 AI。
-
-```bash
-python gui.py
-```
-
-## ⚙️ 核心参数配置
-
-你可以在 `ai.py` 文件的头部修改宏定义来调整 AI 的行为：
-
-| 参数 | 默认值 | 说明 |
-| :--- | :--- | :--- |
-| `USE_DEPTH` | `0` | `0`: 使用时间限制模式 (迭代加深)；`1`: 使用固定深度模式。 |
-| `CLOUD_BOOK_ENABLED` | `1` | `1`: 启用云库查询 (需联网)；`0`: 纯本地计算。 |
-| `OPEN_NMP` | `0` | `1`: 启用空步裁剪 (风险激进模式，计算快但可能漏杀)；`0`: 关闭。 |
-| `SCORE_INF` | `30000` | 定义无穷大的分数阈值。 |
-
-## 🧠 技术细节 (Technical Details)
-
-本项目代码结构清晰，适合学习象棋 AI 开发：
-
-1.  **局面表示**: 使用 10x9 的二维数组，配合 Piece-Square Tables (PST) 进行位置价值评估。
-2.  **着法生成**: 实现了中国象棋的所有行棋规则，包括蹩马腿、飞象眼、飞将等。
-3.  **搜索框架**:
-    *   采用 **Principal Variation Search (PVS)** 思想的基础。
-    *   **Zobrist Hashing**: 用于快速生成局面指纹，实现 O(1) 的局面比对。
-    *   **Transposition Table (TT)**: 记录 `Hash -> (Score, Depth, Flag, BestMove)`，极大提升搜索效率。
-4.  **通信协议**: GUI 与 AI 之间通过标准输入输出 (Stdin/Stdout) 通信，类 UCI 协议：
-    *   GUI -> AI: `position`, `search`, `move`
-    *   AI -> GUI: `bestmove`, `info`
-
-## ❤ 贡献
-
-欢迎提交 Issue 或 Pull Request 来改进代码！
-
-## 📄 开源协议
-
-MIT License
-
-
