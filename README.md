@@ -15,13 +15,16 @@
 | 文件 | 说明 |
 | :--- | :--- |
 | `xiangqi_ai.cpp` | C++ 引擎源码(核心) |
+| `xiangqi_ai.exe` | 编译好的引擎(仓库自带) |
 | `gui.py` | pygame 图形界面,通过 stdio 驱动引擎 |
+| `cross_arena.py` | 对战皮卡鱼测试脚本 |
+| `pikafish.exe` / `pikafish.nnue` | 皮卡鱼引擎及权重(测试用) |
 | `selfplay.py` | 自对弈回归仲裁工具 |
 | `simhei.ttf` | 界面字体 |
 
 ## 运行
 
-1. 编译引擎(需要 MSYS2 UCRT64 的 GCC):
+1. 编译引擎(仓库已自带 `xiangqi_ai.exe`,不改引擎代码可跳过此步;需要 MSYS2 UCRT64 的 GCC):
 
    ```bash
    g++ -O3 -std=c++17 -march=native -DNDEBUG \
@@ -64,6 +67,19 @@ gui.py 与引擎通过标准输入输出通信:
 | `search` | 引擎思考并走自己一步,输出 `move r1 c1 r2 c2` 或 `resign` |
 | `print` | 输出当前棋盘 |
 | `quit` | 退出 |
+
+## 对战皮卡鱼
+
+[cross_arena.py](cross_arena.py) 做协议翻译,让 xiangqi_ai.exe 与皮卡鱼对局:
+
+```bash
+python cross_arena.py                    # 单局: 我方执红 vs 皮卡鱼深度1
+python cross_arena.py --pika-depth 7     # vs 深度7
+python cross_arena.py --visualize        # 动态打印棋盘
+python cross_arena.py --matrix 7         # 深度矩阵: 皮卡鱼深度1..7, 每档两局互换先手
+```
+
+皮卡鱼说 UCI 协议,我方引擎说自家 stdio 协议,脚本负责协议翻译和坐标转换。
 
 ## 自对弈测试
 
