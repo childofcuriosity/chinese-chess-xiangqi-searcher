@@ -5,17 +5,14 @@ Pygame front-end for your Xiangqi AI.
 """
 
 import pygame
-import sys
-import subprocess
-import threading
-import queue
 import os
 import urllib.request
 import urllib.parse
 import random
 
+from common import LocalBoard, EngineClient, PIECE_CHARS, ROWS, COLS
+
 # --- GUI 配置 ---
-ENGINE_TYPE = 'cpp'  # 'python' or 'cpp'，现在只更新cpp
 
 # --- 云库配置 (cpp 引擎不联网, 由 GUI 代查) ---
 CLOUD_BOOK_ENABLED =0 #1    # 1=启用; 0=禁用
@@ -43,231 +40,6 @@ COLOR_BTN = (220, 220, 220)
 COLOR_BTN_HOVER = (200, 200, 255)
 COLOR_INPUT = (255, 255, 240)
 COLOR_INPUT_FOCUS = (255, 240, 200)
-
-PIECE_CHARS = {
-    'R': '车', 'N': '马', 'B': '相', 'A': '仕', 'K': '帅', 'C': '炮', 'P': '兵',
-    'r': '车', 'n': '马', 'b': '象', 'a': '士', 'k': '将', 'c': '炮', 'p': '卒',
-    '.': '．'
-}
-
-# --- 简单的本地 Board 类 ---
-class LocalBoard:
-    def __init__(self):
-        self.board = [
-            ['r', 'n', 'b', 'a', 'k', 'a', 'b', 'n', 'r'],
-            ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-            ['.', 'c', '.', '.', '.', '.', '.', 'c', '.'],
-            ['p', '.', 'p', '.', 'p', '.', 'p', '.', 'p'],
-            ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-            ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-            ['P', '.', 'P', '.', 'P', '.', 'P', '.', 'P'],
-            ['.', 'C', '.', '.', '.', '.', '.', 'C', '.'],
-            ['.', '.', '.', '.', '.', '.', '.', '.', '.'],
-            ['R', 'N', 'B', 'A', 'K', 'A', 'B', 'N', 'R']
-        ]
-        self.turn = 'red'
-
-    def move(self, r1, c1, r2, c2):
-        p = self.board[r1][c1]
-        self.board[r2][c2] = p
-        self.board[r1][c1] = '.'
-        self.turn = 'black' if self.turn == 'red' else 'red'
-
-    def is_red(self, p):
-        return p.isupper()
-
-    def in_board(self, r, c):
-        return 0 <= r < ROWS and 0 <= c < COLS
-
-    # ------------------------------------------------------------------
-    # 走法生成（从 ai.py 移植，完整规则）
-    # ------------------------------------------------------------------
-    def get_valid_moves(self, r, c):
-        """返回 (r, c) 处棋子所有合法目标格列表，不含送将步。"""
-        piece = self.board[r][c]
-        if piece == '.':
-            return []
-        is_red_piece = self.is_red(piece)
-        raw = self._pseudo_moves(r, c, piece, is_red_piece)
-        # 过滤送将
-        legal = []
-        for nr, nc in raw:
-            captured = self.board[nr][nc]
-            self.board[nr][nc] = piece
-            self.board[r][c] = '.'
-            if not self._is_in_check(is_red_piece):
-                legal.append((nr, nc))
-            self.board[r][c] = piece
-            self.board[nr][nc] = captured
-        return legal
-
-    def _pseudo_moves(self, r, c, piece, is_red_piece):
-        moves = []
-
-        def is_teammate(nr, nc):
-            p = self.board[nr][nc]
-            return p != '.' and self.is_red(p) == is_red_piece
-
-        lp = piece.lower()
-
-        # 车
-        if lp == 'r':
-            for dr, dc in [(0,1),(0,-1),(1,0),(-1,0)]:
-                nr, nc = r+dr, c+dc
-                while self.in_board(nr, nc):
-                    if self.board[nr][nc] == '.':
-                        moves.append((nr, nc))
-                    else:
-                        if not is_teammate(nr, nc):
-                            moves.append((nr, nc))
-                        break
-                    nr, nc = nr+dr, nc+dc
-
-        # 马
-        elif lp == 'n':
-            for dr, dc, lr, lc in [(-2,-1,-1,0),(-2,1,-1,0),(2,-1,1,0),(2,1,1,0),
-                                    (-1,-2,0,-1),(1,-2,0,-1),(-1,2,0,1),(1,2,0,1)]:
-                nr, nc, legr, legc = r+dr, c+dc, r+lr, c+lc
-                if (self.in_board(nr, nc) and self.in_board(legr, legc)
-                        and self.board[legr][legc] == '.' and not is_teammate(nr, nc)):
-                    moves.append((nr, nc))
-
-        # 炮
-        elif lp == 'c':
-            for dr, dc in [(0,1),(0,-1),(1,0),(-1,0)]:
-                nr, nc = r+dr, c+dc
-                platform = False
-                while self.in_board(nr, nc):
-                    if self.board[nr][nc] == '.':
-                        if not platform:
-                            moves.append((nr, nc))
-                    else:
-                        if not platform:
-                            platform = True
-                        else:
-                            if not is_teammate(nr, nc):
-                                moves.append((nr, nc))
-                            break
-                    nr, nc = nr+dr, nc+dc
-
-        # 相/象
-        elif lp == 'b':
-            for dr, dc, er, ec in [(-2,-2,-1,-1),(-2,2,-1,1),(2,-2,1,-1),(2,2,1,1)]:
-                nr, nc, er, ec = r+dr, c+dc, r+er, c+ec
-                if self.in_board(nr, nc) and self.board[er][ec] == '.' and not is_teammate(nr, nc):
-                    if (is_red_piece and nr >= 5) or (not is_red_piece and nr <= 4):
-                        moves.append((nr, nc))
-
-        # 士/仕
-        elif lp == 'a':
-            for dr, dc in [(-1,-1),(-1,1),(1,-1),(1,1)]:
-                nr, nc = r+dr, c+dc
-                if self.in_board(nr, nc) and 3 <= nc <= 5 and not is_teammate(nr, nc):
-                    if (is_red_piece and 7 <= nr <= 9) or (not is_red_piece and 0 <= nr <= 2):
-                        moves.append((nr, nc))
-
-        # 帅/将
-        elif lp == 'k':
-            for dr, dc in [(0,1),(0,-1),(1,0),(-1,0)]:
-                nr, nc = r+dr, c+dc
-                if self.in_board(nr, nc) and 3 <= nc <= 5 and not is_teammate(nr, nc):
-                    if (is_red_piece and 7 <= nr <= 9) or (not is_red_piece and 0 <= nr <= 2):
-                        moves.append((nr, nc))
-            # 飞将
-            direction = -1 if is_red_piece else 1
-            check_r = r + direction
-            while 0 <= check_r < ROWS:
-                tp = self.board[check_r][c]
-                if tp != '.':
-                    enemy_king = 'k' if is_red_piece else 'K'
-                    if tp == enemy_king:
-                        moves.append((check_r, c))
-                    break
-                check_r += direction
-
-        # 兵/卒
-        elif lp == 'p':
-            dr = -1 if is_red_piece else 1
-            if self.in_board(r+dr, c) and not is_teammate(r+dr, c):
-                moves.append((r+dr, c))
-            if (is_red_piece and r <= 4) or (not is_red_piece and r >= 5):
-                for dc in [-1, 1]:
-                    if self.in_board(r, c+dc) and not is_teammate(r, c+dc):
-                        moves.append((r, c+dc))
-
-        return moves
-
-    def _find_king(self, is_red_king):
-        target = 'K' if is_red_king else 'k'
-        for r in range(ROWS):
-            for c in range(COLS):
-                if self.board[r][c] == target:
-                    return r, c
-        return None
-
-    def _is_in_check(self, is_red_turn):
-        """判断 is_red_turn 方是否被将军（在伪走法过滤中调用）。"""
-        kp = self._find_king(is_red_turn)
-        if not kp:
-            return True
-        kr, kc = kp
-
-        # 车/将 / 炮 扫描
-        for dr, dc in [(0,1),(0,-1),(1,0),(-1,0)]:
-            nr, nc = kr+dr, kc+dc
-            first = None
-            while self.in_board(nr, nc):
-                p = self.board[nr][nc]
-                if p != '.':
-                    if first is None:
-                        first = p
-                        if self.is_red(p) != is_red_turn and p.lower() in ('r','k'):
-                            return True
-                    else:
-                        if self.is_red(p) != is_red_turn and p.lower() == 'c':
-                            return True
-                        break
-                nr, nc = nr+dr, nc+dc
-
-        # 马 (已修正马腿相对于老将的偏移量)
-        for dr, dc, lr, lc in[(-2,-1,-1,-1), (-2,1,-1,1), (2,-1,1,-1), (2,1,1,1),
-                               (-1,-2,-1,-1), (1,-2,1,-1), (-1,2,-1,1), (1,2,1,1)]:
-            nr, nc, legr, legc = kr+dr, kc+dc, kr+lr, kc+lc
-            if self.in_board(nr, nc) and self.in_board(legr, legc):
-                p = self.board[nr][nc]
-                if p != '.' and self.is_red(p) != is_red_turn and p.lower() == 'n':
-                    if self.board[legr][legc] == '.':
-                        return True
-
-        # 兵/卒
-        pawn_char = 'p' if is_red_turn else 'P'
-        pawn_dir  = 1   if is_red_turn else -1
-        if self.in_board(kr - pawn_dir, kc) and self.board[kr - pawn_dir][kc] == pawn_char:
-            return True
-        for dc in [-1, 1]:
-            if self.in_board(kr, kc+dc) and self.board[kr][kc+dc] == pawn_char:
-                return True
-
-        return False
-
-    def to_fen(self):
-        fen_rows = []
-        for r in range(ROWS):
-            empty = 0
-            row_str = ""
-            for cc in range(COLS):
-                p = self.board[r][cc]
-                if p == '.':
-                    empty += 1
-                else:
-                    if empty > 0:
-                        row_str += str(empty); empty = 0
-                    row_str += p
-            if empty > 0:
-                row_str += str(empty)
-            fen_rows.append(row_str)
-        side = 'w' if self.turn == 'red' else 'b'
-        return "/".join(fen_rows) + f" {side} - - 0 1"
 
 # --- 云库查询 (gui 端代理) ---
 _cloud_cache = {}
@@ -316,85 +88,6 @@ def query_cloud_book(fen, forbidden_move=None):
         if forbidden_move is None:
             _cloud_cache[fen] = None
         return None
-
-# --- AI 客户端类 ---
-class AIClient:
-    def __init__(self, pypy_path='pypy3', ai_filename='ai.py'):
-        self.pypy_path = pypy_path
-        self.ai_filename = ai_filename
-        self.process = None
-        self.msg_queue = queue.Queue()
-        self.running = False
-        self.t = None
-        self.cmd_log = None
-
-    def connect(self):
-        try:
-            if ENGINE_TYPE == "python":
-                self.process = subprocess.Popen(
-                    [self.pypy_path, self.ai_filename],
-                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    text=True, encoding='utf-8', errors='replace', bufsize=1
-                )
-            elif ENGINE_TYPE == "cpp":
-                self.process = subprocess.Popen(
-                    ['./xiangqi_ai'],
-                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    text=True, encoding='utf-8', errors='replace', bufsize=1
-                )
-        except FileNotFoundError:
-            print(f"错误: 找不到命令 '{self.pypy_path}'")
-            sys.exit(1)
-
-        self.running = True
-        self.t = threading.Thread(target=self._reader_thread, daemon=True)
-        self.t.start()
-
-        # 打开命令日志，方便复刻调试
-        import datetime, os
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        os.makedirs("logs", exist_ok=True)
-        self.cmd_log = open(f"logs/engine_cmds_{ts}.log", "w", encoding="utf-8")
-
-    def _reader_thread(self):
-        while self.running:
-            try:
-                line = self.process.stdout.readline()
-                if not line:
-                    break
-                self.msg_queue.put(line.strip())
-            except Exception as e:
-                print(f"Reader Error: {e}")
-                break
-
-    def send(self, cmd):
-        if self.process and self.process.poll() is None:
-            try:
-                self.process.stdin.write(cmd + "\n")
-                self.process.stdin.flush()
-                if self.cmd_log:
-                    self.cmd_log.write(cmd + "\n")
-                    self.cmd_log.flush()
-            except Exception as e:
-                print("Send error:", e)
-
-    def get_message(self):
-        try:
-            return self.msg_queue.get_nowait()
-        except queue.Empty:
-            return None
-
-    def close(self):
-        self.running = False
-        if self.process and self.process.poll() is None:
-            try:
-                self.send("quit")
-                self.process.terminate()
-            except Exception:
-                pass
-        if self.cmd_log:
-            self.cmd_log.close()
-            self.cmd_log = None
 
 # --- 小型 UI 组件 ---
 class Button:
@@ -454,9 +147,6 @@ class XiangqiGUI:
         self.choice_side = 'red'
         self.choice_red_bottom = True
         self.build_start_ui()
-
-        self.pypy_path = 'pypy3'
-        self.ai_filename = 'ai.py'
 
     def build_start_ui(self):
         w = 220; h = 48
@@ -637,7 +327,7 @@ class XiangqiGUI:
         self.ai_thinking = True
 
     def start_ai_and_wait_ready(self):
-        self.ai = AIClient(pypy_path=self.pypy_path, ai_filename=self.ai_filename)
+        self.ai = EngineClient(['./xiangqi_ai'], log_dir='logs')
         self.ai.connect()
         pygame.time.wait(300)
         self.ai.send(f"side {self.player_side}")

@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中国象棋 · 网页对战</title>
+<style>
+  :root {
+    --bg: #3a3226;
+    --panel: #4a4032;
+    --text: #f0e6d2;
+    --accent: #e0b060;
+    --danger: #d06050;
+    --ok: #70b060;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 12px;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 620px;
+  }
+  h1 { font-size: 22px; font-weight: normal; letter-spacing: 4px; margin-top: 4px; }
+  #status {
+    min-height: 28px;
+    font-size: 17px;
+    color: var(--accent);
+    text-align: center;
+  }
+  #status.alert { color: #e8c040; }
+  #status.error { color: var(--danger); }
+  #status.win { color: var(--ok); }
+  .board-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 6px 24px rgba(0,0,0,.45);
+  }
+  canvas#board {
+    display: block;
+    width: 100%;
+    height: auto;
+    cursor: pointer;
+    background: #EECB95;
+  }
+  #controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+  button {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid #6a5a44;
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  button:hover { background: #5a4c3a; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: #2a2010; font-weight: bold; border-color: var(--accent); }
+  button.primary:hover { background: #ecc878; }
+  button.danger { border-color: var(--danger); color: #f0a090; }
+  /* 选边面板 */
+  #side-picker {
+    position: absolute;
+    inset: 0;
+    background: rgba(30, 24, 16, .88);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    z-index: 10;
+    border-radius: 10px;
+  }
+  #side-picker.hidden { display: none; }
+  #side-picker .pick-row { display: flex; gap: 10px; }
+  #side-picker .pick-note { font-size: 14px; color: #c8b898; }
+  /* 断线遮罩 */
+  #overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(30, 24, 16, .92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    z-index: 20;
+    border-radius: 10px;
+  }
+  #overlay.hidden { display: none; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 4px solid rgba(240,230,210,.25);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #thinking-box { display: flex; align-items: center; gap: 8px; justify-content: center; }
+  #thinking-box .spinner { width: 18px; height: 18px; border-width: 3px; }
+  #thinking-box.hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>中国象棋 · 网页对战</h1>
+  <div id="status"></div>
+  <div class="board-wrap">
+    <canvas id="board"></canvas>
+    <div id="side-picker">
+      <div style="font-size:19px;color:var(--accent)">选择执子方</div>
+      <div class="pick-row">
+        <button id="btn-pick-red" class="primary">执红（先走）</button>
+        <button id="btn-pick-black">执黑（后走）</button>
+      </div>
+      <div class="pick-row">
+        <button id="btn-pick-flip">棋盘: 红在底</button>
+      </div>
+      <div id="btn-start" class="pick-note" style="display:none">点击上面按钮开始</div>
+    </div>
+    <div id="overlay" class="hidden">
+      <div class="spinner"></div>
+      <div id="overlay-text">连接断开，重连中…</div>
+    </div>
+  </div>
+  <div id="controls">
+    <button id="btn-flip">翻转棋盘</button>
+    <button id="btn-resign" class="danger">认输</button>
+    <button id="btn-new">新对局</button>
+  </div>
+  <div id="thinking-box" class="hidden"><div class="spinner"></div><span>引擎思考中…</span></div>
+</div>
+
+<script>
+"use strict";
+
+// ---------- 常量（与后端 gui.py 配色一致） ----------
+const ROWS = 10, COLS = 9;
+const CELL = 64, MARGIN = 40;
+const CW = MARGIN * 2 + (COLS - 1) * CELL;   // 592
+const CH = MARGIN * 2 + (ROWS - 1) * CELL;   // 656
+const COLOR_BG = '#EECB95';
+const COLOR_LINE = '#000000';
+const COLOR_RED = '#C80000';
+const COLOR_BLACK = '#141414';
+const COLOR_SELECT = '#00C800';
+const COLOR_VALID_MOVE = '#00B400';
+const COLOR_VALID_CAPTURE = '#DC3C00';
+const PIECE_BG = '#FADCB4';
+const PIECE_CHARS = {
+  R:'车', N:'马', B:'相', A:'仕', K:'帅', C:'炮', P:'兵',
+  r:'车', n:'马', b:'象', a:'士', k:'将', c:'炮', p:'卒'
+};
+
+// ---------- 状态 ----------
+let ws = null;
+let reconnectTimer = null;
+let pendingNewGame = null;   // 连接建立后待发的 new_game
+let state = {
+  sid: null,            // localStorage 持久化，刷新可续局
+  board: null,
+  turn: null,
+  side: null,
+  flip: false,
+  thinking: false,
+  lastMove: null,
+  inCheck: null,
+  over: false,
+  reason: null,
+  selected: null,       // {r, c}
+  legal: []             // [[r,c], ...]
+};
+let pickSide = 'red';
+let pickFlip = false;
+// 有 sid 时先隐藏面板尝试 resume，失败再由 error 消息拉起面板
+let inPicker = !localStorage.getItem('xq_sid');
+
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+const pickerEl = document.getElementById('side-picker');
+const overlayEl = document.getElementById('overlay');
+const overlayText = document.getElementById('overlay-text');
+const thinkingBox = document.getElementById('thinking-box');
+
+// 高清屏适配
+const dpr = window.devicePixelRatio || 1;
+canvas.width = CW * dpr;
+canvas.height = CH * dpr;
+ctx.scale(dpr, dpr);
+
+// ---------- 渲染 ----------
+function disp(r, c) {
+  if (state.flip) return [ROWS - 1 - r, COLS - 1 - c];
+  return [r, c];
+}
+function gridXY(r, c) {
+  const [dr, dc] = disp(r, c);
+  return [MARGIN + dc * CELL, MARGIN + dr * CELL];
+}
+
+function drawBoard() {
+  ctx.fillStyle = COLOR_BG;
+  ctx.fillRect(0, 0, CW, CH);
+  ctx.strokeStyle = COLOR_LINE;
+  ctx.lineWidth = 2;
+
+  // 横线（r=0..9，除河界外 10 条）
+  for (let r = 0; r < ROWS; r++) {
+    const y = MARGIN + r * CELL;
+    ctx.beginPath();
+    ctx.moveTo(MARGIN, y);
+    ctx.lineTo(CW - MARGIN, y);
+    ctx.stroke();
+  }
+  // 竖线（c=0..8，上下两段，河界处断开；边列通顶）
+  for (let c = 0; c < COLS; c++) {
+    const x = MARGIN + c * CELL;
+    ctx.beginPath();
+    ctx.moveTo(x, MARGIN);
+    ctx.lineTo(x, MARGIN + 4 * CELL);
+    ctx.moveTo(x, MARGIN + 5 * CELL);
+    ctx.lineTo(x, MARGIN + 9 * CELL);
+    ctx.stroke();
+  }
+  // 九宫斜线
+  const diag = [[0,3,2,5],[0,5,2,3],[7,3,9,5],[7,5,9,3]];
+  for (const [r1,c1,r2,c2] of diag) {
+    const [x1,y1] = gridXY(r1,c1), [x2,y2] = gridXY(r2,c2);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  // 楚河汉界
+  ctx.fillStyle = COLOR_LINE;
+  ctx.font = 'bold 26px "STKaiti","KaiTi","Microsoft YaHei",serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const riverY = MARGIN + 4.5 * CELL;
+  ctx.fillText('楚  河', MARGIN + 2 * CELL, riverY);
+  ctx.fillText('汉  界', MARGIN + 6 * CELL, riverY);
+
+  // 最后一步高亮
+  if (state.lastMove) {
+    ctx.fillStyle = 'rgba(255, 230, 140, .55)';
+    for (const [r, c] of [[state.lastMove.r1, state.lastMove.c1],
+                          [state.lastMove.r2, state.lastMove.c2]]) {
+      const [x, y] = gridXY(r, c);
+      ctx.beginPath();
+      ctx.arc(x, y, CELL * 0.48, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // 合法落点（选子时）
+  if (state.selected && state.legal.length) {
+    for (const [r, c] of state.legal) {
+      const [x, y] = gridXY(r, c);
+      if (state.board[r][c] !== '.') {
+        ctx.strokeStyle = COLOR_VALID_CAPTURE;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(x, y, CELL * 0.42, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = COLOR_LINE;
+      } else {
+        ctx.fillStyle = COLOR_VALID_MOVE;
+        ctx.beginPath();
+        ctx.arc(x, y, CELL * 0.16, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  // 选中框
+  if (state.selected) {
+    const [x, y] = gridXY(state.selected.r, state.selected.c);
+    ctx.strokeStyle = COLOR_SELECT;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(x - CELL / 2, y - CELL / 2, CELL, CELL);
+    ctx.strokeStyle = COLOR_LINE;
+  }
+  // 棋子
+  if (state.board) {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const p = state.board[r][c];
+        if (p === '.') continue;
+        const [x, y] = gridXY(r, c);
+        const isRed = p === p.toUpperCase();
+        const color = isRed ? COLOR_RED : COLOR_BLACK;
+        ctx.fillStyle = PIECE_BG;
+        ctx.beginPath();
+        ctx.arc(x, y, CELL * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, CELL * 0.42, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.font = `bold ${CELL * 0.46}px "STKaiti","KaiTi","Microsoft YaHei",serif`;
+        ctx.fillText(PIECE_CHARS[p] || '?', x, y + 1);
+      }
+    }
+  }
+}
+
+// ---------- 状态栏 ----------
+function updateStatus() {
+  statusEl.className = '';
+  const el = statusEl;
+  if (state.over) {
+    el.className = state.reason === 'you_resigned' || state.reason === 'no_legal_moves_you_lost' || state.reason === 'engine_crashed'
+      ? 'error' : 'win';
+    const msgs = {
+      you_resigned: '你认输了',
+      engine_resigned: '引擎认输，你赢了！',
+      no_legal_moves_you_lost: '你被将死/困毙，输了',
+      no_legal_moves_engine_lost: '引擎无棋可走，你赢了！',
+      engine_crashed: '引擎出错，对局结束'
+    };
+    el.textContent = msgs[state.reason] || '对局结束';
+    return;
+  }
+  if (state.inCheck) {
+    el.className = 'alert';
+    el.textContent = `将军！${state.inCheck === 'red' ? '红' : '黑'}方被将军`;
+    return;
+  }
+  const sideName = state.side === 'red' ? '红' : '黑';
+  el.textContent = state.turn === state.side ? `轮到你走（你执${sideName}）` : '对方回合';
+}
+
+function setThinking(on) {
+  state.thinking = on;
+  thinkingBox.classList.toggle('hidden', !on);
+  if (!state.over) {
+    statusEl.className = '';
+    statusEl.textContent = on ? '引擎思考中…' : '';
+    if (!on) updateStatus();
+  }
+}
+
+// ---------- 网络 ----------
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  ws = new WebSocket(proto + location.host + '/ws');
+  ws.onopen = () => {
+    overlayEl.classList.add('hidden');
+    if (pendingNewGame) {
+      send(pendingNewGame);
+      pendingNewGame = null;
+      return;
+    }
+    const sid = localStorage.getItem('xq_sid');
+    if (sid) {
+      // 尝试续上上一局；失败会收到 error，转选边面板
+      send({ type: 'resume', sid });
+    }
+  };
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    handleMsg(msg);
+  };
+  ws.onclose = () => {
+    ws = null;
+    if (!state.over && state.sid && !inPicker) {
+      showOverlay('连接断开，重连中…');
+      scheduleReconnect();
+    }
+  };
+  ws.onerror = () => { /* onclose 会跟随触发 */ };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect();
+  }, 3000);
+}
+
+function showOverlay(text) {
+  overlayText.textContent = text;
+  overlayEl.classList.remove('hidden');
+}
+
+function handleMsg(msg) {
+  if (msg.type === 'state') {
+    if (msg.sid) {
+      state.sid = msg.sid;
+      localStorage.setItem('xq_sid', msg.sid);
+    }
+    state.board = msg.board;
+    state.turn = msg.turn;
+    state.side = msg.side;
+    state.flip = msg.flip;
+    state.lastMove = msg.last_move;
+    state.inCheck = msg.in_check;
+    state.over = msg.over;
+    state.reason = msg.reason;
+    if (msg.legal !== undefined && msg.legal !== null) {
+      state.legal = msg.legal;
+    } else {
+      state.legal = [];
+      state.selected = null;
+    }
+    if (msg.thinking !== undefined) setThinking(msg.thinking);
+    inPicker = false;
+    pickerEl.classList.add('hidden');
+    updateStatus();
+    drawBoard();
+  } else if (msg.type === 'error') {
+    if (msg.msg === '会话不存在，请新开对局') {
+      localStorage.removeItem('xq_sid');
+      state.sid = null;
+      inPicker = true;
+      pickerEl.classList.remove('hidden');
+      statusEl.textContent = msg.msg;
+    } else {
+      statusEl.className = 'error';
+      statusEl.textContent = msg.msg;
+    }
+  } else if (msg.type === 'busy') {
+    statusEl.className = 'error';
+    statusEl.textContent = '服务器繁忙，请稍后再试';
+    inPicker = true;
+    pickerEl.classList.remove('hidden');
+  }
+}
+
+// ---------- 交互 ----------
+canvas.addEventListener('click', (ev) => {
+  if (inPicker || state.over || state.thinking || !state.board) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = (ev.clientX - rect.left) * CW / rect.width;
+  const y = (ev.clientY - rect.top) * CH / rect.height;
+  let c = Math.round((x - MARGIN) / CELL);
+  let r = Math.round((y - MARGIN) / CELL);
+  if (state.flip) { r = ROWS - 1 - r; c = COLS - 1 - c; }
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+
+  const p = state.board[r][c];
+  const myPiece = p !== '.' && (p === p.toUpperCase()) === (state.side === 'red');
+
+  if (state.selected) {
+    const sel = state.selected;
+    if (sel.r === r && sel.c === c) {           // 再点自己：取消选中
+      state.selected = null; state.legal = []; drawBoard(); return;
+    }
+    const isTarget = state.legal.some(([lr, lc]) => lr === r && lc === c);
+    if (isTarget) {
+      send({ type: 'move', r1: sel.r, c1: sel.c, r2: r, c2: c });
+      state.selected = null; state.legal = [];
+      return;
+    }
+    if (myPiece) {                               // 换选己方另一子
+      state.selected = { r, c };
+      send({ type: 'select', r, c });
+      return;
+    }
+    state.selected = null; state.legal = [];     // 点空处/对方子：取消
+    drawBoard();
+    return;
+  }
+  if (myPiece) {
+    state.selected = { r, c };
+    send({ type: 'select', r, c });
+  }
+});
+
+// 选边面板
+document.getElementById('btn-pick-red').addEventListener('click', () => {
+  pickSide = 'red'; startGame();
+});
+document.getElementById('btn-pick-black').addEventListener('click', () => {
+  pickSide = 'black'; startGame();
+});
+document.getElementById('btn-pick-flip').addEventListener('click', () => {
+  pickFlip = !pickFlip;
+  document.getElementById('btn-pick-flip').textContent =
+    '棋盘: ' + (pickFlip ? '红在顶' : '红在底');
+});
+function startGame() {
+  state.sid = null;
+  localStorage.removeItem('xq_sid');
+  pendingNewGame = { type: 'new_game', side: pickSide, flip: pickFlip };
+  if (!ws || ws.readyState !== WebSocket.OPEN) { connect(); }
+  else {
+    send(pendingNewGame);
+    pendingNewGame = null;
+  }
+}
+
+// 对局中按钮
+document.getElementById('btn-flip').addEventListener('click', () => {
+  if (state.sid) send({ type: 'set_flip', flip: !state.flip });
+});
+document.getElementById('btn-resign').addEventListener('click', () => {
+  if (state.sid && !state.over && confirm('确定认输？')) {
+    send({ type: 'resign' });
+  }
+});
+document.getElementById('btn-new').addEventListener('click', () => {
+  inPicker = true;
+  pickerEl.classList.remove('hidden');
+  statusEl.textContent = '';
+});
+
+// 按初始状态设置面板可见性
+if (inPicker) pickerEl.classList.remove('hidden');
+else pickerEl.classList.add('hidden');
+
+connect();
+drawBoard();
+</script>
+</body>
+</html>

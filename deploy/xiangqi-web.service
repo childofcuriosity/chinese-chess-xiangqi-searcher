@@ -1,0 +1,16 @@
+[Unit]
+Description=Xiangqi Web Play (FastAPI + websocket)
+After=network.target
+
+[Service]
+Type=simple
+User=xhy
+WorkingDirectory=/opt/xq
+ExecStart=/opt/xq/venv/bin/uvicorn webapp:app --host 0.0.0.0 --port 8100
+Environment=XQ_MAX_GAMES=16
+Environment=XQ_IDLE_TIMEOUT=1800
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

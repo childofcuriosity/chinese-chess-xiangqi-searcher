@@ -28,3 +28,9 @@ dataset*.txt
 
 # 本地配置
 .claude/settings.local.json
+
+# 部署服务器信息 (IP/ssh 别名等, 不上传 github)
+deploy/secrets.env
+
+# 展示
+slides
