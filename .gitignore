@@ -1,37 +1,49 @@
-# 日志和临时文件
-log.txt
+# Logs and runtime output
 logs/
-engine_log.txt
 *.log
+engine_log.txt
 *.stackdump
 tmp.txt
 build_err.txt
 
-# Python
-__pycache__/
-*.pyc
+# A/B self-play output
+ab_selfplay_results/
+ab_results/
 
-# 编译产物
+# Python caches and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# C/C++ build artifacts
 *.exe
 *.o
 *.obj
-# 主引擎和皮卡鱼二进制随仓库发布
+*.a
+*.lib
+*.dll
+*.pdb
+
+# Executables intentionally tracked by this repository
 !xiangqi_ai.exe
 !pikafish.exe
 
-# 本地大文件/引擎资源(不进仓库)
+# Local engine resources and datasets
 pikafish/
 dataset*.txt
 
-# 本地记录
+# Local game records
 和高手下赢/
 
-# 本地配置
+# Local editor/agent configuration
 .claude/settings.local.json
+.agents/
+.codex/
 
-# 部署服务器信息 (IP/ssh 别名等, 不上传 github)
+# Deployment secrets
 deploy/secrets.env
 
-# 展示
-slides
-slides2
+# Generated presentation output (slides2 is tracked separately)
+slides/

@@ -1,7 +1,7 @@
 """
 自对弈仲裁: 让两个引擎对局, 检测吃王 / 长将 / 步数上限结束.
 用法:
-  python selfplay.py <red.exe> <black.exe> [max_plies=200]
+  python selfplay.py <red.exe> <black.exe> [max_plies=200] [seconds_per_move]
 """
 import subprocess, sys, time, os
 
@@ -34,7 +34,7 @@ def print_board(b):
     print("  " + " ".join(str(i) for i in range(9)))
 
 class Engine:
-    def __init__(self, exe_path, plays_red):
+    def __init__(self, exe_path, plays_red, seconds_per_move=None):
         self.exe = exe_path
         self.plays_red = plays_red
         # 引擎里 player_side 是 "人类方", AI 取反
@@ -48,6 +48,8 @@ class Engine:
         self._send("ready")
         self._wait_for("readyok")
         self._send(f"side {human_side}")
+        if seconds_per_move is not None:
+            self._send(f"time {seconds_per_move}")
 
     def _send(self, line):
         self.p.stdin.write(line + "\n")
@@ -90,9 +92,10 @@ def main():
         print(__doc__); sys.exit(1)
     red_exe, black_exe = sys.argv[1], sys.argv[2]
     max_plies = int(sys.argv[3]) if len(sys.argv) > 3 else 200
+    seconds_per_move = float(sys.argv[4]) if len(sys.argv) > 4 else None
 
-    red = Engine(red_exe, plays_red=True)
-    black = Engine(black_exe, plays_red=False)
+    red = Engine(red_exe, plays_red=True, seconds_per_move=seconds_per_move)
+    black = Engine(black_exe, plays_red=False, seconds_per_move=seconds_per_move)
     engines = [red, black]   # 0 = red to move, 1 = black
 
     board = new_board()

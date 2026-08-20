@@ -1034,19 +1034,6 @@ c . . A K A B R .
         PROFILE_SCOPE(_pq, &t_quiescence, &n_quiescence);
         bool in_check = cached_is_in_check(maximizing_player);
 
-        // Only checking qsearch children can form a perpetual counter-check loop.
-        // The qsearch root was already checked by minimax.
-        if (in_check && qs_depth > 0) {
-            bool repeated = false;
-            int rv = repetition_verdict(repeated);
-            if (rv != 0) {
-                int winner = (rv > 0) ? turn : (turn ^ 1);
-                return (winner == 0) ? (SCORE_INF - qs_depth)
-                                     : (-SCORE_INF + qs_depth);
-            }
-            if (repeated) return 0;
-        }
-
         if (!in_check) {
             int score = evaluate();
             if (maximizing_player) {
@@ -1058,11 +1045,31 @@ c . . A K A B R .
             }
         }
 
-        if (!in_check && qs_depth > 6) return evaluate();
+        if (qs_depth > 6) return evaluate();
 
         Move moves[128];
         int nm = 0;
         if (in_check) {
+            if (qs_depth > 3) {
+                bool repeated = false;
+                int rv = repetition_verdict(repeated);
+                if (rv != 0) {
+                    int winner = (rv > 0) ? turn : (turn ^ 1);
+                    return (winner == 0) ? (SCORE_INF - qs_depth)
+                                         : (-SCORE_INF + qs_depth);
+                }
+                if (repeated) return 0;
+
+                int evasions = gen_all_moves(maximizing_player, false, moves);
+                for (int i = 0; i < evasions; ++i) {
+                    char captured = make_move(moves[i]);
+                    bool legal = !is_in_check(maximizing_player);
+                    undo_move(moves[i], captured);
+                    if (legal) return evaluate();
+                }
+                return maximizing_player ? -SCORE_INF + qs_depth
+                                         :  SCORE_INF - qs_depth;
+            }
             nm = gen_all_moves(maximizing_player, false, moves);
         } else {
             Move raw[128];
@@ -1612,6 +1619,7 @@ int main(int argc, char** argv) {
     XiangqiEngine engine;
     std::string line;
     int cnt = 0;
+    double search_time_override = 0.0;
 
     // 调试用: 加一个文件参数则从文件读命令, 方便 IDE 单步调试
     // 例: xiangqi_ai_debug.exe engine_cmds_20260812_225910.log
@@ -1630,6 +1638,13 @@ int main(int argc, char** argv) {
         if (line.substr(0, 4) == "side") {
             if (line.find("red") != std::string::npos) engine.player_side = "red";
             else engine.player_side = "black";
+        }
+        else if (line.substr(0, 4) == "time") {
+            std::stringstream ss(line);
+            std::string cmd;
+            double seconds;
+            if (ss >> cmd >> seconds && seconds > 0.0)
+                search_time_override = seconds;
         }
         else if (line.substr(0, 4) == "move") {
             std::stringstream ss(line);
@@ -1666,7 +1681,9 @@ int main(int argc, char** argv) {
                 res = engine.minimax(LONG_MAX_DEPTH, -SCORE_INF - 1, SCORE_INF + 1,
                                      is_ai_red, true, -1, true, 0);
             } else {
-                double search_time = (cnt <= 3) ? 15.0 : LONG_MAX_TIME;
+                double search_time = search_time_override > 0.0
+                                   ? search_time_override
+                                   : ((cnt <= 3) ? 15.0 : LONG_MAX_TIME);
                 res = engine.search_main(search_time, is_ai_red);
             }
 
