@@ -1594,7 +1594,7 @@ c . . A K A B R .
                    << " time " << (int)(elapsed * 1000)
                    << " nodes " << nodes
                    << std::endl;
-            printf("%d %d\n",debug[0],debug[1]);
+            // printf("%d %d\n",debug[0],debug[1]);
 
             if (std::abs(res.score) > MATE_BOUND) break;
             if (elapsed > max_time * 0.16 && depth >= 4) break;
