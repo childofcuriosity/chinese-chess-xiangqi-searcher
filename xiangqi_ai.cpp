@@ -873,34 +873,35 @@ public:
 
     struct Attacker { int r, c; char p; };
     // д�� out, ��������; out �������� 17 ??
-    int attackers_to(int tr, int tc, bool by_red, Attacker* out) {
+    int attackers_to(int tr, int tc, bool by_red, Attacker* out,
+                     uint16_t see_row_occ, uint16_t see_col_occ) {
         PROFILE_SCOPE(_p, &t_attackers_to, &n_attackers_to);
         int n = 0;
-        int drs[4] = {0,0,1,-1};
-        int dcs[4] = {1,-1,0,0};
-        for (int i = 0; i < 4; ++i) {
-            int nr = tr + drs[i], nc = tc + dcs[i];
-            int seen = 0;
-            while (in_board(nr, nc)) {
-                char p = board[nr][nc];
-                if (p != '.') {
-                    if (seen == 0) {
-                        if (is_red(p) == by_red) {
-                            char lp = to_lower_ascii(p);
-                            if (lp == 'r') out[n++] = {nr, nc, p};
-                            else if (lp == 'k' && std::abs(nr - tr) + std::abs(nc - tc) == 1)
-                                out[n++] = {nr, nc, p};
-                        }
-                        seen = 1;
-                    } else {
-                        if (is_red(p) == by_red && to_lower_ascii(p) == 'c')
-                            out[n++] = {nr, nc, p};
-                        break;
-                    }
-                }
-                nr += drs[i]; nc += dcs[i];
+        auto add_ray = [&](uint16_t ray, bool row, bool positive) {
+            if (!ray) return;
+            int first = positive ? __builtin_ctz((unsigned)ray)
+                                 : 31 - __builtin_clz((unsigned)ray);
+            ray &= (uint16_t)~(1u << first);
+            int fr = row ? tr : first, fc = row ? first : tc;
+            char p = board[fr][fc];
+            if (is_red(p) == by_red) {
+                char lp = to_lower_ascii(p);
+                if (lp == 'r') out[n++] = {fr, fc, p};
+                else if (lp == 'k' && std::abs(fr - tr) + std::abs(fc - tc) == 1)
+                    out[n++] = {fr, fc, p};
             }
-        }
+            if (!ray) return;
+            int second = positive ? __builtin_ctz((unsigned)ray)
+                                  : 31 - __builtin_clz((unsigned)ray);
+            int sr = row ? tr : second, sc = row ? second : tc;
+            p = board[sr][sc];
+            if (is_red(p) == by_red && to_lower_ascii(p) == 'c')
+                out[n++] = {sr, sc, p};
+        };
+        add_ray((uint16_t)(see_row_occ & ~((1u << (tc + 1)) - 1)), true, true);
+        add_ray((uint16_t)(see_row_occ & ((1u << tc) - 1)), true, false);
+        add_ray((uint16_t)(see_col_occ & ~((1u << (tr + 1)) - 1)), false, true);
+        add_ray((uint16_t)(see_col_occ & ((1u << tr) - 1)), false, false);
         int kfrom[8][4] = {
             {-2,-1,-1,0},{-2,1,-1,0},{2,-1,1,0},{2,1,1,0},
             {-1,-2,0,-1},{1,-2,0,-1},{-1,2,0,1},{1,2,0,1}
@@ -942,12 +943,16 @@ public:
         Rem removed[40]; int rn = 0;
         removed[rn++] = {sr, sc, board[sr][sc]};
         board[sr][sc] = '.';
+        uint16_t see_row_occ = row_occ[tr];
+        uint16_t see_col_occ = col_occ[tc];
+        if (sr == tr) see_row_occ &= (uint16_t)~(1u << sc);
+        if (sc == tc) see_col_occ &= (uint16_t)~(1u << sr);
         int on_sq = see_value(attacker);
         bool side = !attacker_is_red;
 
         Attacker atk_buf[20];
         while (true) {
-            int an = attackers_to(tr, tc, side, atk_buf);
+            int an = attackers_to(tr, tc, side, atk_buf, see_row_occ, see_col_occ);
 			/*���﷢�������⣺ 
 �� 
 . . b a k a b . .
@@ -990,11 +995,15 @@ c . . A K A B R .
             if (to_lower_ascii(ap) == 'k') {
                 removed[rn++] = {ar, ac, board[ar][ac]};
                 board[ar][ac] = '.';
+                if (ar == tr) see_row_occ &= (uint16_t)~(1u << ac);
+                if (ac == tc) see_col_occ &= (uint16_t)~(1u << ar);
                 Attacker chk[20];
-                int cn = attackers_to(tr, tc, !side, chk);
+                int cn = attackers_to(tr, tc, !side, chk, see_row_occ, see_col_occ);
                 if (cn > 0) {
                     Rem t = removed[--rn];
                     board[t.r][t.c] = t.p;
+                    if (ar == tr) see_row_occ |= (uint16_t)(1u << ac);
+                    if (ac == tc) see_col_occ |= (uint16_t)(1u << ar);
                     break;
                 }
                 gain[gn] = on_sq - gain[gn-1]; gn++;
@@ -1004,6 +1013,8 @@ c . . A K A B R .
             }
             removed[rn++] = {ar, ac, board[ar][ac]};
             board[ar][ac] = '.';
+            if (ar == tr) see_row_occ &= (uint16_t)~(1u << ac);
+            if (ac == tc) see_col_occ &= (uint16_t)~(1u << ar);
             gain[gn] = on_sq - gain[gn-1]; gn++;
             on_sq = see_value(ap);
             side = !side;
@@ -1023,6 +1034,19 @@ c . . A K A B R .
         PROFILE_SCOPE(_pq, &t_quiescence, &n_quiescence);
         bool in_check = cached_is_in_check(maximizing_player);
 
+        // Only checking qsearch children can form a perpetual counter-check loop.
+        // The qsearch root was already checked by minimax.
+        if (in_check && qs_depth > 0) {
+            bool repeated = false;
+            int rv = repetition_verdict(repeated);
+            if (rv != 0) {
+                int winner = (rv > 0) ? turn : (turn ^ 1);
+                return (winner == 0) ? (SCORE_INF - qs_depth)
+                                     : (-SCORE_INF + qs_depth);
+            }
+            if (repeated) return 0;
+        }
+
         if (!in_check) {
             int score = evaluate();
             if (maximizing_player) {
@@ -1034,12 +1058,11 @@ c . . A K A B R .
             }
         }
 
-        if (qs_depth > 6) return evaluate();
+        if (!in_check && qs_depth > 6) return evaluate();
 
         Move moves[128];
         int nm = 0;
         if (in_check) {
-            if (qs_depth > 3) return evaluate();
             nm = gen_all_moves(maximizing_player, false, moves);
         } else {
             Move raw[128];
