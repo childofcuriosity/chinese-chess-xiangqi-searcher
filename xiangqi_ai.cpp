@@ -53,6 +53,7 @@ struct Move {
 };
 const Move NO_MOVE = {-1, -1, -1, -1};
 
+#ifdef ENABLE_PROFILING
 // Sample one call in every 256 to reduce steady_clock overhead.
 struct ScopedProf {
     double* acc;
@@ -71,6 +72,10 @@ struct ScopedProf {
         }
     }
 };
+#define PROFILE_SCOPE(name, acc, cnt) ScopedProf name(acc, cnt)
+#else
+#define PROFILE_SCOPE(name, acc, cnt) ((void)0)
+#endif
 
 struct TTEntry {
     uint64_t hash;
@@ -478,7 +483,7 @@ public:
     }
 
     char make_move(const Move& m) {
-        ScopedProf _p(&t_make_move, &n_make_move);
+        PROFILE_SCOPE(_p, &t_make_move, &n_make_move);
         char moving_piece = board[m.r1][m.c1];
         char captured_piece = board[m.r2][m.c2];
 
@@ -545,7 +550,7 @@ public:
     }
 
     void undo_move(const Move& m, char captured) {
-        ScopedProf _p(&t_undo_move, &n_undo_move);
+        PROFILE_SCOPE(_p, &t_undo_move, &n_undo_move);
         if (path_len > 0) path_len--;
         char moved_piece = board[m.r2][m.c2];
 
@@ -626,11 +631,13 @@ public:
     //   ���� -1 ��ʾ������ѭ���в�������(�����и�).
     // ��������׽/��ɱ/����������չ����.
     int repetition_verdict(bool& repeated) {
-        ScopedProf _p(&t_repetition_verdict, &n_repetition_verdict);
+        PROFILE_SCOPE(_p, &t_repetition_verdict, &n_repetition_verdict);
         repeated = false;
         int found = -1;
         for (int i = path_len - 3; i >= 0; i -= 2) {
+#ifdef ENABLE_PROFILING
             n_repetition_scan_steps++;
+#endif
             if (path_hashes[i] == current_hash) { found = i; break; }
         }
         if (found < 0) return 0;
@@ -784,7 +791,7 @@ public:
     int evaluate() { return current_score; }
 
     bool is_in_check(bool is_red_turn) {
-        ScopedProf _p(&t_is_in_check, &n_is_in_check);
+        PROFILE_SCOPE(_p, &t_is_in_check, &n_is_in_check);
         int kr = king_pos[is_red_turn ? 0 : 1].first;
         int kc = king_pos[is_red_turn ? 0 : 1].second;
         if (kr == -1) return true;
@@ -867,7 +874,7 @@ public:
     struct Attacker { int r, c; char p; };
     // д�� out, ��������; out �������� 17 ??
     int attackers_to(int tr, int tc, bool by_red, Attacker* out) {
-        ScopedProf _p(&t_attackers_to, &n_attackers_to);
+        PROFILE_SCOPE(_p, &t_attackers_to, &n_attackers_to);
         int n = 0;
         int drs[4] = {0,0,1,-1};
         int dcs[4] = {1,-1,0,0};
@@ -921,7 +928,7 @@ public:
     }
 
     int see(const Move& mv) {
-        ScopedProf _p(&t_see, &n_see);
+        PROFILE_SCOPE(_p, &t_see, &n_see);
         char attacker = board[mv.r1][mv.c1];
         char victim   = board[mv.r2][mv.c2];
         if (attacker == '.') return 0;
@@ -1013,7 +1020,7 @@ c . . A K A B R .
     }
 
     int quiescence_search(int alpha, int beta, bool maximizing_player, int qs_depth = 0) {
-        ScopedProf _pq(&t_quiescence, &n_quiescence);
+        PROFILE_SCOPE(_pq, &t_quiescence, &n_quiescence);
         bool in_check = cached_is_in_check(maximizing_player);
 
         if (!in_check) {
@@ -1048,7 +1055,7 @@ c . . A K A B R .
             }
         }
 
-        { ScopedProf _ps(&t_qs_sort, &n_qs_sort);
+        { PROFILE_SCOPE(_ps, &t_qs_sort, &n_qs_sort);
           std::sort(moves, moves + nm, [&](const Move& a, const Move& b) {
               int val_a = PIECE_VALUES[(unsigned char)board[a.r2][a.c2]];
               int val_b = PIECE_VALUES[(unsigned char)board[b.r2][b.c2]];
@@ -1277,8 +1284,10 @@ c . . A K A B R .
         int qt_n = 0;
         int legal_count = 0;
         bool pruned_any = false;
+#ifdef ENABLE_PROFILING
         bool attempted_first_pass[128] = {};
         bool searched_first_pass[128] = {};
+#endif
         for (int pass = 0; pass < 2; ++pass) {
             bool allow_pruning = (pass == 0);
             
@@ -1334,6 +1343,7 @@ c . . A K A B R .
                 }
             }
             char cap = make_move(m);
+#ifdef ENABLE_PROFILING
             if (pass == 0) {
                 n_first_pass_attempts++;
                 attempted_first_pass[mi] = true;
@@ -1341,17 +1351,20 @@ c . . A K A B R .
                 n_second_pass_attempts++;
                 if (attempted_first_pass[mi]) n_second_pass_repeat_attempts++;
             }
+#endif
             if (is_in_check(maximizing_player)) {
                 undo_move(m, cap);
                 continue;
             }
             legal_count++;
 
+#ifdef ENABLE_PROFILING
             if (pass == 0) {
                 searched_first_pass[mi] = true;
             } else if (searched_first_pass[mi]) {
                 n_second_pass_recursive_researches++;
             }
+#endif
 
             bool gives_check = cached_is_in_check(!maximizing_player);
             bool do_lmr = (depth >= 3 && moves_count > 3 && !is_capture && !in_check
@@ -1619,8 +1632,10 @@ int main(int argc, char** argv) {
         else if (line.substr(0, 6) == "search") {
             cnt++;
             engine.nodes = 0;
+#ifdef ENABLE_PROFILING
             engine.reset_prof();
             auto prof_t0 = std::chrono::steady_clock::now();
+#endif
             bool is_ai_red = (engine.player_side == "black");
 
             XiangqiEngine::SearchResult res;
@@ -1647,9 +1662,11 @@ int main(int argc, char** argv) {
                 std::cout << "resign" << std::endl;
             }
             engine.forbidden_move = NO_MOVE;
+#ifdef ENABLE_PROFILING
             double prof_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - prof_t0).count();
             engine.print_prof(prof_ms);
+#endif
         }
         else if (line == "print") {
             for(int r=0; r<10; ++r) {
