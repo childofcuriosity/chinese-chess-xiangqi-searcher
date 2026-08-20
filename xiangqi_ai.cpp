@@ -16,10 +16,10 @@
  int debug[10];
 
 std::ofstream logfile("engine_log.txt", std::ios::app);
-//int debugflag = 0; //��ʱ�ĵ���flag 
+//int debugflag = 0; // 临时调试标志
 //int cnt=0;
 // ============================================================
-// ȫ������
+// 全局配置
 // ============================================================
 const int USE_DEPTH = 0;
 const int LONG_MAX_DEPTH = 8;
@@ -29,14 +29,14 @@ const double LONG_MAX_TIME = 15.0;
 const int ROWS = 10;
 const int COLS = 9;
 const int SCORE_INF = 30000;
-const int MATE_BOUND = 20000;          // ����??> ??����Ϊɱ���?
+const int MATE_BOUND = 20000;          // 绝对分值超过此阈值即视为杀棋分
 
 const int TT_EXACT = 0;
 const int TT_ALPHA = 1;
 const int TT_BETA = 2;
 const int TT_INVALID = -1;
 
-const size_t TT_BITS = 23;             // 8M?? ??80MB
+const size_t TT_BITS = 23;             // 8M 个条目；实际内存占用由 sizeof(TTEntry) 决定。
 const size_t TT_SIZE = (size_t)1 << TT_BITS;
 const size_t TT_MASK = TT_SIZE - 1;
 
@@ -103,7 +103,7 @@ inline int get_base_value(char p) {
     return PIECE_VALUES[(unsigned char)p];
 }
 
-// Сд??(����??ASCII ��ĸ): �ȼ� std::tolower ���� locale ����
+// 转为小写（仅用于 ASCII 字母）：等价于 std::tolower，但没有 locale 开销。
 static inline char to_lower_ascii(char p) { return (char)(p | 0x20); }
 
 int PST[256][10][9];
@@ -171,7 +171,7 @@ void init_pst_raw() {
         {96, 97, 98, 98, 98, 98, 98, 97, 96},
         {96, 96, 97, 99, 99, 99, 97, 96, 96}
     };
-    //����
+    // 调整车、马、炮的位置价值权重。
     for(int i=0; i<10; ++i)
         for(int j=0; j<9; ++j){
             raw_c[i][j] *=1.1;
@@ -208,10 +208,10 @@ void init_zobrist() {
 }
 
 // ============================================================
-// RankMask ������ (��/��)
+// RankMask 攻击表（车/炮）
 // ============================================================
-// �б�: [Դ�� 0..8][9λ��ռλ] -> 9λ�������� (�÷���ɴ���?)
-// �б�: [Դ�� 0..9][10λ��ռλ] -> 10λ��������
+// 行表：[源列 0..8][9 位行占位] -> 9 位攻击掩码（该方向可达列）
+// 列表：[源行 0..9][10 位列占位] -> 10 位攻击掩码
 uint16_t ROOK_ROW_ATT[9][512];
 uint16_t ROOK_COL_ATT[10][1024];
 uint16_t CANNON_ROW_ATT[9][512];
@@ -219,26 +219,26 @@ uint16_t CANNON_COL_ATT[10][1024];
 
 void init_attack_tables() {
     static const int dirs[2] = {-1, +1};
-    // �б� (���� 9)
+    // 行表（长度 9）
     for (int sc = 0; sc < 9; ++sc) {
         for (int occ = 0; occ < 512; ++occ) {
             int rk = 0, cn = 0;
             for (int di = 0; di < 2; ++di) {
                 int d = dirs[di];
-                // ��: ������һ���赲��(��)Ϊֹ
+                // 车：滑到第一个阻挡子（含）为止。
                 int nc = sc + d;
                 while (nc >= 0 && nc < 9) {
                     rk |= 1 << nc;
                     if ((occ >> nc) & 1) break;
                     nc += d;
                 }
-                // ��: �׶�1 �����ո� (��Щ�� quiet)
+                // 炮阶段 1：滑过空格，这些位置可生成非吃子着法。
                 nc = sc + d;
                 while (nc >= 0 && nc < 9 && !((occ >> nc) & 1)) {
                     cn |= 1 << nc;
                     nc += d;
                 }
-                // �׶�2: �����ڼ�, �ҵڶ�������Ϊ����Ŀ��
+                // 炮阶段 2：越过炮架，找到第二个棋子作为吃子目标。
                 if (nc >= 0 && nc < 9) {
                     nc += d;
                     while (nc >= 0 && nc < 9 && !((occ >> nc) & 1)) nc += d;
@@ -249,7 +249,7 @@ void init_attack_tables() {
             CANNON_ROW_ATT[sc][occ] = (uint16_t)cn;
         }
     }
-    // �б� (���� 10)
+    // 列表（长度 10）
     for (int sr = 0; sr < 10; ++sr) {
         for (int occ = 0; occ < 1024; ++occ) {
             int rk = 0, cn = 0;
@@ -305,18 +305,18 @@ public:
     bool     path_gave_check[PATH_CAP];
     int      path_len;
 
-    // ���������б�: side 0=?? 1=?? �������? sq = r*9 + c
+    // 增量棋子列表：side 0=红，1=黑；方格编码 sq = r*9 + c。
     int piece_sq[2][16];
     int npieces[2];
-    int piece_idx[10][9];          // -1 ��ʾ�ո�
-    // ������ջ
+    int piece_idx[10][9];          // -1 表示空格
+    // 吃子撤销栈
     int undo_cap_idx[PATH_CAP];
     int undo_top;
 
-    // ��/��ռλ (���� RankMask)
-    uint16_t row_occ[10];           // bit c = ���� c ������
-    uint16_t col_occ[9];            // bit r = ���� r ������
-    uint16_t side_row_occ[2][10];   // ������ɫ
+    // 行/列占位（用于 RankMask）
+    uint16_t row_occ[10];           // bit c = 该行第 c 列有子
+    uint16_t col_occ[9];            // bit r = 该列第 r 行有子
+    uint16_t side_row_occ[2][10];   // 按阵营记录行占位
     uint16_t side_col_occ[2][9];
 
     std::vector<TTEntry> tt;
@@ -503,7 +503,7 @@ public:
         current_hash ^= ZOBRIST_TABLE[m.r2][m.c2][(unsigned char)moving_piece];
         current_hash ^= ZOBRIST_TURN;
 
-        // ���������б�ά��
+        // 增量维护棋子列表。
         int mover_side = is_red(moving_piece) ? 0 : 1;
         if (captured_piece != '.') {
             int opp = mover_side ^ 1;
@@ -515,11 +515,11 @@ public:
                 piece_sq[opp][cap_idx] = last_sq;
                 piece_idx[last_sq / 9][last_sq % 9] = cap_idx;
             }
-            // ռλ: ����Է���Ŀ�����? (��ռλ row/col_occ ��λ��Ȼ�� mover ռ��)
+            // 清除对方在目标格的阵营占位；总占位不变，因为走子方会占据该格。
             side_row_occ[opp][m.r2] &= (uint16_t)~(1 << m.c2);
             side_col_occ[opp][m.c2] &= (uint16_t)~(1 << m.r2);
         } else {
-            // �ǳ���: ��ռλ r2,c2 ֮ǰΪ��, ����λ
+            // 非吃子：目标格原本为空，需要设置总占位。
             row_occ[m.r2] |= (uint16_t)(1 << m.c2);
             col_occ[m.c2] |= (uint16_t)(1 << m.r2);
         }
@@ -527,7 +527,7 @@ public:
         piece_sq[mover_side][idx_m] = m.r2 * 9 + m.c2;
         piece_idx[m.r1][m.c1] = -1;
         piece_idx[m.r2][m.c2] = idx_m;
-        // ռλ: Դ�����?, mover ��ɫ����
+        // 清除源格占位，并更新走子方的阵营占位。
         row_occ[m.r1] &= (uint16_t)~(1 << m.c1);
         col_occ[m.c1] &= (uint16_t)~(1 << m.r1);
         side_row_occ[mover_side][m.r1] &= (uint16_t)~(1 << m.c1);
@@ -542,7 +542,7 @@ public:
         if (path_len < PATH_CAP) {
             path_hashes[path_len] = current_hash;
             path_moves[path_len]  = m;
-            // turn �ѷ�תΪ�Է�; ���Է�(�����ӷ�)�Ƿ񱻽�, �������Ƿ񽫾�
+            // turn 已切换为对方；若对方此时被将，则刚才的着法造成了将军。
             path_gave_check[path_len] = is_in_check(turn == 0);
             path_len++;
         }
@@ -570,13 +570,13 @@ public:
             current_hash ^= ZOBRIST_TABLE[m.r2][m.c2][(unsigned char)captured];
         current_hash ^= ZOBRIST_TABLE[m.r1][m.c1][(unsigned char)moved_piece];
 
-        // ���������б�����
+        // 撤销棋子列表的增量更新。
         int mover_side = is_red(moved_piece) ? 0 : 1;
         int idx_m = piece_idx[m.r2][m.c2];
         piece_sq[mover_side][idx_m] = m.r1 * 9 + m.c1;
         piece_idx[m.r2][m.c2] = -1;
         piece_idx[m.r1][m.c1] = idx_m;
-        // ռλ����
+        // 撤销行列占位更新。
         row_occ[m.r1] |= (uint16_t)(1 << m.c1);
         col_occ[m.c1] |= (uint16_t)(1 << m.r1);
         side_row_occ[mover_side][m.r1] |= (uint16_t)(1 << m.c1);
@@ -587,10 +587,10 @@ public:
             int opp = mover_side ^ 1;
             int cap_idx = undo_cap_idx[--undo_top];
             int cur = npieces[opp]++;
-            // �ָ��Է�ռλ (��ռλ�� set, ����)
+            // 恢复对方阵营占位；总占位始终为 set，无需修改。
             side_row_occ[opp][m.r2] |= (uint16_t)(1 << m.c2);
             side_col_occ[opp][m.c2] |= (uint16_t)(1 << m.r2);
-            // ����??swap-pop ??last_sq �ŵ�??cap_idx λ��, ���Ȱ���???
+            // 吃子时用 swap-pop 填补了 cap_idx；撤销时先把该棋子搬回数组末尾。
             if (cap_idx != cur) {
                 int moved_pos = piece_sq[opp][cap_idx];
                 piece_sq[opp][cur] = moved_pos;
@@ -625,11 +625,11 @@ public:
         current_hash ^= ZOBRIST_TURN;
     }
 
-    // ��������(���޹���) �����и��ļ�ʵ��:
-    //   ���� 0 ��ʾ��ѭ������������ѭ��;
-    //   ���� +1 ��ʾ������ѭ���в�������(�����и�, ��ǰ���ӷ�ʤ);
-    //   ���� -1 ��ʾ������ѭ���в�������(�����и�).
-    // ��������׽/��ɱ/����������չ����.
+    // 天天象棋（亚洲规则）长将判负的简化实现：
+    //   返回 0：无循环，或循环应判和；
+    //   返回 +1：对手在循环中步步将军，对手判负，当前待走方胜；
+    //   返回 -1：当前待走方在循环中步步将军，当前待走方判负。
+    // 暂不处理长捉、长杀、根节点分析等扩展规则。
     int repetition_verdict(bool& repeated) {
         PROFILE_SCOPE(_p, &t_repetition_verdict, &n_repetition_verdict);
         repeated = false;
@@ -642,8 +642,8 @@ public:
         }
         if (found < 0) return 0;
         repeated = true;
-        // ѭ���ڵ��ŷ�: path_moves[found+1 .. path_len-1]
-        // ���һ�ŵ����ӷ�? = turn ^ 1 (turn �ǵ�ǰ���߷�)
+        // 循环内的着法：path_moves[found+1 .. path_len-1]。
+        // 最后一着的走子方为 turn ^ 1，因为 turn 表示当前待走方。
         int last_mover = turn ^ 1;
         int moves_cnt[2] = {0, 0};
         int check_cnt[2] = {0, 0};
@@ -655,7 +655,7 @@ public:
         }
         bool perp0 = moves_cnt[0] > 0 && check_cnt[0] == moves_cnt[0];
         bool perp1 = moves_cnt[1] > 0 && check_cnt[1] == moves_cnt[1];
-        if (perp0 == perp1) return 0; // ˫�������� or �������� -> ��
+        if (perp0 == perp1) return 0; // 双方都长将或都不长将，判和。
         int loser = perp0 ? 0 : 1;
         return (loser == turn) ? -1 : +1;
     }
@@ -768,7 +768,7 @@ public:
         return n;
     }
 
-    // д�� out, ��������; out ��������??128 ??
+    // 将走法写入 out 并返回数量；调用方需保证 out 至少可容纳 128 项。
     int gen_all_moves(bool is_red_turn, bool only_captures, Move* out) {
         int n = 0;
         Move tmp[32];
@@ -796,22 +796,22 @@ public:
         int kc = king_pos[is_red_turn ? 0 : 1].second;
         if (kr == -1) return true;
 
-        // ��/�������?/��: �� RankMask
+        // 使用 RankMask 检查车、将帅照面和炮的直线攻击。
         int enemy_side = is_red_turn ? 1 : 0;
-        // �з����ϵĳ� (�������ֻ��ͬ��?, �з��򲻼��? king)
+        // 检查同行的敌车；将帅照面只可能发生在同列。
         uint16_t row_hit = (uint16_t)(ROOK_ROW_ATT[kc][row_occ[kr]] & side_row_occ[enemy_side][kr]);
         while (row_hit) {
             int nc = __builtin_ctz(row_hit); row_hit &= (uint16_t)(row_hit - 1);
             if (to_lower_ascii(board[kr][nc]) == 'r') return true;
         }
-        // �з����ϵĳ��� (�������?)
+        // 检查同列的敌车或敌将。
         uint16_t col_hit = (uint16_t)(ROOK_COL_ATT[kr][col_occ[kc]] & side_col_occ[enemy_side][kc]);
         while (col_hit) {
             int nr = __builtin_ctz(col_hit); col_hit &= (uint16_t)(col_hit - 1);
             char lp = to_lower_ascii(board[nr][kc]);
             if (lp == 'r' || lp == 'k') return true;
         }
-        // ��/���ϵ��� (�Գ���: �ӽ�λ�����������еľ��ǹ������ĵ���)
+        // 检查同行、同列的敌炮：从将位反向查炮，命中的就是攻击该位置的炮。
         uint16_t crow = (uint16_t)(CANNON_ROW_ATT[kc][row_occ[kr]] & side_row_occ[enemy_side][kr]);
         while (crow) {
             int nc = __builtin_ctz(crow); crow &= (uint16_t)(crow - 1);
@@ -872,7 +872,7 @@ public:
     }
 
     struct Attacker { int r, c; char p; };
-    // д�� out, ��������; out �������� 17 ??
+    // 将攻击者写入 out 并返回数量；调用方需保证 out 至少可容纳 17 项。
     int attackers_to(int tr, int tc, bool by_red, Attacker* out,
                      uint16_t see_row_occ, uint16_t see_col_occ) {
         PROFILE_SCOPE(_p, &t_attackers_to, &n_attackers_to);
@@ -953,8 +953,7 @@ public:
         Attacker atk_buf[20];
         while (true) {
             int an = attackers_to(tr, tc, side, atk_buf, see_row_occ, see_col_occ);
-			/*���﷢�������⣺ 
-�� 
+			/* SEE 历史问题的复现局面（走子前）：
 . . b a k a b . .
 . . . . n . . . .
 . . n . c . . . .
@@ -966,7 +965,7 @@ P . . . P r . C P
 . . . . . . . . .
 R . . A K A B R .
 
-���? 
+走子后：
 . . b a k a b . .
 . . . . n . . . .
 . . n . c . . . .
@@ -978,9 +977,7 @@ P . . . P . . C P
 . . . . . . . . .
 c . . A K A B R .
 
-�����������еĶ����ü������Ե�������Ϊû�п��ߵĶ����� 
-
-
+			用于检查连续交换过程中攻击者集合和占位掩码是否正确更新。
 			*/
             if (an == 0) break;
             int best = 0;
@@ -1133,8 +1130,8 @@ c . . A K A B R .
             bool repeated = false;
             int rv = repetition_verdict(repeated);
             if (rv != 0) {
-                // ��ǰ���߷�=turn. rv=+1 ��ʾ����(turn^1)�����и�, �� turn һ��ʤ.
-                // �������þ����ӽ�: �����ڸ�.
+                // 当前待走方为 turn。rv=+1 表示对手（turn^1）长将判负，即 turn 方胜。
+                // 分数采用绝对视角：红方为正，黑方为负。
                 int winner = (rv > 0) ? turn : (turn ^ 1);
                 int sc = (winner == 0) ? (SCORE_INF - ply) : (-SCORE_INF + ply);
                 return {sc, NO_MOVE};
@@ -1297,7 +1294,7 @@ c . . A K A B R .
             }
             mscore[i] = sc;
         }
-        // ͬ��??moves[] ??mscore[] ���������������� (��������, nm ͨ�� < 50)
+        // 同步对 moves[] 和 mscore[] 按分数降序排序；nm 通常小于 50，使用插入排序。
         for (int i = 1; i < nm; ++i) {
             int s = mscore[i]; Move mv = moves[i]; int j = i - 1;
             while (j >= 0 && mscore[j] < s) { mscore[j+1] = mscore[j]; moves[j+1] = moves[j]; --j; }
@@ -1321,8 +1318,7 @@ c . . A K A B R .
         for (int pass = 0; pass < 2; ++pass) {
             bool allow_pruning = (pass == 0);
             
-            //��һ�������⣺�����һ���Ϸ�����29999�ˡ������ǲ�ok����breakҪ����
-            //有一个大问题：如果第一步合法但分29999了。。。那不ok不能break要再找
+            // 即使第一步合法，也不能仅凭一个接近杀棋的异常分数跳过第二遍搜索。
 
             if (( maximizing_player ? best_score>=-MATE_BOUND : best_score<=MATE_BOUND)&&pass == 1 && (legal_count > 0 || !pruned_any)) break;
             // debug[pass]++; 千分之一不到的pass==1
@@ -1513,11 +1509,11 @@ c . . A K A B R .
                     }
                 }
             }
-            //这句话要删除也是仅仅合法不够。
+            // 不能只因为已经找到合法着法就结束第二遍；还需确保没有遗漏被剪枝的候选。
 //            if (!allow_pruning && legal_count) break;
         }
         }
-        // ����α�Ϸ��߷����Խ� = ɱ�� (������ stalemate Ҳ���䴦��)
+        // 所有伪合法着法都会导致己方被将：判负。象棋中的困毙也按负处理。
         if (legal_count == 0) {
             return {maximizing_player ? -SCORE_INF + ply : SCORE_INF - ply, NO_MOVE};
         }
@@ -1715,8 +1711,8 @@ int main(int argc, char** argv) {
             }
         }
         else if (line.substr(0, 8) == "setboard") {
-            // setboard <fen-rows> <side>      (side: 'w' or 'b'; Ĭ�� 'w')
-            // ��: setboard 1cbakabr1/3RR4/9/p1p1C3p/6p2/2P6/P3P1ncP/4B1r2/1C2A4/4KAB2 b
+            // setboard <fen-rows> <side>      (side: 'w' or 'b'，默认为 'w')
+            // 示例：setboard 1cbakabr1/3RR4/9/p1p1C3p/6p2/2P6/P3P1ncP/4B1r2/1C2A4/4KAB2 b
             std::string rest = line.size() > 8 ? line.substr(9) : "";
             for (int r = 0; r < 10; ++r)
                 for (int c = 0; c < 9; ++c)
@@ -1733,7 +1729,7 @@ int main(int argc, char** argv) {
             while (i < rest.size() && rest[i] == ' ') i++;
             if (i < rest.size() && (rest[i] == 'b' || rest[i] == 'B')) engine.turn = 1;
 
-            // ������������״̬
+            // 重置搜索相关状态。
             engine.forbidden_move = NO_MOVE;
             engine.game_over = false;
             for (auto& e : engine.tt) { e.flag = TT_INVALID; e.age = 0; }
@@ -1764,8 +1760,8 @@ g++ -g -O0 -std=c++17 -march=native -static -static-libgcc -static-libstdc++ -o 
 setboard 3ak4/4a4/2n4PC/9/4R4/9/1p2C4/4r4/1n2A4/4KA3 b
 side red
 search
-(���Ժ�)
-https://sachess.com/zh-cn/xiangqi-photo-to-fen/ ͼƬת��fen
+(测试局面)
+https://sachess.com/zh-cn/xiangqi-photo-to-fen/ 图片转 FEN
 
 
 */
