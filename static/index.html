@@ -77,6 +77,23 @@
   button.primary { background: var(--accent); color: #2a2010; font-weight: bold; border-color: var(--accent); }
   button.primary:hover { background: #ecc878; }
   button.danger { border-color: var(--danger); color: #f0a090; }
+  /* 禁招输入 */
+  #forbid-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  #forbid-label { font-size: 14px; color: #c8b898; }
+  #forbid-input {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid #6a5a44;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    width: 128px;
+    text-align: center;
+  }
+  #forbid-input:focus { outline: none; border-color: var(--accent); }
+  #forbid-status { font-size: 13px; color: #a89878; }
+  #forbid-status.on { color: var(--accent); }
+  #btn-forbid-pick.active { background: #8a5ce0; color: #fff; border-color: #8a5ce0; }
   /* 选边面板 */
   #side-picker {
     position: absolute;
@@ -147,6 +164,13 @@
     <button id="btn-resign" class="danger">认输</button>
     <button id="btn-new">新对局</button>
   </div>
+  <div id="forbid-row">
+    <span id="forbid-label">禁招:</span>
+    <button id="btn-forbid-pick" title="点起点、终点两个格子选招，自动生效；起点终点同一格=无禁招">选禁招</button>
+    <button id="btn-forbid-clear" title="清除禁招">清除</button>
+    <input id="forbid-input" value="1 1 1 1" title="四个 0 起坐标，起止相同=无禁招" style="display:none">
+    <span id="forbid-status">无禁招</span>
+  </div>
   <div id="thinking-box" class="hidden"><div class="spinner"></div><span>引擎思考中…</span></div>
 </div>
 
@@ -181,6 +205,7 @@ let state = {
   turn: null,
   side: null,
   flip: false,
+  forbid: null,         // [[r1,c1],[r2,c2]] 引擎下一步禁走的招；null=无禁招
   thinking: false,
   lastMove: null,
   inCheck: null,
@@ -201,6 +226,10 @@ const pickerEl = document.getElementById('side-picker');
 const overlayEl = document.getElementById('overlay');
 const overlayText = document.getElementById('overlay-text');
 const thinkingBox = document.getElementById('thinking-box');
+const forbidInput = document.getElementById('forbid-input');
+const forbidStatus = document.getElementById('forbid-status');
+const btnForbidPick = document.getElementById('btn-forbid-pick');
+let forbidPick = null;   // {step:'from'|'to', from:{r,c}} 选禁招模式
 
 // 高清屏适配
 const dpr = window.devicePixelRatio || 1;
@@ -298,6 +327,15 @@ function drawBoard() {
     ctx.strokeRect(x - CELL / 2, y - CELL / 2, CELL, CELL);
     ctx.strokeStyle = COLOR_LINE;
   }
+  // 禁招选招：起点高亮
+  if (forbidPick && forbidPick.from) {
+    const { r, c } = forbidPick.from;
+    const [x, y] = gridXY(r, c);
+    ctx.strokeStyle = '#8a5ce0';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(x - CELL / 2, y - CELL / 2, CELL, CELL);
+    ctx.strokeStyle = COLOR_LINE;
+  }
   // 棋子
   if (state.board) {
     for (let r = 0; r < ROWS; r++) {
@@ -348,6 +386,17 @@ function updateStatus() {
   }
   const sideName = state.side === 'red' ? '红' : '黑';
   el.textContent = state.turn === state.side ? `轮到你走（你执${sideName}）` : '对方回合';
+}
+
+function updateForbidStatus() {
+  if (!state.forbid) {
+    forbidStatus.textContent = '无禁招';
+    forbidStatus.classList.remove('on');
+  } else {
+    const [[fr, fc], [tr, tc]] = state.forbid;
+    forbidStatus.textContent = `禁招: ${fr},${fc} → ${tr},${tc}`;
+    forbidStatus.classList.add('on');
+  }
 }
 
 function setThinking(on) {
@@ -419,6 +468,8 @@ function handleMsg(msg) {
     state.turn = msg.turn;
     state.side = msg.side;
     state.flip = msg.flip;
+    state.forbid = msg.forbid || null;
+    updateForbidStatus();
     state.lastMove = msg.last_move;
     state.inCheck = msg.in_check;
     state.over = msg.over;
@@ -463,6 +514,7 @@ canvas.addEventListener('click', (ev) => {
   let r = Math.round((y - MARGIN) / CELL);
   if (state.flip) { r = ROWS - 1 - r; c = COLS - 1 - c; }
   if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+  if (forbidPick) { handleForbidPick(r, c); return; }
 
   const p = state.board[r][c];
   const myPiece = p !== '.' && (p === p.toUpperCase()) === (state.side === 'red');
@@ -508,7 +560,8 @@ document.getElementById('btn-pick-flip').addEventListener('click', () => {
 function startGame() {
   state.sid = null;
   localStorage.removeItem('xq_sid');
-  pendingNewGame = { type: 'new_game', side: pickSide, flip: pickFlip };
+  pendingNewGame = { type: 'new_game', side: pickSide, flip: pickFlip,
+                     forbid_text: forbidInput.value };
   if (!ws || ws.readyState !== WebSocket.OPEN) { connect(); }
   else {
     send(pendingNewGame);
@@ -519,6 +572,50 @@ function startGame() {
 // 对局中按钮
 document.getElementById('btn-flip').addEventListener('click', () => {
   if (state.sid) send({ type: 'set_flip', flip: !state.flip });
+});
+function sendForbid() {
+  if (state.sid) send({ type: 'set_forbid', text: forbidInput.value });
+}
+
+// ---------- 禁招选招（点起点、点终点） ----------
+function exitForbidPick() {
+  forbidPick = null;
+  btnForbidPick.classList.remove('active');
+  drawBoard();
+}
+
+function handleForbidPick(r, c) {
+  if (forbidPick.step === 'from') {
+    forbidPick.from = { r, c };
+    forbidPick.step = 'to';
+    statusEl.className = '';
+    statusEl.textContent = '禁招：请点终点（起点终点同一格=清除禁招）';
+    drawBoard();
+  } else {
+    const f = forbidPick.from;
+    exitForbidPick();
+    forbidInput.value = `${f.r} ${f.c} ${r} ${c}`;
+    sendForbid();
+  }
+}
+
+btnForbidPick.addEventListener('click', () => {
+  if (forbidPick) { exitForbidPick(); updateStatus(); return; }
+  if (!state.sid) { statusEl.textContent = '请先开始对局'; return; }
+  forbidPick = { step: 'from', from: null };
+  btnForbidPick.classList.add('active');
+  statusEl.className = '';
+  statusEl.textContent = '禁招：请点起点格子';
+});
+
+document.getElementById('btn-forbid-clear').addEventListener('click', () => {
+  exitForbidPick();
+  forbidInput.value = '1 1 1 1';
+  sendForbid();
+});
+
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && forbidPick) { exitForbidPick(); updateStatus(); }
 });
 document.getElementById('btn-resign').addEventListener('click', () => {
   if (state.sid && !state.over && confirm('确定认输？')) {

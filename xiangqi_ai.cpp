@@ -24,7 +24,7 @@ std::ofstream logfile("engine_log.txt", std::ios::app);
 const int USE_DEPTH = 0;
 const int LONG_MAX_DEPTH = 8;
 const int OPEN_NMP = 1;
-const double LONG_MAX_TIME = 5.0;
+const double LONG_MAX_TIME = 15.0;
 
 const int ROWS = 10;
 const int COLS = 9;

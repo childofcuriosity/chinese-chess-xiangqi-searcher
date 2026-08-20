@@ -138,10 +138,14 @@ class XiangqiGUI:
         # self.btn_print_engine = Button((SCREEN_WIDTH - 170, 100, 150, 36), "每步打印: 关", self.small_font)
         # self.auto_print_engine = False
 
-        # 禁招输入槽
+        # 禁招输入槽 + 点击选招按钮
         self.forbid_text = "1 1 1 1"
         self.forbid_focused = False
-        self.forbid_rect = pygame.Rect(20, SCREEN_HEIGHT - 50, 280, 36)
+        self.forbid_rect = pygame.Rect(20, SCREEN_HEIGHT - 50, 200, 36)
+        self.btn_pick_forbid = Button((230, SCREEN_HEIGHT - 50, 110, 36), "选禁招", self.small_font)
+        self.btn_clear_forbid = Button((348, SCREEN_HEIGHT - 50, 70, 36), "清除", self.small_font)
+        self.forbid_picking = None   # None | 'from' | 'to'  点击选招模式
+        self.forbid_from = None      # 选招起点 (r, c)
 
         self.start_buttons = []
         self.choice_side = 'red'
@@ -227,6 +231,11 @@ class XiangqiGUI:
             cx, cy = self.trans_coord(*self.selected)
             pygame.draw.rect(self.screen, COLOR_SELECT, (cx - 30, cy - 30, 60, 60), 4)
 
+        # 禁招选招起点高亮
+        if self.forbid_from:
+            cx, cy = self.trans_coord(*self.forbid_from)
+            pygame.draw.rect(self.screen, (138, 92, 224), (cx - 30, cy - 30, 60, 60), 4)
+
         for r in range(ROWS):
             for c in range(COLS):
                 piece = self.board.board[r][c]
@@ -256,21 +265,31 @@ class XiangqiGUI:
         ttxt = self.font.render(turn_txt, True, COLOR_UI)
         self.screen.blit(ttxt, (SCREEN_WIDTH - 220, 18))
 
-        # 禁招输入槽
-        label = self.small_font.render("cpponly禁招(r1 c1 r2 c2):", True, COLOR_UI)
+        # 禁招行: 标签 + 状态提示
+        label = self.small_font.render("禁招:", True, COLOR_UI)
         self.screen.blit(label, (20, SCREEN_HEIGHT - 78))
+        if self.forbid_picking:
+            if self.forbid_picking == 'from':
+                tip = self.small_font.render("点起点格子", True, (138, 92, 224))
+            else:
+                tip = self.small_font.render("点终点格子 (同一格=清除)", True, (138, 92, 224))
+        else:
+            fb = self.parse_forbid()
+            if fb:
+                (r1, c1), (r2, c2) = fb
+                tip = self.small_font.render(f"已禁: ({r1},{c1})->({r2},{c2})", True, (160, 0, 0))
+            else:
+                tip = self.small_font.render("无禁招", True, (80, 80, 80))
+        self.screen.blit(tip, (60, SCREEN_HEIGHT - 78))
+
+        # 输入槽 (仍可直接键盘输入) + 选招按钮
         bg_color = COLOR_INPUT_FOCUS if self.forbid_focused else COLOR_INPUT
         pygame.draw.rect(self.screen, bg_color, self.forbid_rect)
         pygame.draw.rect(self.screen, COLOR_UI, self.forbid_rect, 2)
-        txt = self.font.render(self.forbid_text, True, COLOR_UI)
-        self.screen.blit(txt, (self.forbid_rect.x + 8, self.forbid_rect.y + 4))
-        fb = self.parse_forbid()
-        if fb:
-            (r1, c1), (r2, c2) = fb
-            tip = self.small_font.render(f"已禁: ({r1},{c1})->({r2},{c2})", True, (160, 0, 0))
-        else:
-            tip = self.small_font.render("无禁招 (默认 1 1 1 1)", True, (80, 80, 80))
-        self.screen.blit(tip, (self.forbid_rect.right + 12, SCREEN_HEIGHT - 44))
+        txt = self.small_font.render(self.forbid_text, True, COLOR_UI)
+        self.screen.blit(txt, (self.forbid_rect.x + 8, self.forbid_rect.y + 8))
+        self.btn_pick_forbid.draw(self.screen, pygame.mouse.get_pos())
+        self.btn_clear_forbid.draw(self.screen, pygame.mouse.get_pos())
 
     def draw_start_menu(self):
         self.screen.fill(COLOR_BG)
@@ -342,6 +361,39 @@ class XiangqiGUI:
             if ch and (ch.isdigit() or ch == ' ') and len(self.forbid_text) < 16:
                 self.forbid_text += ch
 
+    # ---- 点击选招模式 ----
+    def update_forbid_btn_text(self):
+        if self.forbid_picking == 'from':
+            self.btn_pick_forbid.text = "点起点..."
+        elif self.forbid_picking == 'to':
+            self.btn_pick_forbid.text = "点终点..."
+        else:
+            self.btn_pick_forbid.text = "选禁招"
+
+    def toggle_forbid_pick(self):
+        if self.forbid_picking:
+            self.forbid_picking = None
+            self.forbid_from = None
+        else:
+            self.forbid_picking = 'from'
+            self.forbid_from = None
+        self.update_forbid_btn_text()
+
+    def handle_forbid_pick(self, coord):
+        r, c = coord
+        if self.forbid_picking == 'from':
+            self.forbid_from = (r, c)
+            self.forbid_picking = 'to'
+        else:
+            fr, fc = self.forbid_from
+            if (r, c) == (fr, fc):
+                self.forbid_text = "1 1 1 1"    # 起止相同 = 清除禁招
+            else:
+                self.forbid_text = f"{fr} {fc} {r} {c}"
+            self.forbid_picking = None
+            self.forbid_from = None
+        self.update_forbid_btn_text()
+
     # ------------------------------------------------------------------
     # 棋盘点击核心逻辑（含合规检测）
     # ------------------------------------------------------------------
@@ -412,6 +464,18 @@ class XiangqiGUI:
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         if self.forbid_rect.collidepoint(event.pos):
                             self.forbid_focused = True
+                            self.forbid_picking = None      # 手动打字时退出选招模式
+                            self.forbid_from = None
+                            self.update_forbid_btn_text()
+                        elif self.btn_pick_forbid.clicked(event.pos):
+                            self.forbid_focused = False
+                            self.toggle_forbid_pick()
+                        elif self.btn_clear_forbid.clicked(event.pos):
+                            self.forbid_focused = False
+                            self.forbid_text = "1 1 1 1"
+                            self.forbid_picking = None
+                            self.forbid_from = None
+                            self.update_forbid_btn_text()
                         elif self.btn_replace_ai.clicked(event.pos):
                             self.replace_ai_mode = not self.replace_ai_mode
                             self.btn_replace_ai.text = "代替AI: 开" if self.replace_ai_mode else "代替AI: 关"
@@ -424,6 +488,19 @@ class XiangqiGUI:
 
                     if self.forbid_focused and event.type == pygame.KEYDOWN:
                         self.handle_forbid_key(event)
+                        continue
+
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and self.forbid_picking:
+                        self.forbid_picking = None
+                        self.forbid_from = None
+                        self.update_forbid_btn_text()
+                        continue
+
+                    # 选禁招模式: 棋盘点击优先
+                    if event.type == pygame.MOUSEBUTTONDOWN and self.forbid_picking:
+                        coord = self.get_click_coord(event.pos)
+                        if coord:
+                            self.handle_forbid_pick(coord)
                         continue
 
                     if not self.game_over and not self.ai_thinking:

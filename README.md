@@ -54,7 +54,7 @@
 
 ## 网页版
 
-浏览器在线对弈:[webapp.py](webapp.py)(FastAPI + WebSocket)+ [static/index.html](static/index.html)(canvas 棋盘)。服务端权威校验走法,每局一个独立引擎进程,多人可同时玩,刷新断线自动续局,手机也能玩。
+浏览器在线对弈:[webapp.py](webapp.py)(FastAPI + WebSocket)+ [static/index.html](static/index.html)(canvas 棋盘)。服务端校验走法,每局一个独立引擎进程,多人可同时玩,刷新断线自动续局,手机也能玩。
 
 本地运行:
 

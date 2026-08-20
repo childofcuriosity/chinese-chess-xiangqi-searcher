@@ -45,6 +45,26 @@ def resolve_engine_path():
     return p
 
 
+def parse_forbid(text):
+    """解析禁招文本 'r1 c1 r2 c2'（0-based，同 gui.py 输入槽）。
+    起止相同 = 无禁招。返回 (forbid, err)：forbid 为 ((r1,c1),(r2,c2)) 或 None。"""
+    text = (text or "").strip()
+    if not text:
+        return None, None
+    try:
+        nums = [int(x) for x in text.split()]
+    except ValueError:
+        return None, "禁招格式错误：需要 4 个整数 (r1 c1 r2 c2)"
+    if len(nums) != 4:
+        return None, "禁招格式错误：需要 4 个整数 (r1 c1 r2 c2)"
+    r1, c1, r2, c2 = nums
+    if (r1, c1) == (r2, c2):
+        return None, None
+    if not (0 <= r1 < ROWS and 0 <= r2 < ROWS and 0 <= c1 < COLS and 0 <= c2 < COLS):
+        return None, "禁招坐标越界 (r:0-9, c:0-8)"
+    return ((r1, c1), (r2, c2)), None
+
+
 def has_any_legal_move(board, side):
     """side ('red'/'black') 方是否至少有一个合法走法。"""
     is_red = (side == 'red')
@@ -58,12 +78,13 @@ def has_any_legal_move(board, side):
 
 
 class GameSession:
-    def __init__(self, sid, player_side, flip):
+    def __init__(self, sid, player_side, flip, forbid=None):
         self.sid = sid
         self.board = LocalBoard()
         self.engine = EngineClient([resolve_engine_path()])
         self.player_side = player_side      # 'red' | 'black'
         self.flip = flip
+        self.forbid = forbid                # ((r1,c1),(r2,c2)) 或 None；只对引擎下一步生效
         self.thinking = False
         self.game_over = False
         self.over_reason = None             # you_resigned | engine_resigned | engine_crashed
@@ -117,6 +138,9 @@ class GameSession:
             self.thinking = False
 
     def request_engine_move(self):
+        if self.forbid is not None:
+            (fr, fc), (tr, tc) = self.forbid
+            self.engine.send(f"forbid {fr} {fc} {tr} {tc}")
         self.engine.send("search")
         self.thinking = True
 
@@ -168,6 +192,8 @@ class GameSession:
             "turn": turn,
             "side": self.player_side,
             "flip": self.flip,
+            "forbid": [[self.forbid[0][0], self.forbid[0][1]],
+                       [self.forbid[1][0], self.forbid[1][1]]] if self.forbid else None,
             "thinking": self.thinking,
             "last_move": self.last_move,
             "in_check": in_check,
@@ -182,12 +208,12 @@ class SessionManager:
         self.sessions = {}
         self.lock = threading.Lock()
 
-    def create(self, side, flip):
+    def create(self, side, flip, forbid=None):
         with self.lock:
             if len(self.sessions) >= MAX_GAMES:
                 return None
             sid = secrets.token_hex(16)
-            session = GameSession(sid, side, flip)
+            session = GameSession(sid, side, flip, forbid)
             session.start()          # 引擎启动失败会抛 RuntimeError
             self.sessions[sid] = session
             return session
@@ -316,6 +342,15 @@ async def _handle_message(ws, session, data):
         await ws.send_json(session.state_msg())
         return True
 
+    if mtype == "set_forbid":
+        fb, err = parse_forbid(data.get("text"))
+        if err:
+            await ws.send_json({"type": "error", "msg": err})
+            return True
+        session.forbid = fb
+        await ws.send_json(session.state_msg())
+        return True
+
     if mtype == "set_flip":
         session.flip = bool(data.get("flip", False))
         await ws.send_json(session.state_msg())
@@ -341,12 +376,13 @@ async def ws_endpoint(ws: WebSocket):
         if ftype == "new_game":
             side = first.get("side", "red")
             flip = bool(first.get("flip", False))
+            forbid, _ = parse_forbid(first.get("forbid_text"))   # 开新局静默忽略无效禁招
             if side not in ("red", "black"):
                 await ws.send_json({"type": "error", "msg": "side 必须是 red 或 black"})
                 await ws.close()
                 return
             try:
-                session = manager.create(side, flip)
+                session = manager.create(side, flip, forbid)
             except RuntimeError as e:
                 await ws.send_json({"type": "error", "msg": f"引擎启动失败: {e}"})
                 await ws.close()
@@ -400,12 +436,13 @@ async def ws_endpoint(ws: WebSocket):
                 # 同连接重开新局：回收旧会话，创建新会话
                 side = data.get("side", "red")
                 flip = bool(data.get("flip", False))
+                forbid, _ = parse_forbid(data.get("forbid_text"))   # 开新局静默忽略无效禁招
                 if side not in ("red", "black"):
                     await ws.send_json({"type": "error", "msg": "side 必须是 red 或 black"})
                     continue
                 manager.remove(session.sid)
                 try:
-                    session = manager.create(side, flip)
+                    session = manager.create(side, flip, forbid)
                 except RuntimeError as e:
                     await ws.send_json({"type": "error", "msg": f"引擎启动失败: {e}"})
                     await ws.close()
