@@ -324,15 +324,23 @@ public:
     long long nodes;
 
     double t_is_in_check = 0, t_attackers_to = 0, t_see = 0, t_qs_sort = 0,
-           t_make_move = 0, t_undo_move = 0, t_quiescence = 0;
+           t_make_move = 0, t_undo_move = 0, t_quiescence = 0,
+           t_repetition_verdict = 0;
     long long n_is_in_check = 0, n_attackers_to = 0, n_see = 0, n_qs_sort = 0,
               n_make_move = 0, n_undo_move = 0, n_quiescence = 0;
+    long long n_repetition_verdict = 0, n_repetition_scan_steps = 0;
+    long long n_first_pass_attempts = 0, n_second_pass_attempts = 0,
+              n_second_pass_repeat_attempts = 0,
+              n_second_pass_recursive_researches = 0;
 
     void reset_prof() {
         t_is_in_check = t_attackers_to = t_see = t_qs_sort = t_make_move =
-        t_undo_move = t_quiescence = 0;
+        t_undo_move = t_quiescence = t_repetition_verdict = 0;
         n_is_in_check = n_attackers_to = n_see = n_qs_sort = n_make_move =
         n_undo_move = n_quiescence = 0;
+        n_repetition_verdict = n_repetition_scan_steps = 0;
+        n_first_pass_attempts = n_second_pass_attempts = 0;
+        n_second_pass_repeat_attempts = n_second_pass_recursive_researches = 0;
     }
 
     void print_prof(double total_ms) {
@@ -350,8 +358,17 @@ public:
         line("see", t_see, n_see);
         line("qs std::sort", t_qs_sort, n_qs_sort);
         line("quiescence", t_quiescence, n_quiescence);
+        line("repetition_verdict", t_repetition_verdict, n_repetition_verdict);
+        os << "[prof] repetition: verdict " << n_repetition_verdict
+           << " calls, " << n_repetition_scan_steps << " hash comparisons\n";
+        os << "[prof] two-pass: first " << n_first_pass_attempts
+           << " attempts, second " << n_second_pass_attempts
+           << " attempts, repeated attempts " << n_second_pass_repeat_attempts
+           << ", repeated recursive searches " << n_second_pass_recursive_researches
+           << "\n";
         double accounted = t_make_move + t_undo_move + t_is_in_check +
-                           t_attackers_to + t_see + t_qs_sort + t_quiescence;
+                           t_attackers_to + t_see + t_qs_sort + t_quiescence +
+                           t_repetition_verdict;
         os << "[prof] search total: " << total_ms << " ms, nodes " << nodes << "\n";
         os << "[prof] sampled timers total: " << accounted << " ms = "
            << (total_ms > 0 ? accounted / total_ms * 100.0 : 0.0)
@@ -603,24 +620,21 @@ public:
         current_hash ^= ZOBRIST_TURN;
     }
 
-    bool is_repetition() const {
-        for (int i = path_len - 3; i >= 0; i -= 2) {
-            if (path_hashes[i] == current_hash) return true;
-        }
-        return false;
-    }
-
     // ��������(���޹���) �����и��ļ�ʵ��:
     //   ���� 0 ��ʾ��ѭ������������ѭ��;
     //   ���� +1 ��ʾ������ѭ���в�������(�����и�, ��ǰ���ӷ�ʤ);
     //   ���� -1 ��ʾ������ѭ���в�������(�����и�).
     // ��������׽/��ɱ/����������չ����.
-    int repetition_verdict() const {
+    int repetition_verdict(bool& repeated) {
+        ScopedProf _p(&t_repetition_verdict, &n_repetition_verdict);
+        repeated = false;
         int found = -1;
         for (int i = path_len - 3; i >= 0; i -= 2) {
+            n_repetition_scan_steps++;
             if (path_hashes[i] == current_hash) { found = i; break; }
         }
         if (found < 0) return 0;
+        repeated = true;
         // ѭ���ڵ��ŷ�: path_moves[found+1 .. path_len-1]
         // ���һ�ŵ����ӷ�? = turn ^ 1 (turn �ǵ�ǰ���߷�)
         int last_mover = turn ^ 1;
@@ -1079,7 +1093,8 @@ c . . A K A B R .
         if (check_ext_left < 0) check_ext_left = std::max(1, depth / 2);
         nodes++;
         if (!is_root) {
-            int rv = repetition_verdict();
+            bool repeated = false;
+            int rv = repetition_verdict(repeated);
             if (rv != 0) {
                 // ��ǰ���߷�=turn. rv=+1 ��ʾ����(turn^1)�����и�, �� turn һ��ʤ.
                 // �������þ����ӽ�: �����ڸ�.
@@ -1087,7 +1102,7 @@ c . . A K A B R .
                 int sc = (winner == 0) ? (SCORE_INF - ply) : (-SCORE_INF + ply);
                 return {sc, NO_MOVE};
             }
-            if (is_repetition()) return {0, NO_MOVE};
+            if (repeated) return {0, NO_MOVE};
         }
 
         if (stop_search) return {0, NO_MOVE};
@@ -1262,6 +1277,8 @@ c . . A K A B R .
         int qt_n = 0;
         int legal_count = 0;
         bool pruned_any = false;
+        bool attempted_first_pass[128] = {};
+        bool searched_first_pass[128] = {};
         for (int pass = 0; pass < 2; ++pass) {
             bool allow_pruning = (pass == 0);
             
@@ -1317,11 +1334,24 @@ c . . A K A B R .
                 }
             }
             char cap = make_move(m);
+            if (pass == 0) {
+                n_first_pass_attempts++;
+                attempted_first_pass[mi] = true;
+            } else {
+                n_second_pass_attempts++;
+                if (attempted_first_pass[mi]) n_second_pass_repeat_attempts++;
+            }
             if (is_in_check(maximizing_player)) {
                 undo_move(m, cap);
                 continue;
             }
             legal_count++;
+
+            if (pass == 0) {
+                searched_first_pass[mi] = true;
+            } else if (searched_first_pass[mi]) {
+                n_second_pass_recursive_researches++;
+            }
 
             bool gives_check = cached_is_in_check(!maximizing_player);
             bool do_lmr = (depth >= 3 && moves_count > 3 && !is_capture && !in_check
