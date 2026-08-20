@@ -53,6 +53,25 @@ struct Move {
 };
 const Move NO_MOVE = {-1, -1, -1, -1};
 
+// Sample one call in every 256 to reduce steady_clock overhead.
+struct ScopedProf {
+    double* acc;
+    long long* cnt;
+    bool active;
+    std::chrono::steady_clock::time_point t0;
+    ScopedProf(double* a, long long* c) : acc(a), cnt(c) {
+        ++*cnt;
+        active = (*cnt & 255) == 0;
+        if (active) t0 = std::chrono::steady_clock::now();
+    }
+    ~ScopedProf() {
+        if (active) {
+            *acc += std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - t0).count() * 256.0;
+        }
+    }
+};
+
 struct TTEntry {
     uint64_t hash;
     int depth;
@@ -303,6 +322,45 @@ public:
     Move counter_move[10][9][10][9];
 
     long long nodes;
+
+    double t_is_in_check = 0, t_attackers_to = 0, t_see = 0, t_qs_sort = 0,
+           t_make_move = 0, t_undo_move = 0, t_quiescence = 0;
+    long long n_is_in_check = 0, n_attackers_to = 0, n_see = 0, n_qs_sort = 0,
+              n_make_move = 0, n_undo_move = 0, n_quiescence = 0;
+
+    void reset_prof() {
+        t_is_in_check = t_attackers_to = t_see = t_qs_sort = t_make_move =
+        t_undo_move = t_quiescence = 0;
+        n_is_in_check = n_attackers_to = n_see = n_qs_sort = n_make_move =
+        n_undo_move = n_quiescence = 0;
+    }
+
+    void print_prof(double total_ms) {
+        std::ostringstream os;
+        os << std::fixed << std::setprecision(2);
+        auto line = [&](const char* name, double ms, long long calls) {
+            os << "[prof] " << name << ": " << ms << " ms, " << calls << " calls";
+            if (calls) os << ", avg " << (ms * 1000.0 / calls) << " us";
+            os << "\n";
+        };
+        line("make_move", t_make_move, n_make_move);
+        line("undo_move", t_undo_move, n_undo_move);
+        line("is_in_check", t_is_in_check, n_is_in_check);
+        line("attackers_to", t_attackers_to, n_attackers_to);
+        line("see", t_see, n_see);
+        line("qs std::sort", t_qs_sort, n_qs_sort);
+        line("quiescence", t_quiescence, n_quiescence);
+        double accounted = t_make_move + t_undo_move + t_is_in_check +
+                           t_attackers_to + t_see + t_qs_sort + t_quiescence;
+        os << "[prof] search total: " << total_ms << " ms, nodes " << nodes << "\n";
+        os << "[prof] sampled timers total: " << accounted << " ms = "
+           << (total_ms > 0 ? accounted / total_ms * 100.0 : 0.0)
+           << "% (nested timers overlap)\n";
+        std::string s = os.str();
+        logfile << s << std::flush;
+        std::cerr << s;
+    }
+
     std::chrono::steady_clock::time_point start_tp;
     double time_limit;
     bool stop_search;
@@ -403,6 +461,7 @@ public:
     }
 
     char make_move(const Move& m) {
+        ScopedProf _p(&t_make_move, &n_make_move);
         char moving_piece = board[m.r1][m.c1];
         char captured_piece = board[m.r2][m.c2];
 
@@ -469,6 +528,7 @@ public:
     }
 
     void undo_move(const Move& m, char captured) {
+        ScopedProf _p(&t_undo_move, &n_undo_move);
         if (path_len > 0) path_len--;
         char moved_piece = board[m.r2][m.c2];
 
@@ -710,6 +770,7 @@ public:
     int evaluate() { return current_score; }
 
     bool is_in_check(bool is_red_turn) {
+        ScopedProf _p(&t_is_in_check, &n_is_in_check);
         int kr = king_pos[is_red_turn ? 0 : 1].first;
         int kc = king_pos[is_red_turn ? 0 : 1].second;
         if (kr == -1) return true;
@@ -767,6 +828,17 @@ public:
         return false;
     }
 
+    // make_move() records whether the new side to move is in check.
+    // Reuse that result only when it is provably for the requested side/state.
+    inline bool cached_is_in_check(bool is_red_side) {
+        if (is_red_side == (turn == 0) && path_len > 0 &&
+            path_hashes[path_len - 1] == current_hash &&
+            path_moves[path_len - 1].is_valid()) {
+            return path_gave_check[path_len - 1];
+        }
+        return is_in_check(is_red_side);
+    }
+
     int see_value(char p) {
         switch (p) {
             case 'k': case 'K': return 10000;
@@ -781,6 +853,7 @@ public:
     struct Attacker { int r, c; char p; };
     // д�� out, ��������; out �������� 17 ??
     int attackers_to(int tr, int tc, bool by_red, Attacker* out) {
+        ScopedProf _p(&t_attackers_to, &n_attackers_to);
         int n = 0;
         int drs[4] = {0,0,1,-1};
         int dcs[4] = {1,-1,0,0};
@@ -834,6 +907,7 @@ public:
     }
 
     int see(const Move& mv) {
+        ScopedProf _p(&t_see, &n_see);
         char attacker = board[mv.r1][mv.c1];
         char victim   = board[mv.r2][mv.c2];
         if (attacker == '.') return 0;
@@ -925,7 +999,8 @@ c . . A K A B R .
     }
 
     int quiescence_search(int alpha, int beta, bool maximizing_player, int qs_depth = 0) {
-        bool in_check = is_in_check(maximizing_player);
+        ScopedProf _pq(&t_quiescence, &n_quiescence);
+        bool in_check = cached_is_in_check(maximizing_player);
 
         if (!in_check) {
             int score = evaluate();
@@ -959,11 +1034,13 @@ c . . A K A B R .
             }
         }
 
-        std::sort(moves, moves + nm, [&](const Move& a, const Move& b) {
-            int val_a = PIECE_VALUES[(unsigned char)board[a.r2][a.c2]];
-            int val_b = PIECE_VALUES[(unsigned char)board[b.r2][b.c2]];
-            return val_a > val_b;
-        });
+        { ScopedProf _ps(&t_qs_sort, &n_qs_sort);
+          std::sort(moves, moves + nm, [&](const Move& a, const Move& b) {
+              int val_a = PIECE_VALUES[(unsigned char)board[a.r2][a.c2]];
+              int val_b = PIECE_VALUES[(unsigned char)board[b.r2][b.c2]];
+              return val_a > val_b;
+          });
+        }
 
         bool has_legal = false;
         for (int mi = 0; mi < nm; ++mi) {
@@ -1019,7 +1096,7 @@ c . . A K A B R .
             double elapsed = std::chrono::duration<double>(now - start_tp).count();
             if (elapsed > time_limit) stop_search = true;
         }
-        bool in_check = is_in_check(maximizing_player);
+        bool in_check = cached_is_in_check(maximizing_player);
         int ext = (check_ext_left > 0 && in_check) ? 1 : 0;
 
         if (depth + ext <= 0) {
@@ -1246,7 +1323,7 @@ c . . A K A B R .
             }
             legal_count++;
 
-            bool gives_check = is_in_check(!maximizing_player);
+            bool gives_check = cached_is_in_check(!maximizing_player);
             bool do_lmr = (depth >= 3 && moves_count > 3 && !is_capture && !in_check
                            && !is_killer && !gives_check);
             int reduction = 0;
@@ -1512,6 +1589,8 @@ int main(int argc, char** argv) {
         else if (line.substr(0, 6) == "search") {
             cnt++;
             engine.nodes = 0;
+            engine.reset_prof();
+            auto prof_t0 = std::chrono::steady_clock::now();
             bool is_ai_red = (engine.player_side == "black");
 
             XiangqiEngine::SearchResult res;
@@ -1538,6 +1617,9 @@ int main(int argc, char** argv) {
                 std::cout << "resign" << std::endl;
             }
             engine.forbidden_move = NO_MOVE;
+            double prof_ms = std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - prof_t0).count();
+            engine.print_prof(prof_ms);
         }
         else if (line == "print") {
             for(int r=0; r<10; ++r) {
