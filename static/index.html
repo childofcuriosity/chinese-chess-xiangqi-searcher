@@ -94,6 +94,8 @@
   #forbid-status { font-size: 13px; color: #a89878; }
   #forbid-status.on { color: var(--accent); }
   #btn-forbid-pick.active { background: #8a5ce0; color: #fff; border-color: #8a5ce0; }
+  #time-row { display: flex; align-items: center; gap: 8px; justify-content: center; }
+  #evaluation { color: var(--accent); font-size: 15px; min-height: 22px; }
   /* 选边面板 */
   #side-picker {
     position: absolute;
@@ -110,6 +112,11 @@
   #side-picker.hidden { display: none; }
   #side-picker .pick-row { display: flex; gap: 10px; }
   #side-picker .pick-note { font-size: 14px; color: #c8b898; }
+  #engine-picker, #search-time-input {
+    background: var(--panel); color: var(--text); border: 1px solid #6a5a44;
+    border-radius: 8px; padding: 8px 10px; font-size: 15px;
+  }
+  #search-time-input { width: 82px; }
   /* 断线遮罩 */
   #overlay {
     position: absolute;
@@ -146,6 +153,13 @@
     <div id="side-picker">
       <div style="font-size:19px;color:var(--accent)">选择执子方</div>
       <div class="pick-row">
+        <label for="engine-picker">引擎:</label>
+        <select id="engine-picker">
+          <option value="custom">自研引擎</option>
+          <option value="pikafish_pst">Pikafish PST</option>
+        </select>
+      </div>
+      <div class="pick-row">
         <button id="btn-pick-red" class="primary">执红（先走）</button>
         <button id="btn-pick-black">执黑（后走）</button>
       </div>
@@ -164,6 +178,13 @@
     <button id="btn-resign" class="danger">认输</button>
     <button id="btn-new">新对局</button>
   </div>
+  <div id="time-row">
+    <label for="search-time-input">每步思考:</label>
+    <input id="search-time-input" type="number" value="5" min="0.05" max="120" step="0.05">
+    <span>秒</span>
+    <button id="btn-apply-time">应用</button>
+  </div>
+  <div id="evaluation">当前评估（引擎视角）: --</div>
   <div id="forbid-row">
     <span id="forbid-label">禁招:</span>
     <button id="btn-forbid-pick" title="点起点、终点两个格子选招，自动生效；起点终点同一格=无禁招">选禁招</button>
@@ -204,6 +225,9 @@ let state = {
   board: null,
   turn: null,
   side: null,
+  engine: null,
+  searchTime: 5,
+  evaluation: null,
   flip: false,
   forbid: null,         // [[r1,c1],[r2,c2]] 引擎下一步禁走的招；null=无禁招
   thinking: false,
@@ -229,6 +253,8 @@ const thinkingBox = document.getElementById('thinking-box');
 const forbidInput = document.getElementById('forbid-input');
 const forbidStatus = document.getElementById('forbid-status');
 const btnForbidPick = document.getElementById('btn-forbid-pick');
+const searchTimeInput = document.getElementById('search-time-input');
+const evaluationEl = document.getElementById('evaluation');
 let forbidPick = null;   // {step:'from'|'to', from:{r,c}} 选禁招模式
 
 // 高清屏适配
@@ -399,6 +425,22 @@ function updateForbidStatus() {
   }
 }
 
+function updateEvaluation() {
+  const value = state.evaluation;
+  if (!value) {
+    evaluationEl.textContent = '当前评估（引擎视角）: --';
+    return;
+  }
+  let shown;
+  if (value.kind === 'mate') {
+    shown = value.value >= 0 ? `+M${value.value}` : `-M${Math.abs(value.value)}`;
+  } else {
+    const pawns = value.value / 100;
+    shown = `${pawns >= 0 ? '+' : ''}${pawns.toFixed(2)}`;
+  }
+  evaluationEl.textContent = `当前评估（引擎视角）: ${shown}`;
+}
+
 function setThinking(on) {
   state.thinking = on;
   thinkingBox.classList.toggle('hidden', !on);
@@ -467,10 +509,15 @@ function handleMsg(msg) {
     state.board = msg.board;
     state.turn = msg.turn;
     state.side = msg.side;
+    state.engine = msg.engine || 'custom';
+    state.searchTime = msg.search_time || 5;
+    searchTimeInput.value = state.searchTime;
     state.flip = msg.flip;
     state.forbid = msg.forbid || null;
     updateForbidStatus();
     state.lastMove = msg.last_move;
+    state.evaluation = msg.evaluation || null;
+    updateEvaluation();
     state.inCheck = msg.in_check;
     state.over = msg.over;
     state.reason = msg.reason;
@@ -558,9 +605,17 @@ document.getElementById('btn-pick-flip').addEventListener('click', () => {
     '棋盘: ' + (pickFlip ? '红在顶' : '红在底');
 });
 function startGame() {
+  const searchTime = Number(searchTimeInput.value);
+  if (!Number.isFinite(searchTime) || searchTime < 0.05 || searchTime > 120) {
+    statusEl.className = 'error';
+    statusEl.textContent = '思考时间必须在 0.05 到 120 秒之间';
+    return;
+  }
   state.sid = null;
   localStorage.removeItem('xq_sid');
   pendingNewGame = { type: 'new_game', side: pickSide, flip: pickFlip,
+                     engine: document.getElementById('engine-picker').value,
+                     search_time: searchTime,
                      forbid_text: forbidInput.value };
   if (!ws || ws.readyState !== WebSocket.OPEN) { connect(); }
   else {
@@ -568,6 +623,22 @@ function startGame() {
     pendingNewGame = null;
   }
 }
+
+document.getElementById('btn-apply-time').addEventListener('click', () => {
+  const seconds = Number(searchTimeInput.value);
+  if (!Number.isFinite(seconds) || seconds < 0.05 || seconds > 120) {
+    statusEl.className = 'error';
+    statusEl.textContent = '思考时间必须在 0.05 到 120 秒之间';
+    return;
+  }
+  if (state.sid) {
+    send({ type: 'set_search_time', search_time: seconds });
+    statusEl.className = '';
+    statusEl.textContent = state.thinking
+      ? `已设为 ${seconds} 秒（下一步生效）`
+      : `已设为 ${seconds} 秒`;
+  }
+});
 
 // 对局中按钮
 document.getElementById('btn-flip').addEventListener('click', () => {

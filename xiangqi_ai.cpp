@@ -1597,6 +1597,9 @@ c . . A K A B R .
             // printf("%d %d\n",debug[0],debug[1]);
 
             if (std::abs(res.score) > MATE_BOUND) break;
+            // Keep iterating while there is meaningful time left. The recursive
+            // search still enforces the full hard limit and, if interrupted,
+            // search_main returns the last fully completed iteration.
             if (elapsed > max_time * 0.16 && depth >= 4) break;
         }
         return last_res;
@@ -1692,8 +1695,19 @@ int main(int argc, char** argv) {
                     engine.path_moves[engine.path_len]  = NO_MOVE;
                     engine.path_len++;
                 }
+                int engine_score = is_ai_red ? res.score : -res.score;
                 std::cout << "move " << best.r1 << " " << best.c1 << " "
-                          << best.r2 << " " << best.c2 << std::endl;
+                          << best.r2 << " " << best.c2;
+                if (std::abs(engine_score) > MATE_BOUND) {
+                    int mate_plies = std::max(1, SCORE_INF - std::abs(engine_score));
+                    int mate_moves = (mate_plies + 1) / 2;
+                    std::cout << " score mate "
+                              << (engine_score >= 0 ? mate_moves : -mate_moves);
+                } else {
+                    // PIECE_VALUES 中兵=100，直接作为 centipawn 输出。
+                    std::cout << " score cp " << engine_score;
+                }
+                std::cout << std::endl;
             } else {
                 std::cout << "resign" << std::endl;
             }

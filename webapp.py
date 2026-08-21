@@ -7,7 +7,9 @@ webapp.py
 
 运行: uvicorn webapp:app --host 0.0.0.0 --port 8000   (或 python webapp.py)
 环境变量:
-  XQ_ENGINE_PATH    引擎可执行文件路径 (默认: 本目录/xiangqi_ai)
+  XQ_CUSTOM_ENGINE_PATH       自研引擎路径 (默认: 本目录/xiangqi_ai)
+  XQ_PIKAFISH_PST_ENGINE_PATH Pikafish PST 桥接入口路径
+  XQ_DEFAULT_SEARCH_TIME      每步默认思考秒数 (默认 5)
   XQ_MAX_GAMES      并发对局上限 (默认 16)
   XQ_IDLE_TIMEOUT   会话空闲回收秒数 (默认 1800)
   XQ_REAP_INTERVAL  回收扫描间隔秒数 (默认 60)
@@ -35,14 +37,31 @@ MAX_GAMES = int(os.environ.get("XQ_MAX_GAMES", "16"))
 IDLE_TIMEOUT = float(os.environ.get("XQ_IDLE_TIMEOUT", "1800"))
 REAP_INTERVAL = float(os.environ.get("XQ_REAP_INTERVAL", "60"))
 ENGINE_WAIT_TIMEOUT = 150.0   # 引擎单步搜索硬上限（秒）
+DEFAULT_SEARCH_TIME = float(os.environ.get("XQ_DEFAULT_SEARCH_TIME", "5"))
+MIN_SEARCH_TIME = 0.05
+MAX_SEARCH_TIME = 120.0
 
 
-def resolve_engine_path():
-    p = os.environ.get("XQ_ENGINE_PATH", str(BASE_DIR / "xiangqi_ai"))
+ENGINE_PATHS = {
+    "custom": os.environ.get("XQ_CUSTOM_ENGINE_PATH", str(BASE_DIR / "xiangqi_ai")),
+    "pikafish_pst": os.environ.get(
+        "XQ_PIKAFISH_PST_ENGINE_PATH", str(BASE_DIR / "pikafish_pst_bridge")
+    ),
+}
+
+
+def resolve_engine_path(engine="custom"):
+    p = ENGINE_PATHS[engine]
     if not os.path.exists(p) and sys.platform == "win32" and not p.lower().endswith(".exe"):
         if os.path.exists(p + ".exe"):
             return p + ".exe"
     return p
+
+
+def resolve_engine_command(engine="custom"):
+    if engine == "pikafish_pst" and sys.platform == "win32":
+        return [sys.executable, str(BASE_DIR / "pikafish_bridge.py")]
+    return [resolve_engine_path(engine)]
 
 
 def parse_forbid(text):
@@ -65,6 +84,16 @@ def parse_forbid(text):
     return ((r1, c1), (r2, c2)), None
 
 
+def parse_search_time(value):
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None, "思考时间必须是数字"
+    if not MIN_SEARCH_TIME <= seconds <= MAX_SEARCH_TIME:
+        return None, f"思考时间必须在 {MIN_SEARCH_TIME:g} 到 {MAX_SEARCH_TIME:g} 秒之间"
+    return seconds, None
+
+
 def has_any_legal_move(board, side):
     """side ('red'/'black') 方是否至少有一个合法走法。"""
     is_red = (side == 'red')
@@ -78,10 +107,13 @@ def has_any_legal_move(board, side):
 
 
 class GameSession:
-    def __init__(self, sid, player_side, flip, forbid=None):
+    def __init__(self, sid, player_side, flip, forbid=None, engine="custom",
+                 search_time=DEFAULT_SEARCH_TIME):
         self.sid = sid
         self.board = LocalBoard()
-        self.engine = EngineClient([resolve_engine_path()])
+        self.engine_name = engine
+        self.search_time = search_time
+        self.engine = EngineClient(resolve_engine_command(engine))
         self.player_side = player_side      # 'red' | 'black'
         self.flip = flip
         self.forbid = forbid                # ((r1,c1),(r2,c2)) 或 None；只对引擎下一步生效
@@ -90,6 +122,7 @@ class GameSession:
         self.over_reason = None             # you_resigned | engine_resigned | engine_crashed
                                             # no_legal_moves_you_lost | no_legal_moves_engine_lost
         self.last_move = None               # {"r1":..,"c1":..,"r2":..,"c2":..}
+        self.evaluation = None              # {"kind":"cp"|"mate", "value":int}，引擎视角
         self.ws = None                      # 当前挂接的 WebSocket（单写者）
         self.created_at = time.time()
         self.last_active_at = time.time()
@@ -98,11 +131,16 @@ class GameSession:
     # ---- 生命周期 ----
     def start(self):
         self.engine.connect()
+        self.engine.send(f"time {self.search_time:g}")
         # 协议: side 填人类执子方，引擎下对面
         self.engine.send(f"side {self.player_side}")
 
     def touch(self):
         self.last_active_at = time.time()
+
+    def set_search_time(self, seconds):
+        self.search_time = seconds
+        self.engine.send(f"time {seconds:g}")
 
     def close(self):
         self.engine.close()
@@ -157,6 +195,11 @@ class GameSession:
                 r1, c1, r2, c2 = map(int, parts[1:5])
                 self.board.move(r1, c1, r2, c2)
                 self.last_move = {"r1": r1, "c1": c1, "r2": r2, "c2": c2}
+                if len(parts) >= 8 and parts[5] == "score" and parts[6] in ("cp", "mate"):
+                    try:
+                        self.evaluation = {"kind": parts[6], "value": int(parts[7])}
+                    except ValueError:
+                        pass
                 self.thinking = False
                 changed = True
                 # 引擎走完后轮到人类：无合法走法 → 人类输
@@ -191,11 +234,14 @@ class GameSession:
             "board": [row[:] for row in self.board.board],
             "turn": turn,
             "side": self.player_side,
+            "engine": self.engine_name,
+            "search_time": self.search_time,
             "flip": self.flip,
             "forbid": [[self.forbid[0][0], self.forbid[0][1]],
                        [self.forbid[1][0], self.forbid[1][1]]] if self.forbid else None,
             "thinking": self.thinking,
             "last_move": self.last_move,
+            "evaluation": self.evaluation,
             "in_check": in_check,
             "legal": legal,
             "over": self.game_over,
@@ -208,12 +254,13 @@ class SessionManager:
         self.sessions = {}
         self.lock = threading.Lock()
 
-    def create(self, side, flip, forbid=None):
+    def create(self, side, flip, forbid=None, engine="custom",
+               search_time=DEFAULT_SEARCH_TIME):
         with self.lock:
             if len(self.sessions) >= MAX_GAMES:
                 return None
             sid = secrets.token_hex(16)
-            session = GameSession(sid, side, flip, forbid)
+            session = GameSession(sid, side, flip, forbid, engine, search_time)
             session.start()          # 引擎启动失败会抛 RuntimeError
             self.sessions[sid] = session
             return session
@@ -356,6 +403,15 @@ async def _handle_message(ws, session, data):
         await ws.send_json(session.state_msg())
         return True
 
+    if mtype == "set_search_time":
+        seconds, err = parse_search_time(data.get("search_time"))
+        if err:
+            await ws.send_json({"type": "error", "msg": err})
+            return True
+        session.set_search_time(seconds)
+        await ws.send_json(session.state_msg())
+        return True
+
     await ws.send_json({"type": "error", "msg": f"未知消息类型: {mtype}"})
     return True
 
@@ -375,14 +431,26 @@ async def ws_endpoint(ws: WebSocket):
         ftype = first.get("type")
         if ftype == "new_game":
             side = first.get("side", "red")
+            engine = first.get("engine", "custom")
+            search_time, time_error = parse_search_time(
+                first.get("search_time", DEFAULT_SEARCH_TIME)
+            )
             flip = bool(first.get("flip", False))
             forbid, _ = parse_forbid(first.get("forbid_text"))   # 开新局静默忽略无效禁招
             if side not in ("red", "black"):
                 await ws.send_json({"type": "error", "msg": "side 必须是 red 或 black"})
                 await ws.close()
                 return
+            if engine not in ENGINE_PATHS:
+                await ws.send_json({"type": "error", "msg": "未知引擎"})
+                await ws.close()
+                return
+            if time_error:
+                await ws.send_json({"type": "error", "msg": time_error})
+                await ws.close()
+                return
             try:
-                session = manager.create(side, flip, forbid)
+                session = manager.create(side, flip, forbid, engine, search_time)
             except RuntimeError as e:
                 await ws.send_json({"type": "error", "msg": f"引擎启动失败: {e}"})
                 await ws.close()
@@ -435,14 +503,24 @@ async def ws_endpoint(ws: WebSocket):
             if data.get("type") == "new_game":
                 # 同连接重开新局：回收旧会话，创建新会话
                 side = data.get("side", "red")
+                engine = data.get("engine", "custom")
+                search_time, time_error = parse_search_time(
+                    data.get("search_time", DEFAULT_SEARCH_TIME)
+                )
                 flip = bool(data.get("flip", False))
                 forbid, _ = parse_forbid(data.get("forbid_text"))   # 开新局静默忽略无效禁招
                 if side not in ("red", "black"):
                     await ws.send_json({"type": "error", "msg": "side 必须是 red 或 black"})
                     continue
+                if engine not in ENGINE_PATHS:
+                    await ws.send_json({"type": "error", "msg": "未知引擎"})
+                    continue
+                if time_error:
+                    await ws.send_json({"type": "error", "msg": time_error})
+                    continue
                 manager.remove(session.sid)
                 try:
-                    session = manager.create(side, flip, forbid)
+                    session = manager.create(side, flip, forbid, engine, search_time)
                 except RuntimeError as e:
                     await ws.send_json({"type": "error", "msg": f"引擎启动失败: {e}"})
                     await ws.close()

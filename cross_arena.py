@@ -17,6 +17,7 @@ import sys
 import time
 import argparse
 import os
+import json
 
 # --- 配置 ---
 MY_EXE = './xiangqi_ai.exe'      # 我方引擎 (先编译 xiangqi_ai.cpp)
@@ -140,29 +141,39 @@ class BaseEngine:
 
 class XqEngine(BaseEngine):
     """我方 C++ 引擎, 协议: ready/side/move/search/quit"""
-    def __init__(self):
-        super().__init__([os.path.abspath(MY_EXE)])
+    def __init__(self, exec_path, seconds_per_move):
+        super().__init__([os.path.abspath(exec_path)])
+        self.seconds_per_move = seconds_per_move
 
     def initialize(self):
         self.send("ready")
-        return self.wait_for("readyok")
+        if not self.wait_for("readyok"):
+            return False
+        self.send(f"time {self.seconds_per_move}")
+        return True
 
 class PikafishEngine(BaseEngine):
-    def __init__(self, exec_path, depth):
+    def __init__(self, exec_path, movetime_ms, eval_file=None):
         super().__init__([os.path.abspath(exec_path)])
-        self.depth = depth
+        self.movetime_ms = movetime_ms
+        self.eval_file = eval_file
 
     def initialize(self):
         self.send("uci")
         if not self.wait_for("uciok"):
             return False
+        self.send("setoption name Threads value 1")
+        self.send("setoption name Hash value 128")
+        self.send("setoption name Ponder value false")
+        if self.eval_file:
+            self.send(f"setoption name EvalFile value {os.path.abspath(self.eval_file)}")
         self.send("isready")
         return self.wait_for("readyok") is not None
 
     def get_move(self, history_moves):
         moves_str = " ".join(history_moves)
         self.send(f"position startpos moves {moves_str}")
-        self.send(f"go depth {self.depth}")
+        self.send(f"go movetime {self.movetime_ms}")
 
         best_move = None
         while True:
@@ -176,22 +187,24 @@ class PikafishEngine(BaseEngine):
         return best_move
 
 # --- 对战逻辑 ---
-def play_game(pika_depth, my_ai_is_red, visualize=False):
+def play_game(my_ai_is_red, my_exe=MY_EXE, pika_exe=PIKAFISH_EXEC,
+              seconds_per_move=1.0, eval_file=None, max_plies=MAX_MOVES,
+              visualize=False):
     """
     visualize: 如果为 True，将在命令行动态打印棋盘
     """
     board = ArenaBoard()
 
     # 简单的检查
-    if not os.path.exists(MY_EXE):
-        print("错误: 找不到 xiangqi_ai.exe (先编译 xiangqi_ai.cpp)")
+    if not os.path.exists(my_exe):
+        print(f"错误: 找不到 {my_exe}")
         return 'error'
-    if not os.path.exists(PIKAFISH_EXEC):
-        print(f"错误: 找不到 {PIKAFISH_EXEC}")
+    if not os.path.exists(pika_exe):
+        print(f"错误: 找不到 {pika_exe}")
         return 'error'
 
-    my_ai = XqEngine()
-    pika = PikafishEngine(PIKAFISH_EXEC, pika_depth)
+    my_ai = XqEngine(my_exe, seconds_per_move)
+    pika = PikafishEngine(pika_exe, max(1, round(seconds_per_move * 1000)), eval_file)
 
     try:
         my_ai.start()
@@ -216,7 +229,7 @@ def play_game(pika_depth, my_ai_is_red, visualize=False):
         winner = None
         moves_count = 0
 
-        while moves_count < MAX_MOVES:
+        while moves_count < max_plies:
             # 1. 判胜负
             status = board.is_game_over()
             if status == 'red_win':
@@ -228,6 +241,8 @@ def play_game(pika_depth, my_ai_is_red, visualize=False):
 
             move_uci = ""
             r1, c1, r2, c2 = 0, 0, 0, 0
+
+            print(f"ply {moves_count + 1}: waiting for {current_turn}", flush=True)
 
             # 2. 获取招法
             if current_turn == 'my_ai':
@@ -261,6 +276,7 @@ def play_game(pika_depth, my_ai_is_red, visualize=False):
             # 3. 执行移动
             board.move(r1, c1, r2, c2)
             move_history_uci.append(move_uci)
+            print(f"ply {moves_count + 1}: {current_turn} played {move_uci}", flush=True)
 
             # --- 可视化输出 ---
             if visualize:
@@ -300,25 +316,71 @@ def play_game(pika_depth, my_ai_is_red, visualize=False):
 
 def main():
     parser = argparse.ArgumentParser(description="xiangqi_ai.exe vs 皮卡鱼对战测试")
-    parser.add_argument('--pika-depth', type=int, default=1, help='皮卡鱼搜索深度 (单局模式, 默认1)')
-    parser.add_argument('--matrix', type=int, default=0, help='深度矩阵: 皮卡鱼深度1..N, 每档两局互换先手')
+    parser.add_argument('--my-engine', default=MY_EXE, help='自研引擎可执行文件')
+    parser.add_argument('--pika-engine', default=PIKAFISH_EXEC, help='Pikafish 可执行文件')
+    parser.add_argument('--eval-file', default=None, help='Pikafish EvalFile 路径')
+    parser.add_argument('--seconds', type=float, default=1.0, help='双方每步思考秒数')
+    parser.add_argument('--times', default=None,
+                        help='逗号分隔的每步秒数，例如 0.25,0.5,1,2；设置后覆盖 --seconds')
+    parser.add_argument('--pairs', type=int, default=1, help='换先对局组数，每组两局')
+    parser.add_argument('--max-plies', type=int, default=MAX_MOVES, help='每局最大半回合数')
+    parser.add_argument('--summary', default='cross_arena_summary.json', help='JSON 汇总输出路径')
     parser.add_argument('--visualize', action='store_true', help='单局模式: 动态打印棋盘')
     args = parser.parse_args()
 
-    if args.matrix:
-        print(f"=== xiangqi_ai vs Pikafish(1-{args.matrix}) Matrix ===")
-        for d in range(1, args.matrix + 1):
-            res1 = play_game(d, True)   # 我方执红
-            res2 = play_game(d, False)  # 我方执黑
-            score = 0
-            for r in (res1, res2):
-                if r == 'my_ai': score += 1
-                elif r == 'draw': score += 0.5
-            print(f"Pika D{d}: 得分 {score}/2  (红: {res1}, 黑: {res2})")
-    else:
-        print(f"单局: xiangqi_ai vs Pikafish 深度{args.pika_depth}, 我方执红")
-        result = play_game(args.pika_depth, True, visualize=args.visualize)
-        print(f"获胜者: {result}")
+    try:
+        times = ([float(value) for value in args.times.split(',')]
+                 if args.times else [args.seconds])
+    except ValueError:
+        parser.error('--times must contain comma-separated numbers')
+    if not times or any(value <= 0 for value in times):
+        parser.error('all time controls must be positive')
+    if args.pairs <= 0 or args.max_plies <= 0:
+        parser.error('--pairs and --max-plies must be positive')
+
+    all_results = []
+    total_score = 0.0
+    for seconds in times:
+        print(f"=== xiangqi_ai vs Pikafish PST, {seconds:g}s/move ===", flush=True)
+        time_score = 0.0
+        for pair in range(args.pairs):
+            res_red = play_game(True, args.my_engine, args.pika_engine, seconds,
+                                args.eval_file, args.max_plies, args.visualize)
+            res_black = play_game(False, args.my_engine, args.pika_engine, seconds,
+                                  args.eval_file, args.max_plies, args.visualize)
+            for color, result in (("red", res_red), ("black", res_black)):
+                points = 1.0 if result == 'my_ai' else 0.5 if result == 'draw' else 0.0
+                time_score += points
+                total_score += points
+                all_results.append({
+                    'seconds': seconds,
+                    'pair': pair + 1,
+                    'my_ai_color': color,
+                    'result': result,
+                    'my_ai_points': points,
+                })
+            print(f"Pair {pair + 1}: 自研红={res_red}, 自研黑={res_black}", flush=True)
+
+        time_games = args.pairs * 2
+        print(f"{seconds:g}s 得分: {time_score:g}/{time_games} "
+              f"({time_score / time_games * 100:.1f}%)", flush=True)
+
+    games = len(all_results)
+    summary = {
+        'my_engine': os.path.abspath(args.my_engine),
+        'pika_engine': os.path.abspath(args.pika_engine),
+        'eval_file': os.path.abspath(args.eval_file) if args.eval_file else None,
+        'times': times,
+        'pairs_per_time': args.pairs,
+        'max_plies': args.max_plies,
+        'my_ai_score': total_score,
+        'my_ai_score_percent': total_score / games * 100 if games else 0.0,
+        'games': all_results,
+    }
+    with open(args.summary, 'w', encoding='utf-8') as output:
+        json.dump(summary, output, ensure_ascii=False, indent=2)
+    print(f"总得分: {total_score:g}/{games} ({summary['my_ai_score_percent']:.1f}%)")
+    print(f"汇总: {os.path.abspath(args.summary)}")
 
 if __name__ == "__main__":
     main()
