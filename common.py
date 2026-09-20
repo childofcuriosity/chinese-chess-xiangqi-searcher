@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 """
 common.py
-棋盘规则 (LocalBoard) 与引擎进程通信 (EngineClient)。
+棋盘规则 (LocalBoard)、ChessDB 云开局库与引擎进程通信 (EngineClient)。
 被 gui.py (pygame 桌面版) 和 webapp.py (网页版) 共用。
 本模块不依赖 pygame，可在服务器上直接 import。
 """
 
+import logging
+import os
+import queue
+import random
 import subprocess
 import threading
-import queue
+import time
+import urllib.parse
+import urllib.request
+from collections import OrderedDict
 
 ROWS = 10
 COLS = 9
@@ -18,6 +25,227 @@ PIECE_CHARS = {
     'r': '车', 'n': '马', 'b': '象', 'a': '士', 'k': '将', 'c': '炮', 'p': '卒',
     '.': '．'
 }
+
+
+# --- ChessDB 云开局库 ---
+def _env_flag(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_number(name, default, converter):
+    try:
+        return converter(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+CLOUD_BOOK_ENABLED = _env_flag("XQ_CLOUD_BOOK_ENABLED", False)
+QUERY_SCORE_THRESHOLD = _env_number("XQ_CLOUD_BOOK_SCORE_THRESHOLD", 20, int)
+CLOUD_TIMEOUT = _env_number("XQ_CLOUD_BOOK_TIMEOUT", 2.0, float)
+CLOUD_BOOK_URL = os.environ.get(
+    "XQ_CLOUD_BOOK_URL", "http://www.chessdb.cn/chessdb.php"
+)
+
+_logger = logging.getLogger(__name__)
+
+
+def uci_move_to_coords(move):
+    """将 ChessDB/UCI 坐标（如 h2e2）转换为本项目的行列坐标。"""
+    if not isinstance(move, str):
+        return None
+    move = move.strip().lower()
+    if (len(move) != 4
+            or move[0] < 'a' or move[0] > 'i'
+            or move[2] < 'a' or move[2] > 'i'
+            or move[1] < '0' or move[1] > '9'
+            or move[3] < '0' or move[3] > '9'):
+        return None
+    return (
+        (9 - int(move[1]), ord(move[0]) - ord('a')),
+        (9 - int(move[3]), ord(move[2]) - ord('a')),
+    )
+
+
+def _fen_side_material_balance(fen):
+    """按车=2、马=1、炮=1，返回 FEN 当前行棋方相对对手的子力差。"""
+    try:
+        placement, side, *_ = fen.split()
+    except (AttributeError, ValueError):
+        return None
+
+    ranks = placement.split('/')
+    if len(ranks) != ROWS or side not in {'w', 'b'}:
+        return None
+
+    values = {'R': 2, 'N': 1, 'C': 1}
+    red_score = 0
+    black_score = 0
+    valid_pieces = set('RNBAKCP')
+    for rank in ranks:
+        width = 0
+        for char in rank:
+            if '1' <= char <= '9':
+                width += int(char)
+                continue
+            if char.upper() not in valid_pieces:
+                return None
+            width += 1
+            value = values.get(char.upper(), 0)
+            if char.isupper():
+                red_score += value
+            else:
+                black_score += value
+        if width != COLS:
+            return None
+
+    if side == 'w':
+        return red_score - black_score
+    return black_score - red_score
+
+
+class CloudOpeningBook:
+    """线程安全的 ChessDB 云开局库客户端。
+
+    缓存的是服务端返回的候选着，而不是一次随机选择的结果；缓存有容量
+    上限和过期时间，网络错误不会写入缓存。
+    """
+
+    def __init__(self, enabled=True, score_threshold=20, timeout=2.0,
+                 endpoint=CLOUD_BOOK_URL, opener=None, rng=None,
+                 cache_ttl=600.0, max_cache_entries=2048):
+        self.enabled = bool(enabled)
+        self.score_threshold = max(0, int(score_threshold))
+        self.timeout = max(0.01, float(timeout))
+        self.endpoint = endpoint
+        self._opener = opener
+        self._rng = rng or random
+        self.cache_ttl = max(0.0, float(cache_ttl))
+        self.max_cache_entries = max(0, int(max_cache_entries))
+        self._cache = OrderedDict()
+        self._inflight = {}
+        self._cache_lock = threading.Lock()
+
+    @staticmethod
+    def _parse_response(data):
+        moves = []
+        for record in data.split('|'):
+            fields = {}
+            for item in record.split(','):
+                key, sep, value = item.partition(':')
+                if sep:
+                    fields[key.strip().lower()] = value.strip()
+            coords = uci_move_to_coords(fields.get('move'))
+            if coords is None:
+                continue
+            try:
+                score = int(fields['score'])
+            except (KeyError, TypeError, ValueError):
+                continue
+            moves.append((coords, score))
+        return tuple(moves)
+
+    def clear_cache(self):
+        with self._cache_lock:
+            self._cache.clear()
+
+    def _load_moves(self, fen):
+        now = time.monotonic()
+        with self._cache_lock:
+            cached = self._cache.get(fen)
+            if cached is not None:
+                expires_at, moves = cached
+                if expires_at > now:
+                    self._cache.move_to_end(fen)
+                    return moves
+                del self._cache[fen]
+            flight = self._inflight.get(fen)
+            if flight is None:
+                flight = {"event": threading.Event(), "result": None}
+                self._inflight[fen] = flight
+                is_leader = True
+            else:
+                is_leader = False
+
+        if not is_leader:
+            if flight["event"].wait(timeout=self.timeout + 1.0):
+                return flight["result"]
+            return None
+
+        query = urllib.parse.urlencode({
+            "action": "queryall",
+            "learn": 1,
+            "board": fen,
+        })
+        url = f"{self.endpoint}?{query}"
+        moves = None
+        try:
+            opener = self._opener or urllib.request.urlopen
+            with opener(url, timeout=self.timeout) as response:
+                data = response.read().decode('utf-8', errors='replace')
+            moves = self._parse_response(data)
+        except Exception as exc:
+            _logger.warning("云开局库查询失败: %s", exc)
+
+        with self._cache_lock:
+            if (moves is not None and self.cache_ttl > 0
+                    and self.max_cache_entries > 0):
+                self._cache[fen] = (time.monotonic() + self.cache_ttl, moves)
+                self._cache.move_to_end(fen)
+                while len(self._cache) > self.max_cache_entries:
+                    self._cache.popitem(last=False)
+            flight["result"] = moves
+            if self._inflight.get(fen) is flight:
+                del self._inflight[fen]
+            flight["event"].set()
+        return moves
+
+    def query(self, fen, forbidden_move=None):
+        """返回 ``((r1,c1), (r2,c2), score)``，无可用着时返回 None。"""
+        if not self.enabled or not isinstance(fen, str) or not fen.strip():
+            return None
+
+        moves = self._load_moves(fen)
+        if not moves:
+            return None
+
+        if forbidden_move is not None:
+            moves = tuple(item for item in moves if item[0] != forbidden_move)
+            if not moves:
+                return None
+
+        best_score = max(score for _, score in moves)
+        candidates = [
+            item for item in moves
+            if item[1] >= best_score - self.score_threshold
+        ]
+        # 子力相等或领先时，不进入只有一个云库续着的冷门飞刀；如果已经
+        # 因前面的库着少子，则继续跟随这唯一续着，避免半途转交引擎而干亏。
+        if len(candidates) == 1:
+            material_balance = _fen_side_material_balance(fen)
+            if material_balance is None or material_balance >= 0:
+                return None
+
+        coords, score = self._rng.choice(candidates)
+        return coords[0], coords[1], score
+
+
+_default_cloud_book = CloudOpeningBook(
+    enabled=True,
+    score_threshold=QUERY_SCORE_THRESHOLD,
+    timeout=CLOUD_TIMEOUT,
+)
+
+
+def query_cloud_book(fen, forbidden_move=None, *, enabled=None):
+    """查询共享云开局库；默认由 ``XQ_CLOUD_BOOK_ENABLED`` 控制开关。"""
+    if enabled is None:
+        enabled = CLOUD_BOOK_ENABLED
+    if not enabled:
+        return None
+    return _default_cloud_book.query(fen, forbidden_move=forbidden_move)
 
 
 # --- 简单的本地 Board 类 ---
@@ -48,6 +276,17 @@ class LocalBoard:
 
     def in_board(self, r, c):
         return 0 <= r < ROWS and 0 <= c < COLS
+
+    def is_legal_move(self, r1, c1, r2, c2):
+        """校验当前行棋方的一步，不改变棋盘。"""
+        if not all(isinstance(value, int) for value in (r1, c1, r2, c2)):
+            return False
+        if not self.in_board(r1, c1) or not self.in_board(r2, c2):
+            return False
+        piece = self.board[r1][c1]
+        if piece == '.' or self.is_red(piece) != (self.turn == 'red'):
+            return False
+        return (r2, c2) in self.get_valid_moves(r1, c1)
 
     # ------------------------------------------------------------------
     # 走法生成（从 ai.py 移植，完整规则）

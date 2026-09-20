@@ -175,3 +175,34 @@ def test_idle_reap(client):
             assert not session.engine.alive()   # 引擎进程已回收
     finally:
         webapp.IDLE_TIMEOUT = old
+
+
+# 8. 对局中云库开关: 状态同步、严格校验、断线续局保持
+def test_cloud_book_toggle_and_resume(client):
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({
+            "type": "new_game", "side": "red", "flip": False,
+            "cloud_book": False,
+        })
+        st = wait_state(ws)
+        sid = st["sid"]
+        assert st["cloud_book"] is False
+
+        ws.send_json({"type": "set_cloud_book", "enabled": True})
+        st = wait_state(ws)
+        assert st["cloud_book"] is True
+        ws.send_json({"type": "set_cloud_book", "enabled": None})
+        msg = ws.receive_json()
+        assert msg["type"] == "error"
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "resume", "sid": sid})
+        st = wait_state(ws)
+        assert st["cloud_book"] is True
+
+
+def test_index_exposes_in_game_cloud_book_button(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'id="btn-cloud-book"' in response.text
+    assert "set_cloud_book" in response.text

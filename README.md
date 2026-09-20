@@ -16,12 +16,12 @@
 | :--- | :--- |
 | `xiangqi_ai.cpp` | C++ 引擎源码(核心) |
 | `xiangqi_ai.exe` | 编译好的引擎(仓库自带) |
-| `common.py` | 棋盘规则 + 引擎进程通信,被 `gui.py` 和 `webapp.py` 共用 |
+| `common.py` | 棋盘规则 + ChessDB 云开局库 + 引擎进程通信,被 `gui.py` 和 `webapp.py` 共用 |
 | `gui.py` | pygame 图形界面,通过 stdio 驱动引擎 |
 | `webapp.py` | 网页版后端(FastAPI + WebSocket) |
 | `static/index.html` | 网页版前端(canvas 棋盘) |
 | `deploy/` | 一键部署脚本(服务器信息在 `secrets.env`,已 gitignore) |
-| `tests/` | 网页版端到端测试(7 用例,含真实引擎对弈) |
+| `tests/` | 网页版端到端测试 + 云开局库单元测试(含真实引擎对弈) |
 | `cross_arena.py` | 对战皮卡鱼测试脚本 |
 | `pikafish.exe` / `pikafish.nnue` | 皮卡鱼引擎及权重(测试用) |
 | `selfplay.py` | 自对弈回归仲裁工具 |
@@ -62,6 +62,27 @@
 pip install fastapi "uvicorn[standard]"
 python webapp.py            # 浏览器打开 http://localhost:8000
 ```
+
+### 可选云开局库
+
+桌面版和网页版共用 `common.py` 中的 ChessDB 云开局库。对局开始后可随时点击
+“云库: 开/关”按钮，修改从引擎下一次出手生效；云库未命中、超时、返回畸形
+或非法着法时会自动回退到本地引擎搜索。
+
+默认关闭。若希望新对局默认开启，可在启动前设置环境变量：
+
+```bash
+# Linux/macOS
+XQ_CLOUD_BOOK_ENABLED=1 python webapp.py
+
+# Windows PowerShell（随后运行 python gui.py 或 python webapp.py）
+$env:XQ_CLOUD_BOOK_ENABLED = "1"
+```
+
+`XQ_CLOUD_BOOK_TIMEOUT` 可调整查询超时（默认 2 秒），
+`XQ_CLOUD_BOOK_SCORE_THRESHOLD` 可调整随机候选相对最佳着的最大分差（默认 20）。
+服务器部署时可将 `deploy/xiangqi-web.service` 中的 `XQ_CLOUD_BOOK_ENABLED=0`
+改为 `1`。
 
 部署到 Linux 服务器(一键脚本,服务器信息在 `deploy/secrets.env`,已被 gitignore 不上传):
 

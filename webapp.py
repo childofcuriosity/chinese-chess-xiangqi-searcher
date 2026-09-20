@@ -10,6 +10,9 @@ webapp.py
   XQ_CUSTOM_ENGINE_PATH       自研引擎路径 (默认: 本目录/xiangqi_ai)
   XQ_PIKAFISH_PST_ENGINE_PATH Pikafish PST 桥接入口路径
   XQ_DEFAULT_SEARCH_TIME      每步默认思考秒数 (默认 5)
+  XQ_CLOUD_BOOK_ENABLED       新对局是否默认启用 ChessDB 云开局库 (默认 0)
+  XQ_CLOUD_BOOK_TIMEOUT       云库查询超时秒数 (默认 2)
+  XQ_CLOUD_BOOK_SCORE_THRESHOLD  随机候选与最佳着的最大分差 (默认 20)
   XQ_MAX_GAMES      并发对局上限 (默认 16)
   XQ_IDLE_TIMEOUT   会话空闲回收秒数 (默认 1800)
   XQ_REAP_INTERVAL  回收扫描间隔秒数 (默认 60)
@@ -22,13 +25,16 @@ import sys
 import threading
 import time
 from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from common import LocalBoard, EngineClient, ROWS, COLS
+from common import (
+    CLOUD_BOOK_ENABLED, LocalBoard, EngineClient, ROWS, COLS, query_cloud_book,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -40,6 +46,7 @@ ENGINE_WAIT_TIMEOUT = 150.0   # 引擎单步搜索硬上限（秒）
 DEFAULT_SEARCH_TIME = float(os.environ.get("XQ_DEFAULT_SEARCH_TIME", "5"))
 MIN_SEARCH_TIME = 0.05
 MAX_SEARCH_TIME = 120.0
+_MISSING = object()
 
 
 ENGINE_PATHS = {
@@ -94,6 +101,17 @@ def parse_search_time(value):
     return seconds, None
 
 
+def parse_cloud_book(value=_MISSING, *, allow_default=True):
+    """解析每局云库开关；旧客户端未传值时使用服务端默认配置。"""
+    if value is _MISSING:
+        if allow_default:
+            return CLOUD_BOOK_ENABLED, None
+        return None, "缺少云库开关 enabled"
+    if type(value) is not bool:
+        return None, "cloud_book 必须是布尔值"
+    return value, None
+
+
 def has_any_legal_move(board, side):
     """side ('red'/'black') 方是否至少有一个合法走法。"""
     is_red = (side == 'red')
@@ -108,7 +126,8 @@ def has_any_legal_move(board, side):
 
 class GameSession:
     def __init__(self, sid, player_side, flip, forbid=None, engine="custom",
-                 search_time=DEFAULT_SEARCH_TIME):
+                 search_time=DEFAULT_SEARCH_TIME,
+                 cloud_book=CLOUD_BOOK_ENABLED):
         self.sid = sid
         self.board = LocalBoard()
         self.engine_name = engine
@@ -117,6 +136,7 @@ class GameSession:
         self.player_side = player_side      # 'red' | 'black'
         self.flip = flip
         self.forbid = forbid                # ((r1,c1),(r2,c2)) 或 None；只对引擎下一步生效
+        self.cloud_book_enabled = cloud_book
         self.thinking = False
         self.game_over = False
         self.over_reason = None             # you_resigned | engine_resigned | engine_crashed
@@ -182,6 +202,27 @@ class GameSession:
         self.engine.send("search")
         self.thinking = True
 
+    def apply_book_move(self, book_move):
+        """应用合法的云库着并同步引擎；无效时返回 False 以回退搜索。"""
+        if book_move is None or self.game_over or self.board.turn == self.player_side:
+            return False
+        try:
+            (r1, c1), (r2, c2), _score = book_move
+            if not self.board.is_legal_move(r1, c1, r2, c2):
+                return False
+        except (TypeError, ValueError, IndexError):
+            return False
+
+        self.board.move(r1, c1, r2, c2)
+        self.engine.send(f"move {r1} {c1} {r2} {c2}")
+        self.last_move = {"r1": r1, "c1": c1, "r2": r2, "c2": c2}
+        self.evaluation = None
+        self.thinking = False
+        if not has_any_legal_move(self.board, self.board.turn):
+            self.game_over = True
+            self.over_reason = "no_legal_moves_you_lost"
+        return True
+
     # ---- 引擎消息（drain 读线程队列，更新会话状态） ----
     def poll_engine(self):
         """取出引擎所有已到达消息并更新状态。返回是否有变化。"""
@@ -236,6 +277,7 @@ class GameSession:
             "side": self.player_side,
             "engine": self.engine_name,
             "search_time": self.search_time,
+            "cloud_book": self.cloud_book_enabled,
             "flip": self.flip,
             "forbid": [[self.forbid[0][0], self.forbid[0][1]],
                        [self.forbid[1][0], self.forbid[1][1]]] if self.forbid else None,
@@ -255,12 +297,15 @@ class SessionManager:
         self.lock = threading.Lock()
 
     def create(self, side, flip, forbid=None, engine="custom",
-               search_time=DEFAULT_SEARCH_TIME):
+               search_time=DEFAULT_SEARCH_TIME,
+               cloud_book=CLOUD_BOOK_ENABLED):
         with self.lock:
             if len(self.sessions) >= MAX_GAMES:
                 return None
             sid = secrets.token_hex(16)
-            session = GameSession(sid, side, flip, forbid, engine, search_time)
+            session = GameSession(
+                sid, side, flip, forbid, engine, search_time, cloud_book
+            )
             session.start()          # 引擎启动失败会抛 RuntimeError
             self.sessions[sid] = session
             return session
@@ -345,6 +390,57 @@ async def _wait_engine(ws, session):
     await ws.send_json(session.state_msg())
 
 
+async def _play_engine_turn(ws, session):
+    """先在线程中查询云库，未命中或着法非法时无缝回退本地引擎。"""
+    session.thinking = True
+    loop = asyncio.get_running_loop()
+    book_future = loop.run_in_executor(
+        None,
+        partial(
+            query_cloud_book,
+            session.board.to_fen(),
+            forbidden_move=session.forbid,
+            enabled=session.cloud_book_enabled,
+        ),
+    )
+
+    # 查询任务已启动后再推送状态。即使此处恰好断线，也要先完成本回合的
+    # 状态转换，保证后续重连不会卡在一个没有实际任务的 thinking 状态。
+    turn_error = None
+    try:
+        await ws.send_json(session.state_msg())
+    except asyncio.CancelledError as exc:
+        turn_error = exc
+    except Exception as exc:
+        turn_error = exc
+
+    while True:
+        try:
+            # shield 保证 ASGI 任务被取消时线程查询仍能完成，随后本回合至少会
+            # 收敛为“库着已应用”或“引擎 search 已启动”。
+            book_move = await asyncio.shield(book_future)
+            break
+        except asyncio.CancelledError as exc:
+            if turn_error is None:
+                turn_error = exc
+            if book_future.cancelled():
+                session.thinking = False
+                raise turn_error
+
+    if session.apply_book_move(book_move):
+        if session.game_over:
+            session.close()
+        if turn_error is not None:
+            raise turn_error
+        await ws.send_json(session.state_msg())
+        return
+
+    session.request_engine_move()
+    if turn_error is not None:
+        raise turn_error
+    await _wait_engine(ws, session)
+
+
 async def _handle_message(ws, session, data):
     """处理一条客户端消息。返回 False 表示连接应结束。"""
     mtype = data.get("type")
@@ -366,9 +462,7 @@ async def _handle_message(ws, session, data):
             session.close()
             await ws.send_json(session.state_msg())
             return True
-        session.request_engine_move()
-        await ws.send_json(session.state_msg())   # thinking=true
-        await _wait_engine(ws, session)
+        await _play_engine_turn(ws, session)
         return True
 
     if mtype == "select":
@@ -395,6 +489,18 @@ async def _handle_message(ws, session, data):
             await ws.send_json({"type": "error", "msg": err})
             return True
         session.forbid = fb
+        await ws.send_json(session.state_msg())
+        return True
+
+    if mtype == "set_cloud_book":
+        enabled, err = parse_cloud_book(
+            data["enabled"] if "enabled" in data else _MISSING,
+            allow_default=False,
+        )
+        if err:
+            await ws.send_json({"type": "error", "msg": err})
+            return True
+        session.cloud_book_enabled = enabled
         await ws.send_json(session.state_msg())
         return True
 
@@ -437,6 +543,9 @@ async def ws_endpoint(ws: WebSocket):
             )
             flip = bool(first.get("flip", False))
             forbid, _ = parse_forbid(first.get("forbid_text"))   # 开新局静默忽略无效禁招
+            cloud_book, cloud_book_error = parse_cloud_book(
+                first["cloud_book"] if "cloud_book" in first else _MISSING
+            )
             if side not in ("red", "black"):
                 await ws.send_json({"type": "error", "msg": "side 必须是 red 或 black"})
                 await ws.close()
@@ -449,8 +558,14 @@ async def ws_endpoint(ws: WebSocket):
                 await ws.send_json({"type": "error", "msg": time_error})
                 await ws.close()
                 return
+            if cloud_book_error:
+                await ws.send_json({"type": "error", "msg": cloud_book_error})
+                await ws.close()
+                return
             try:
-                session = manager.create(side, flip, forbid, engine, search_time)
+                session = manager.create(
+                    side, flip, forbid, engine, search_time, cloud_book
+                )
             except RuntimeError as e:
                 await ws.send_json({"type": "error", "msg": f"引擎启动失败: {e}"})
                 await ws.close()
@@ -461,10 +576,7 @@ async def ws_endpoint(ws: WebSocket):
                 return
             session.ws = ws
             if side == "black":
-                # 人执黑：引擎先走（先 search 再推 state，让前端看到 thinking=true）
-                session.request_engine_move()
-                await ws.send_json(session.state_msg())
-                await _wait_engine(ws, session)
+                await _play_engine_turn(ws, session)
             else:
                 await ws.send_json(session.state_msg())
 
@@ -509,6 +621,9 @@ async def ws_endpoint(ws: WebSocket):
                 )
                 flip = bool(data.get("flip", False))
                 forbid, _ = parse_forbid(data.get("forbid_text"))   # 开新局静默忽略无效禁招
+                cloud_book, cloud_book_error = parse_cloud_book(
+                    data["cloud_book"] if "cloud_book" in data else _MISSING
+                )
                 if side not in ("red", "black"):
                     await ws.send_json({"type": "error", "msg": "side 必须是 red 或 black"})
                     continue
@@ -518,9 +633,14 @@ async def ws_endpoint(ws: WebSocket):
                 if time_error:
                     await ws.send_json({"type": "error", "msg": time_error})
                     continue
+                if cloud_book_error:
+                    await ws.send_json({"type": "error", "msg": cloud_book_error})
+                    continue
                 manager.remove(session.sid)
                 try:
-                    session = manager.create(side, flip, forbid, engine, search_time)
+                    session = manager.create(
+                        side, flip, forbid, engine, search_time, cloud_book
+                    )
                 except RuntimeError as e:
                     await ws.send_json({"type": "error", "msg": f"引擎启动失败: {e}"})
                     await ws.close()
@@ -531,9 +651,7 @@ async def ws_endpoint(ws: WebSocket):
                     return
                 session.ws = ws
                 if side == "black":
-                    session.request_engine_move()
-                    await ws.send_json(session.state_msg())
-                    await _wait_engine(ws, session)
+                    await _play_engine_turn(ws, session)
                 else:
                     await ws.send_json(session.state_msg())
                 continue

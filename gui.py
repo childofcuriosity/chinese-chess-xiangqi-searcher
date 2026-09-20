@@ -5,19 +5,13 @@ Pygame front-end for your Xiangqi AI.
 """
 
 import pygame
-import os
-import urllib.request
-import urllib.parse
-import random
 
-from common import LocalBoard, EngineClient, PIECE_CHARS, ROWS, COLS
+from common import (
+    CLOUD_BOOK_ENABLED, LocalBoard, EngineClient, PIECE_CHARS, ROWS, COLS,
+    query_cloud_book,
+)
 
 # --- GUI 配置 ---
-
-# --- 云库配置 (cpp 引擎不联网, 由 GUI 代查) ---
-CLOUD_BOOK_ENABLED =0 #1    # 1=启用; 0=禁用
-QUERY_SCORE_THRESHOLD = 20
-CLOUD_TIMEOUT = 2.0
 
 SCREEN_WIDTH = 640
 SCREEN_HEIGHT = 760   # 多出 40px 给禁招输入槽
@@ -40,54 +34,6 @@ COLOR_BTN = (220, 220, 220)
 COLOR_BTN_HOVER = (200, 200, 255)
 COLOR_INPUT = (255, 255, 240)
 COLOR_INPUT_FOCUS = (255, 240, 200)
-
-# --- 云库查询 (gui 端代理) ---
-_cloud_cache = {}
-def query_cloud_book(fen, forbidden_move=None):
-    if not CLOUD_BOOK_ENABLED:
-        return None
-    if forbidden_move is None and fen in _cloud_cache:
-        return _cloud_cache[fen]
-    encoded = urllib.parse.quote(fen)
-    url = f"http://www.chessdb.cn/chessdb.php?action=queryall&learn=1&board={encoded}"
-    try:
-        with urllib.request.urlopen(url, timeout=CLOUD_TIMEOUT) as resp:
-            data = resp.read().decode('utf-8')
-        if "move:" not in data:
-            if forbidden_move is None:
-                _cloud_cache[fen] = None
-            return None
-        moves = []
-        for line in data.split('|'):
-            parts = {kv.split(':')[0]: kv.split(':')[1]
-                     for kv in line.split(',') if ':' in kv}
-            if 'move' in parts and 'score' in parts:
-                moves.append((parts['move'], int(parts['score'])))
-        if not moves:
-            if forbidden_move is None:
-                _cloud_cache[fen] = None
-            return None
-        max_s = moves[0][1]
-        cands = [m for m in moves if m[1] >= max_s - QUERY_SCORE_THRESHOLD]
-        if forbidden_move is not None:
-            def _to_coords(uci):
-                return ((9 - int(uci[1]), ord(uci[0]) - ord('a')),
-                        (9 - int(uci[3]), ord(uci[2]) - ord('a')))
-            cands = [m for m in cands if _to_coords(m[0]) != forbidden_move]
-            if not cands:
-                return None
-        uci, sc = random.choice(cands)
-        c1 = ord(uci[0]) - ord('a'); r1 = 9 - int(uci[1])
-        c2 = ord(uci[2]) - ord('a'); r2 = 9 - int(uci[3])
-        result = ((r1, c1), (r2, c2), sc)
-        if forbidden_move is None:
-            _cloud_cache[fen] = result
-        return result
-    except Exception as e:
-        print("[云库] 查询失败:", e)
-        if forbidden_move is None:
-            _cloud_cache[fen] = None
-        return None
 
 # --- 小型 UI 组件 ---
 class Button:
@@ -144,6 +90,12 @@ class XiangqiGUI:
         self.forbid_rect = pygame.Rect(20, SCREEN_HEIGHT - 50, 200, 36)
         self.btn_pick_forbid = Button((230, SCREEN_HEIGHT - 50, 110, 36), "选禁招", self.small_font)
         self.btn_clear_forbid = Button((348, SCREEN_HEIGHT - 50, 70, 36), "清除", self.small_font)
+        self.cloud_book_enabled = CLOUD_BOOK_ENABLED
+        self.btn_cloud_book = Button(
+            (440, SCREEN_HEIGHT - 50, 180, 36),
+            "云库: 开" if self.cloud_book_enabled else "云库: 关",
+            self.small_font,
+        )
         self.forbid_picking = None   # None | 'from' | 'to'  点击选招模式
         self.forbid_from = None      # 选招起点 (r, c)
 
@@ -193,6 +145,12 @@ class XiangqiGUI:
             return ((r1, c1), (r2, c2))
         except Exception:
             return None
+
+    def toggle_cloud_book(self):
+        self.cloud_book_enabled = not self.cloud_book_enabled
+        self.btn_cloud_book.text = (
+            "云库: 开" if self.cloud_book_enabled else "云库: 关"
+        )
 
     def draw_board(self):
         self.screen.fill(COLOR_BG)
@@ -290,6 +248,7 @@ class XiangqiGUI:
         self.screen.blit(txt, (self.forbid_rect.x + 8, self.forbid_rect.y + 8))
         self.btn_pick_forbid.draw(self.screen, pygame.mouse.get_pos())
         self.btn_clear_forbid.draw(self.screen, pygame.mouse.get_pos())
+        self.btn_cloud_book.draw(self.screen, pygame.mouse.get_pos())
 
     def draw_start_menu(self):
         self.screen.fill(COLOR_BG)
@@ -329,15 +288,21 @@ class XiangqiGUI:
         fen = self.board.to_fen()
         forbid = self.parse_forbid()
 
-        cloud = query_cloud_book(fen, forbidden_move=forbid)
+        cloud = query_cloud_book(
+            fen,
+            forbidden_move=forbid,
+            enabled=self.cloud_book_enabled,
+        )
         if cloud is not None:
             (r1, c1), (r2, c2), sc = cloud
-            print(f"[云库] 命中: ({r1},{c1})->({r2},{c2})  score={sc}")
-            self.board.move(r1, c1, r2, c2)
-            self.ai.send(f"move {r1} {c1} {r2} {c2}")
-            # self._maybe_print_engine(f"云库: {r1},{c1}->{r2},{c2}")
-            self.ai_thinking = False
-            return
+            if self.board.is_legal_move(r1, c1, r2, c2):
+                print(f"[云库] 命中: ({r1},{c1})->({r2},{c2})  score={sc}")
+                self.board.move(r1, c1, r2, c2)
+                self.ai.send(f"move {r1} {c1} {r2} {c2}")
+                # self._maybe_print_engine(f"云库: {r1},{c1}->{r2},{c2}")
+                self.ai_thinking = False
+                return
+            print(f"[云库] 忽略非法着法: ({r1},{c1})->({r2},{c2})")
 
         if forbid:
             (fr, fc), (tr, tc) = forbid
@@ -476,6 +441,9 @@ class XiangqiGUI:
                             self.forbid_picking = None
                             self.forbid_from = None
                             self.update_forbid_btn_text()
+                        elif self.btn_cloud_book.clicked(event.pos):
+                            self.forbid_focused = False
+                            self.toggle_cloud_book()
                         elif self.btn_replace_ai.clicked(event.pos):
                             self.replace_ai_mode = not self.replace_ai_mode
                             self.btn_replace_ai.text = "代替AI: 开" if self.replace_ai_mode else "代替AI: 关"

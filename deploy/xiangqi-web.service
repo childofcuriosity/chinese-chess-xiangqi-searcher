@@ -9,6 +9,8 @@ WorkingDirectory=/opt/xq
 ExecStart=/opt/xq/venv/bin/uvicorn webapp:app --host 0.0.0.0 --port 8100
 Environment=XQ_MAX_GAMES=16
 Environment=XQ_IDLE_TIMEOUT=1800
+Environment=XQ_CLOUD_BOOK_ENABLED=0
+Environment=XQ_CLOUD_BOOK_TIMEOUT=2
 Restart=always
 RestartSec=3
 
