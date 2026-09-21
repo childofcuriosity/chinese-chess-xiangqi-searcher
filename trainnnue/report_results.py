@@ -208,13 +208,14 @@ def iteration_vs_pst_svg() -> str:
         return next(row["a_score_percent"] for row in matches if "PST" in row["b"])
 
     points = [
-        (0, "NNUE1（PST教师）", pst_score(direct["matches"])),
-        (1, "教师迭代1", pst_score(iterations[0]["matches"])),
-        (2, "教师迭代2", pst_score(iterations[1]["matches"])),
-        (3, "教师迭代3", pst_score(iterations[2]["matches"])),
+        (0, "PST初代", 50.0),
+        (1, "迭代世代1", pst_score(direct["matches"])),
+        (2, "迭代世代2", pst_score(iterations[0]["matches"])),
+        (3, "迭代世代3", pst_score(iterations[1]["matches"])),
+        (4, "迭代世代4", pst_score(iterations[2]["matches"])),
     ]
-    width, height = 900, 470
-    left, right, top, bottom = 92, 35, 55, 100
+    width, height = 1000, 510
+    left, right, top, bottom = 92, 55, 55, 140
     plot_width, plot_height = width - left - right, height - top - bottom
     low, high = 50.0, 75.0
 
@@ -251,14 +252,15 @@ def iteration_vs_pst_svg() -> str:
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
 <style>text{{font:14px system-ui,sans-serif;fill:#263238}} .grid{{stroke:#dfe6e9;stroke-width:1}} .axis{{stroke:#607d8b;stroke-width:1.5}} .series{{fill:none;stroke:#1565c0;stroke-width:3}} .point{{fill:#1976d2;stroke:white;stroke-width:2}} .baseline{{stroke:#78909c;stroke-width:1.5;stroke-dasharray:6 5}}</style>
 <rect width="100%" height="100%" fill="white"/>
-<text x="{left}" y="27" font-size="20" font-weight="600">从NNUE1到三轮教师迭代：对PST得分率</text>
+<text x="{left}" y="27" font-size="20" font-weight="600">PST初代到迭代世代4：对PST得分率</text>
 {''.join(grid)}
 <line x1="{left}" y1="{top}" x2="{left}" y2="{height-bottom}" class="axis"/><line x1="{left}" y1="{height-bottom}" x2="{width-right}" y2="{height-bottom}" class="axis"/>
 <line x1="{left}" y1="{y(50):.1f}" x2="{width-right}" y2="{y(50):.1f}" class="baseline"/>
 <polyline points="{polyline}" class="series"/>{''.join(marks)}
-<text x="{width/2}" y="{height-49}" text-anchor="middle">训练谱系</text>
+<text x="{width/2}" y="{height-80}" text-anchor="middle">迭代世代</text>
 <text x="19" y="{height/2-20}" transform="rotate(-90 19 {height/2-20})" text-anchor="middle">对PST得分率</text>
-<text x="{width/2}" y="{height-19}" text-anchor="middle" fill="#546e7a">192个保留开局逐一换先，共384盘；每步0.10秒，胜=1、和=0.5。</text>
+<text x="{width/2}" y="{height-52}" text-anchor="middle" fill="#455a64">世代1：PST教师，D3与D4先后各100万条；世代2–4：上一代NNUE教师，D3各100万条。</text>
+<text x="{width/2}" y="{height-25}" text-anchor="middle" fill="#546e7a">PST自身为50%基准；世代1–4均用192个保留开局逐一换先，共384盘，每步0.10秒。</text>
 </svg>'''
 
 
