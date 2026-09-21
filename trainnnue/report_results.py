@@ -198,10 +198,10 @@ def curve_svg(model_file: str, title: str) -> str:
 
 def iteration_best_validation_svg() -> str:
     models = [
-        (0, "D4", load("d4_balanced1m_h16_fromd3_full100_gpu.nnue.json")),
-        (1, "Iter1", load("iter1_nnued3_h16_fromd4_gpu.nnue.json")),
-        (2, "Iter2", load("iter2_nnued3_h16_fromiter1_gpu.nnue.json")),
-        (3, "Iter3", load("iter3_nnued3_h16_fromiter2_gpu.nnue.json")),
+        (0, "NNUE1（PST教师）", load("d4_balanced1m_h16_fromd3_full100_gpu.nnue.json")),
+        (1, "教师迭代1", load("iter1_nnued3_h16_fromd4_gpu.nnue.json")),
+        (2, "教师迭代2", load("iter2_nnued3_h16_fromiter1_gpu.nnue.json")),
+        (3, "教师迭代3", load("iter3_nnued3_h16_fromiter2_gpu.nnue.json")),
     ]
     points = []
     for round_number, name, metadata in models:
@@ -246,11 +246,11 @@ def iteration_best_validation_svg() -> str:
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
 <style>text{{font:14px system-ui,sans-serif;fill:#263238}} .grid{{stroke:#dfe6e9;stroke-width:1}} .axis{{stroke:#607d8b;stroke-width:1.5}} .series{{fill:none;stroke:#6a1b9a;stroke-width:3}} .point{{fill:#8e24aa;stroke:white;stroke-width:2}}</style>
 <rect width="100%" height="100%" fill="white"/>
-<text x="{left}" y="27" font-size="20" font-weight="600">教师迭代轮次与最佳验证损失</text>
+<text x="{left}" y="27" font-size="20" font-weight="600">从PST教师到三轮NNUE教师迭代：最佳验证损失</text>
 {''.join(grid)}
 <line x1="{left}" y1="{top}" x2="{left}" y2="{height-bottom}" class="axis"/><line x1="{left}" y1="{height-bottom}" x2="{width-right}" y2="{height-bottom}" class="axis"/>
 <polyline points="{polyline}" class="series"/>{''.join(marks)}
-<text x="{width/2}" y="{height-49}" text-anchor="middle">迭代轮次</text>
+<text x="{width/2}" y="{height-49}" text-anchor="middle">训练谱系</text>
 <text x="19" y="{height/2-20}" transform="rotate(-90 19 {height/2-20})" text-anchor="middle">最佳验证混合目标</text>
 <text x="{width/2}" y="{height-19}" text-anchor="middle" fill="#546e7a">各轮教师、数据分布和K不同；该图反映拟合难度，不直接代表棋力。</text>
 </svg>'''

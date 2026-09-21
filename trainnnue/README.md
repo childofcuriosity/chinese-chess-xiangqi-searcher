@@ -27,7 +27,7 @@
 
 ![Iter3-NNUE-D3训练曲线](iter3_training_curve.svg)
 
-![教师迭代轮次与最佳验证损失](iteration_best_validation.svg)
+![NNUE1与三轮教师迭代的最佳验证损失](iteration_best_validation.svg)
 
 各轮教师、数据分布与独立校准的K不同，因此上图只描述拟合难度，不应把损失高低直接解释为棋力排名；棋力仍以量化后等时比赛为准。
 
