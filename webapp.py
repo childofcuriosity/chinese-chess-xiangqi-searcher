@@ -8,6 +8,8 @@ webapp.py
 运行: uvicorn webapp:app --host 0.0.0.0 --port 8000   (或 python webapp.py)
 环境变量:
   XQ_CUSTOM_ENGINE_PATH       自研引擎路径 (默认: 本目录/xiangqi_ai)
+  XQ_CUSTOM_NNUE_ENGINE_PATH  自研 NNUE 引擎路径 (默认: 本目录/xiangqi_nnue)
+  XQ_CUSTOM_NNUE_MODEL_PATH   自研 NNUE 模型路径 (默认: 本目录/xiangqi_nnue_best.nnue)
   XQ_PIKAFISH_PST_ENGINE_PATH Pikafish PST 桥接入口路径
   XQ_DEFAULT_SEARCH_TIME      每步默认思考秒数 (默认 5)
   XQ_CLOUD_BOOK_ENABLED       新对局是否默认启用 ChessDB 云开局库 (默认 0)
@@ -49,8 +51,28 @@ MAX_SEARCH_TIME = 120.0
 _MISSING = object()
 
 
+_default_nnue_engine = BASE_DIR / "xiangqi_nnue"
+_default_nnue_model = BASE_DIR / "xiangqi_nnue_best.nnue"
+# Windows 开发环境直接复用训练目录中的已验证量化引擎和最佳模型；
+# Linux 部署环境使用上传到项目根目录的固定文件名。
+if sys.platform == "win32" and not _default_nnue_engine.with_suffix(".exe").exists():
+    dev_engine = BASE_DIR / "trainnnue" / "nnue_engine.exe"
+    if dev_engine.exists():
+        _default_nnue_engine = dev_engine
+if not _default_nnue_model.exists():
+    dev_model = BASE_DIR / "trainnnue" / "d4_balanced1m_h16_fromd3_full100_gpu.nnue"
+    if dev_model.exists():
+        _default_nnue_model = dev_model
+
+NNUE_MODEL_PATH = os.environ.get(
+    "XQ_CUSTOM_NNUE_MODEL_PATH", str(_default_nnue_model)
+)
+
 ENGINE_PATHS = {
     "custom": os.environ.get("XQ_CUSTOM_ENGINE_PATH", str(BASE_DIR / "xiangqi_ai")),
+    "custom_nnue": os.environ.get(
+        "XQ_CUSTOM_NNUE_ENGINE_PATH", str(_default_nnue_engine)
+    ),
     "pikafish_pst": os.environ.get(
         "XQ_PIKAFISH_PST_ENGINE_PATH", str(BASE_DIR / "pikafish_pst_bridge")
     ),
@@ -68,6 +90,9 @@ def resolve_engine_path(engine="custom"):
 def resolve_engine_command(engine="custom"):
     if engine == "pikafish_pst" and sys.platform == "win32":
         return [sys.executable, str(BASE_DIR / "pikafish_bridge.py")]
+    if engine == "custom_nnue":
+        return [resolve_engine_path(engine), "--nnue", NNUE_MODEL_PATH,
+                "--nnue-blend", "1"]
     return [resolve_engine_path(engine)]
 
 

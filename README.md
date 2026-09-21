@@ -1,137 +1,91 @@
-# 中国象棋 AI
+# 中国象棋 AI：从 PST 搜索引擎到增量 NNUE
 
-传统搜索算法实现的中国象棋 AI:C++ 引擎 [xiangqi_ai.cpp](xiangqi_ai.cpp) + pygame 图形界面 [gui.py](gui.py)。
+一个完整可运行的中国象棋 AI 项目：C++ 搜索引擎、PST/NNUE 两套评价、GPU 训练流水线、CPU 定点推理、公平对战工具，以及 FastAPI + WebSocket 网页端。
 
-自测棋力可战胜固定深度 7 的皮卡鱼。
+在线试玩：<http://47.102.137.220:8100>（默认选择自研 NNUE 引擎）
 
-## 截图
+## NNUE 成果（STAR）
 
-| 开局界面 | 计算日志界面 |
-| :---: | :---: |
-| ![开局界面](开局界面.png) | ![计算日志界面](计算日志界面.png) |
+- **Situation**：原引擎依赖手工 PST 评价；直接换成神经网络会显著降低单核搜索深度，而且深层搜索标签昂贵、难拟合。
+- **Task**：在保留原搜索框架的前提下，完成可增量更新、可量化、能在单核等时条件下稳定战胜 PST 的轻量 NNUE。
+- **Action**：实现 `XQ-HalfKA-9x14x90` 双视角特征和 make/undo 增量累加器；并行生成 D3/D4 各 100 万条、红黑待走平衡且全局去重的数据；独立统计 sigmoid 温度 K；比较 H8/H16、随机/D3 初始化；将最佳模型量化为纯整数 C++ 推理并接入网页。
+- **Result**：最终 **D4-H16（D3 初始化）**模型仅 **363KB**。在 192 个固定保留开局逐一换先的 384 盘单核等时测试中，对 PST 取得 **172胜115和97负，得分率59.77%**，配对 bootstrap 95% CI 为 **[56.38%, 63.15%]**；对并列候选 D4-H8 取得 **54.17%**。
 
-## 目录结构
+> 这里的“得分率”按胜=1、和=0.5、负=0计算。测试为 0.10 秒/步、最长160 ply，双方使用相同搜索代码与 CPU 限制。
 
-| 文件 | 说明 |
-| :--- | :--- |
-| `xiangqi_ai.cpp` | C++ 引擎源码(核心) |
-| `xiangqi_ai.exe` | 编译好的引擎(仓库自带) |
-| `common.py` | 棋盘规则 + ChessDB 云开局库 + 引擎进程通信,被 `gui.py` 和 `webapp.py` 共用 |
-| `gui.py` | pygame 图形界面,通过 stdio 驱动引擎 |
-| `webapp.py` | 网页版后端(FastAPI + WebSocket) |
-| `static/index.html` | 网页版前端(canvas 棋盘) |
-| `deploy/` | 一键部署脚本(服务器信息在 `secrets.env`,已 gitignore) |
-| `tests/` | 网页版端到端测试 + 云开局库单元测试(含真实引擎对弈) |
-| `cross_arena.py` | 对战皮卡鱼测试脚本 |
-| `pikafish.exe` / `pikafish.nnue` | 皮卡鱼引擎及权重(测试用) |
-| `selfplay.py` | 自对弈回归仲裁工具 |
-| `simhei.ttf` | 界面字体 |
+## 技术方案
 
-## 运行
+```text
+局面 → 双视角 HalfKA 稀疏特征 → H16 增量累加器 → CReLU
+     → 待走方/对方拼接 → 阶段输出头 → NNUE 残差 + PST → 搜索评价
+```
 
-1. 编译引擎(仓库已自带 `xiangqi_ai.exe`,不改引擎代码可跳过此步;需要 MSYS2 UCRT64 的 GCC):
+- **搜索**：迭代加深、PVS/Alpha-Beta、置换表、静态搜索、空步裁剪、LMR、SEE、历史/杀手启发。
+- **NNUE**：11,340 个 HalfKA 特征，H=16，无隐藏层；普通走子/吃子/撤销增量更新，将帅移动仅重建受影响视角。
+- **训练**：PST 无风险剪枝教师；D3→D4 课程初始化；概率损失 + cp 残差 SmoothL1；K 在 calibration 集独立拟合后冻结。
+- **部署**：特征变换 Q12、输出定点量化，C++ 热路径无 sigmoid；网页可切换“自研NNUE引擎 / 自研PST引擎 / Pikafish PST”。
 
-   ```bash
-   g++ -O3 -std=c++17 -march=native -DNDEBUG \
-       -fno-exceptions -fno-rtti \
-       -static -static-libgcc -static-libstdc++ \
-       -o xiangqi_ai.exe xiangqi_ai.cpp
-   ```
+完整的数据规则、网络结构、训练矩阵、正确性验证和比赛结果见 [trainnnue/README.md](trainnnue/README.md)。
 
-   `-static*` 是必须的:gui.py 用 subprocess 启动引擎时不带 MSYS2 的 PATH,动态链接的 DLL 找不到会静默启动失败。
+## 项目入口
 
-2. 安装界面依赖:
+| 路径 | 说明 |
+|---|---|
+| [`xiangqi_ai.cpp`](xiangqi_ai.cpp) | 原始 PST 搜索引擎 |
+| [`trainnnue/nnue_engine.cpp`](trainnnue/nnue_engine.cpp) | 增量、定点 NNUE 搜索引擎 |
+| [`trainnnue/train.py`](trainnnue/train.py) | GPU/CPU 训练、独立 K 校准与模型导出 |
+| [`trainnnue/generate_data.cpp`](trainnnue/generate_data.cpp) | 多深度教师数据生成 |
+| [`trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue`](trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue) | 当前最佳量化模型 |
+| [`webapp.py`](webapp.py) / [`static/index.html`](static/index.html) | FastAPI + WebSocket 网页端 |
+| [`deploy/deploy.ps1`](deploy/deploy.ps1) | 上传、编译、重启与 HTTP 验证的一键部署 |
+| [`slides-formal-web-lite/index.html`](slides-formal-web-lite/index.html) | 中国象棋搜索与 NNUE 的交互式教程 |
 
-   ```bash
-   pip install pygame
-   ```
+## 快速运行
 
-3. 运行:
+### 网页版
 
-   ```bash
-   python gui.py
-   ```
-
-## 网页版
-
-浏览器在线对弈:[webapp.py](webapp.py)(FastAPI + WebSocket)+ [static/index.html](static/index.html)(canvas 棋盘)。服务端校验走法,每局一个独立引擎进程,多人可同时玩,刷新断线自动续局,手机也能玩。
-
-本地运行:
-
-```bash
+```powershell
 pip install fastapi "uvicorn[standard]"
-python webapp.py            # 浏览器打开 http://localhost:8000
+python webapp.py
+# 打开 http://localhost:8000
 ```
 
-### 可选云开局库
+网页端每局使用独立引擎进程，服务端校验合法着，支持断线续局、思考时间调整和可选 ChessDB 云开局库。
 
-桌面版和网页版共用 `common.py` 中的 ChessDB 云开局库。对局开始后可随时点击
-“云库: 开/关”按钮，修改从引擎下一次出手生效；云库未命中、超时、返回畸形
-或非法着法时会自动回退到本地引擎搜索。
+### PST 桌面版
 
-默认关闭。若希望新对局默认开启，可在启动前设置环境变量：
-
-```bash
-# Linux/macOS
-XQ_CLOUD_BOOK_ENABLED=1 python webapp.py
-
-# Windows PowerShell（随后运行 python gui.py 或 python webapp.py）
-$env:XQ_CLOUD_BOOK_ENABLED = "1"
+```powershell
+pip install pygame
+python gui.py
 ```
 
-`XQ_CLOUD_BOOK_TIMEOUT` 可调整查询超时（默认 2 秒），
-`XQ_CLOUD_BOOK_SCORE_THRESHOLD` 可调整随机候选相对最佳着的最大分差（默认 20）。
-服务器部署时可将 `deploy/xiangqi-web.service` 中的 `XQ_CLOUD_BOOK_ENABLED=0`
-改为 `1`。
+### NNUE 引擎协议
 
-部署到 Linux 服务器(一键脚本,服务器信息在 `deploy/secrets.env`,已被 gitignore 不上传):
+```powershell
+g++ -O3 -std=c++17 -march=native -DNDEBUG `
+  -o trainnnue/nnue_engine.exe trainnnue/nnue_engine.cpp
 
-```bash
-cp deploy/secrets.env.example deploy/secrets.env   # 填入 ssh 别名/IP/端口
-bash deploy/deploy.sh                              # 或 PowerShell:
-                                                   # powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1
+trainnnue/nnue_engine.exe `
+  --nnue trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue `
+  --nnue-blend 1
 ```
 
-脚本自动完成:上传代码 → 引擎源码有变化才 g++ 重编译 → 更新 systemd 服务并重启 → HTTP 验证。并发上限/空闲回收可用环境变量 `XQ_MAX_GAMES` / `XQ_IDLE_TIMEOUT` 调整(见 [webapp.py](webapp.py) 头部注释)。
+引擎通过标准输入输出接受 `ready`、`setboard`、`side`、`time`、`move`、`search`、`forbid` 和 `quit`。
 
-## 引擎功能
+## 部署
 
-- **搜索**:迭代加深 + PVS + Alpha-Beta 剪枝,置换表(800 万条目)+ Zobrist 哈希,空步裁剪,静态搜索,历史启发 + 杀手启发,MVV-LVA 着法排序
-- **评估**:子力价值 + 中局/残局两套棋子位置表(PST,参考象眼)
-- **着法生成**:位运算维护行列占位,快速生成与合法性判断
+将服务器信息写入已忽略的 `deploy/secrets.env`，之后统一运行：
 
-## 引擎协议(stdio)
-
-gui.py / webapp.py 与引擎通过标准输入输出通信:
-
-| 命令 | 说明 |
-| :--- | :--- |
-| `ready` | 引擎回复 `readyok` |
-| `side red` / `side black` | 设置**人类**执子方,引擎自动执相反色。注意:`side black` 表示引擎执红 |
-| `setboard <FEN>` | 设置局面 |
-| `move r1 c1 r2 c2` | 告知引擎对手的着法 |
-| `forbid r1 c1 r2 c2` | 设置禁手 |
-| `search` | 引擎思考并走自己一步,输出 `move r1 c1 r2 c2` 或 `resign` |
-| `print` | 输出当前棋盘 |
-| `quit` | 退出 |
-
-## 对战皮卡鱼
-
-[cross_arena.py](cross_arena.py) 做协议翻译,让 xiangqi_ai.exe 与皮卡鱼对局:
-
-```bash
-python cross_arena.py                    # 单局: 我方执红 vs 皮卡鱼深度1
-python cross_arena.py --pika-depth 7     # vs 深度7
-python cross_arena.py --visualize        # 动态打印棋盘
-python cross_arena.py --matrix 7         # 深度矩阵: 皮卡鱼深度1..7, 每档两局互换先手
+```powershell
+deploy\deploy.ps1
 ```
 
-皮卡鱼说 UCI 协议,我方引擎说自家 stdio 协议,脚本负责协议翻译和坐标转换。
+脚本会同步网页文件、按源码哈希决定是否重编译 PST/NNUE/Pikafish、上传最佳 NNUE 权重、重启 systemd 并检查 HTTP 200。
 
-## 自对弈测试
+## 教程
 
-两个引擎互相对弈,检测吃王 / 长将 / 步数上限:
+[`slides-formal-web-lite`](slides-formal-web-lite/index.html) 是随仓库提供的交互式教程，覆盖棋盘建模、手工评价、Alpha-Beta/PVS、选择性剪枝以及 NNUE 特征与增量推理。直接用浏览器打开 `index.html` 即可离线阅读。
 
-```bash
-python selfplay.py <红方exe> <黑方exe> [最大步数=200]
-```
+## 结果边界
+
+当前结论来自固定保留开局和 384 盘配对测试，足以支持本项目的工程验收，但不是大规模 Elo 标定。引擎保留原有重复局面与简化长将判断，尚未实现完整平台级长捉/长杀裁决。

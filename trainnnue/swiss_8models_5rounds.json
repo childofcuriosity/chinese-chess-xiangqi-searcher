@@ -1,0 +1,1286 @@
+{
+  "format": "Swiss pairings; ranking by total game points (win=1, draw=0.5)",
+  "settings": {
+    "seconds": 0.1,
+    "pairs_per_match": 24,
+    "rounds": 5,
+    "max_plies": 160,
+    "output": "trainnnue\\swiss_8models_5rounds.json",
+    "cpu_indices": [
+      0,
+      2,
+      4,
+      6
+    ]
+  },
+  "participants": [
+    {
+      "id": "pst",
+      "name": "PST baseline",
+      "exe": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\xiangqi_pst_fair.exe",
+      "model": null,
+      "seed": 0,
+      "game_points": 98.0,
+      "games": 240,
+      "wins": 62,
+      "draws": 72,
+      "losses": 106,
+      "opponents": [
+        "d3h8",
+        "d3h16",
+        "d5h8",
+        "d4h8d3",
+        "d4h8r"
+      ]
+    },
+    {
+      "id": "d5h8",
+      "name": "D5 H8 (old best)",
+      "exe": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\nnue_engine.exe",
+      "model": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\best.nnue",
+      "seed": 1,
+      "game_points": 115.5,
+      "games": 240,
+      "wins": 74,
+      "draws": 83,
+      "losses": 83,
+      "opponents": [
+        "d4h16d3",
+        "d4h16r",
+        "pst",
+        "d3h8",
+        "d4h8d3"
+      ]
+    },
+    {
+      "id": "d3h8",
+      "name": "D3 1M H8",
+      "exe": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\nnue_engine.exe",
+      "model": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\d3_balanced1m_h8_full100_gpu.nnue",
+      "seed": 2,
+      "game_points": 105.5,
+      "games": 240,
+      "wins": 58,
+      "draws": 95,
+      "losses": 87,
+      "opponents": [
+        "pst",
+        "d4h8r",
+        "d4h8d3",
+        "d5h8",
+        "d3h16"
+      ]
+    },
+    {
+      "id": "d3h16",
+      "name": "D3 1M H16",
+      "exe": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\nnue_engine.exe",
+      "model": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\d3_balanced1m_h16_full100_gpu.nnue",
+      "seed": 3,
+      "game_points": 118.5,
+      "games": 240,
+      "wins": 77,
+      "draws": 83,
+      "losses": 80,
+      "opponents": [
+        "d4h8r",
+        "pst",
+        "d4h16d3",
+        "d4h16r",
+        "d3h8"
+      ]
+    },
+    {
+      "id": "d4h8r",
+      "name": "D4 H8 random-init",
+      "exe": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\nnue_engine.exe",
+      "model": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\d4_balanced1m_h8_random_full100_gpu.nnue",
+      "seed": 4,
+      "game_points": 130.5,
+      "games": 240,
+      "wins": 90,
+      "draws": 81,
+      "losses": 69,
+      "opponents": [
+        "d3h16",
+        "d3h8",
+        "d4h16r",
+        "d4h16d3",
+        "pst"
+      ]
+    },
+    {
+      "id": "d4h8d3",
+      "name": "D4 H8 D3-init",
+      "exe": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\nnue_engine.exe",
+      "model": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\d4_balanced1m_h8_fromd3_full100_gpu.nnue",
+      "seed": 5,
+      "game_points": 132.0,
+      "games": 240,
+      "wins": 95,
+      "draws": 74,
+      "losses": 71,
+      "opponents": [
+        "d4h16r",
+        "d4h16d3",
+        "d3h8",
+        "pst",
+        "d5h8"
+      ]
+    },
+    {
+      "id": "d4h16r",
+      "name": "D4 H16 random-init",
+      "exe": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\nnue_engine.exe",
+      "model": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\d4_balanced1m_h16_random_full100_gpu.nnue",
+      "seed": 6,
+      "game_points": 128.0,
+      "games": 240,
+      "wins": 84,
+      "draws": 88,
+      "losses": 68,
+      "opponents": [
+        "d4h8d3",
+        "d5h8",
+        "d4h8r",
+        "d3h16",
+        "d4h16d3"
+      ]
+    },
+    {
+      "id": "d4h16d3",
+      "name": "D4 H16 D3-init",
+      "exe": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\nnue_engine.exe",
+      "model": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\d4_balanced1m_h16_fromd3_full100_gpu.nnue",
+      "seed": 7,
+      "game_points": 132.0,
+      "games": 240,
+      "wins": 97,
+      "draws": 70,
+      "losses": 73,
+      "opponents": [
+        "d5h8",
+        "d4h8d3",
+        "d3h16",
+        "d4h8r",
+        "d4h16r"
+      ]
+    }
+  ],
+  "rounds": [
+    {
+      "round": 1,
+      "opening_start": 0,
+      "matches": [
+        {
+          "a": "d4h8d3",
+          "b": "d4h16r",
+          "a_score": 23.0,
+          "b_score": 25.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round1_match1.json"
+        },
+        {
+          "a": "d4h16d3",
+          "b": "d5h8",
+          "a_score": 24.0,
+          "b_score": 24.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round1_match2.json"
+        },
+        {
+          "a": "d3h8",
+          "b": "pst",
+          "a_score": 27.0,
+          "b_score": 21.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round1_match3.json"
+        },
+        {
+          "a": "d4h8r",
+          "b": "d3h16",
+          "a_score": 27.0,
+          "b_score": 21.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round1_match4.json"
+        }
+      ],
+      "standings": [
+        {
+          "rank": 1,
+          "id": "d4h8r",
+          "name": "D4 H8 random-init",
+          "game_points": 27.0,
+          "games": 48,
+          "score_percent": 56.25,
+          "wins": 20,
+          "draws": 14,
+          "losses": 14,
+          "buchholz_game_points": 21.0,
+          "opponents": [
+            "d3h16",
+            "d3h8",
+            "d4h16r",
+            "d4h16d3",
+            "pst"
+          ]
+        },
+        {
+          "rank": 2,
+          "id": "d3h8",
+          "name": "D3 1M H8",
+          "game_points": 27.0,
+          "games": 48,
+          "score_percent": 56.25,
+          "wins": 17,
+          "draws": 20,
+          "losses": 11,
+          "buchholz_game_points": 21.0,
+          "opponents": [
+            "pst",
+            "d4h8r",
+            "d4h8d3",
+            "d5h8",
+            "d3h16"
+          ]
+        },
+        {
+          "rank": 3,
+          "id": "d4h16r",
+          "name": "D4 H16 random-init",
+          "game_points": 25.0,
+          "games": 48,
+          "score_percent": 52.083333333333336,
+          "wins": 18,
+          "draws": 14,
+          "losses": 16,
+          "buchholz_game_points": 23.0,
+          "opponents": [
+            "d4h8d3",
+            "d5h8",
+            "d4h8r",
+            "d3h16",
+            "d4h16d3"
+          ]
+        },
+        {
+          "rank": 4,
+          "id": "d5h8",
+          "name": "D5 H8 (old best)",
+          "game_points": 24.0,
+          "games": 48,
+          "score_percent": 50.0,
+          "wins": 17,
+          "draws": 14,
+          "losses": 17,
+          "buchholz_game_points": 24.0,
+          "opponents": [
+            "d4h16d3",
+            "d4h16r",
+            "pst",
+            "d3h8",
+            "d4h8d3"
+          ]
+        },
+        {
+          "rank": 5,
+          "id": "d4h16d3",
+          "name": "D4 H16 D3-init",
+          "game_points": 24.0,
+          "games": 48,
+          "score_percent": 50.0,
+          "wins": 17,
+          "draws": 14,
+          "losses": 17,
+          "buchholz_game_points": 24.0,
+          "opponents": [
+            "d5h8",
+            "d4h8d3",
+            "d3h16",
+            "d4h8r",
+            "d4h16r"
+          ]
+        },
+        {
+          "rank": 6,
+          "id": "d4h8d3",
+          "name": "D4 H8 D3-init",
+          "game_points": 23.0,
+          "games": 48,
+          "score_percent": 47.916666666666664,
+          "wins": 16,
+          "draws": 14,
+          "losses": 18,
+          "buchholz_game_points": 25.0,
+          "opponents": [
+            "d4h16r",
+            "d4h16d3",
+            "d3h8",
+            "pst",
+            "d5h8"
+          ]
+        },
+        {
+          "rank": 7,
+          "id": "d3h16",
+          "name": "D3 1M H16",
+          "game_points": 21.0,
+          "games": 48,
+          "score_percent": 43.75,
+          "wins": 14,
+          "draws": 14,
+          "losses": 20,
+          "buchholz_game_points": 27.0,
+          "opponents": [
+            "d4h8r",
+            "pst",
+            "d4h16d3",
+            "d4h16r",
+            "d3h8"
+          ]
+        },
+        {
+          "rank": 8,
+          "id": "pst",
+          "name": "PST baseline",
+          "game_points": 21.0,
+          "games": 48,
+          "score_percent": 43.75,
+          "wins": 11,
+          "draws": 20,
+          "losses": 17,
+          "buchholz_game_points": 27.0,
+          "opponents": [
+            "d3h8",
+            "d3h16",
+            "d5h8",
+            "d4h8d3",
+            "d4h8r"
+          ]
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "opening_start": 24,
+      "matches": [
+        {
+          "a": "d4h8r",
+          "b": "d3h8",
+          "a_score": 27.5,
+          "b_score": 20.5,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round2_match1.json"
+        },
+        {
+          "a": "d4h16r",
+          "b": "d5h8",
+          "a_score": 29.0,
+          "b_score": 19.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round2_match2.json"
+        },
+        {
+          "a": "d4h16d3",
+          "b": "d4h8d3",
+          "a_score": 25.0,
+          "b_score": 23.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round2_match3.json"
+        },
+        {
+          "a": "d3h16",
+          "b": "pst",
+          "a_score": 30.5,
+          "b_score": 17.5,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round2_match4.json"
+        }
+      ],
+      "standings": [
+        {
+          "rank": 1,
+          "id": "d4h8r",
+          "name": "D4 H8 random-init",
+          "game_points": 54.5,
+          "games": 96,
+          "score_percent": 56.770833333333336,
+          "wins": 40,
+          "draws": 29,
+          "losses": 27,
+          "buchholz_game_points": 99.0,
+          "opponents": [
+            "d3h16",
+            "d3h8",
+            "d4h16r",
+            "d4h16d3",
+            "pst"
+          ]
+        },
+        {
+          "rank": 2,
+          "id": "d4h16r",
+          "name": "D4 H16 random-init",
+          "game_points": 54.0,
+          "games": 96,
+          "score_percent": 56.25,
+          "wins": 41,
+          "draws": 26,
+          "losses": 29,
+          "buchholz_game_points": 89.0,
+          "opponents": [
+            "d4h8d3",
+            "d5h8",
+            "d4h8r",
+            "d3h16",
+            "d4h16d3"
+          ]
+        },
+        {
+          "rank": 3,
+          "id": "d3h16",
+          "name": "D3 1M H16",
+          "game_points": 51.5,
+          "games": 96,
+          "score_percent": 53.645833333333336,
+          "wins": 38,
+          "draws": 27,
+          "losses": 31,
+          "buchholz_game_points": 93.0,
+          "opponents": [
+            "d4h8r",
+            "pst",
+            "d4h16d3",
+            "d4h16r",
+            "d3h8"
+          ]
+        },
+        {
+          "rank": 4,
+          "id": "d4h16d3",
+          "name": "D4 H16 D3-init",
+          "game_points": 49.0,
+          "games": 96,
+          "score_percent": 51.041666666666664,
+          "wins": 36,
+          "draws": 26,
+          "losses": 34,
+          "buchholz_game_points": 89.0,
+          "opponents": [
+            "d5h8",
+            "d4h8d3",
+            "d3h16",
+            "d4h8r",
+            "d4h16r"
+          ]
+        },
+        {
+          "rank": 5,
+          "id": "d3h8",
+          "name": "D3 1M H8",
+          "game_points": 47.5,
+          "games": 96,
+          "score_percent": 49.479166666666664,
+          "wins": 30,
+          "draws": 35,
+          "losses": 31,
+          "buchholz_game_points": 93.0,
+          "opponents": [
+            "pst",
+            "d4h8r",
+            "d4h8d3",
+            "d5h8",
+            "d3h16"
+          ]
+        },
+        {
+          "rank": 6,
+          "id": "d4h8d3",
+          "name": "D4 H8 D3-init",
+          "game_points": 46.0,
+          "games": 96,
+          "score_percent": 47.916666666666664,
+          "wins": 33,
+          "draws": 26,
+          "losses": 37,
+          "buchholz_game_points": 103.0,
+          "opponents": [
+            "d4h16r",
+            "d4h16d3",
+            "d3h8",
+            "pst",
+            "d5h8"
+          ]
+        },
+        {
+          "rank": 7,
+          "id": "d5h8",
+          "name": "D5 H8 (old best)",
+          "game_points": 43.0,
+          "games": 96,
+          "score_percent": 44.791666666666664,
+          "wins": 30,
+          "draws": 26,
+          "losses": 40,
+          "buchholz_game_points": 103.0,
+          "opponents": [
+            "d4h16d3",
+            "d4h16r",
+            "pst",
+            "d3h8",
+            "d4h8d3"
+          ]
+        },
+        {
+          "rank": 8,
+          "id": "pst",
+          "name": "PST baseline",
+          "game_points": 38.5,
+          "games": 96,
+          "score_percent": 40.104166666666664,
+          "wins": 22,
+          "draws": 33,
+          "losses": 41,
+          "buchholz_game_points": 99.0,
+          "opponents": [
+            "d3h8",
+            "d3h16",
+            "d5h8",
+            "d4h8d3",
+            "d4h8r"
+          ]
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "opening_start": 48,
+      "matches": [
+        {
+          "a": "d4h8r",
+          "b": "d4h16r",
+          "a_score": 26.0,
+          "b_score": 22.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round3_match1.json"
+        },
+        {
+          "a": "d3h16",
+          "b": "d4h16d3",
+          "a_score": 17.0,
+          "b_score": 31.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round3_match2.json"
+        },
+        {
+          "a": "d3h8",
+          "b": "d4h8d3",
+          "a_score": 17.0,
+          "b_score": 31.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round3_match3.json"
+        },
+        {
+          "a": "d5h8",
+          "b": "pst",
+          "a_score": 24.5,
+          "b_score": 23.5,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round3_match4.json"
+        }
+      ],
+      "standings": [
+        {
+          "rank": 1,
+          "id": "d4h8r",
+          "name": "D4 H8 random-init",
+          "game_points": 80.5,
+          "games": 144,
+          "score_percent": 55.90277777777778,
+          "wins": 53,
+          "draws": 55,
+          "losses": 36,
+          "buchholz_game_points": 209.0,
+          "opponents": [
+            "d3h16",
+            "d3h8",
+            "d4h16r",
+            "d4h16d3",
+            "pst"
+          ]
+        },
+        {
+          "rank": 2,
+          "id": "d4h16d3",
+          "name": "D4 H16 D3-init",
+          "game_points": 80.0,
+          "games": 144,
+          "score_percent": 55.55555555555556,
+          "wins": 59,
+          "draws": 42,
+          "losses": 43,
+          "buchholz_game_points": 213.0,
+          "opponents": [
+            "d5h8",
+            "d4h8d3",
+            "d3h16",
+            "d4h8r",
+            "d4h16r"
+          ]
+        },
+        {
+          "rank": 3,
+          "id": "d4h8d3",
+          "name": "D4 H8 D3-init",
+          "game_points": 77.0,
+          "games": 144,
+          "score_percent": 53.47222222222222,
+          "wins": 54,
+          "draws": 46,
+          "losses": 44,
+          "buchholz_game_points": 220.5,
+          "opponents": [
+            "d4h16r",
+            "d4h16d3",
+            "d3h8",
+            "pst",
+            "d5h8"
+          ]
+        },
+        {
+          "rank": 4,
+          "id": "d4h16r",
+          "name": "D4 H16 random-init",
+          "game_points": 76.0,
+          "games": 144,
+          "score_percent": 52.77777777777778,
+          "wins": 50,
+          "draws": 52,
+          "losses": 42,
+          "buchholz_game_points": 225.0,
+          "opponents": [
+            "d4h8d3",
+            "d5h8",
+            "d4h8r",
+            "d3h16",
+            "d4h16d3"
+          ]
+        },
+        {
+          "rank": 5,
+          "id": "d3h16",
+          "name": "D3 1M H16",
+          "game_points": 68.5,
+          "games": 144,
+          "score_percent": 47.56944444444444,
+          "wins": 47,
+          "draws": 43,
+          "losses": 54,
+          "buchholz_game_points": 222.5,
+          "opponents": [
+            "d4h8r",
+            "pst",
+            "d4h16d3",
+            "d4h16r",
+            "d3h8"
+          ]
+        },
+        {
+          "rank": 6,
+          "id": "d5h8",
+          "name": "D5 H8 (old best)",
+          "game_points": 67.5,
+          "games": 144,
+          "score_percent": 46.875,
+          "wins": 46,
+          "draws": 43,
+          "losses": 55,
+          "buchholz_game_points": 218.0,
+          "opponents": [
+            "d4h16d3",
+            "d4h16r",
+            "pst",
+            "d3h8",
+            "d4h8d3"
+          ]
+        },
+        {
+          "rank": 7,
+          "id": "d3h8",
+          "name": "D3 1M H8",
+          "game_points": 64.5,
+          "games": 144,
+          "score_percent": 44.791666666666664,
+          "wins": 37,
+          "draws": 55,
+          "losses": 52,
+          "buchholz_game_points": 219.5,
+          "opponents": [
+            "pst",
+            "d4h8r",
+            "d4h8d3",
+            "d5h8",
+            "d3h16"
+          ]
+        },
+        {
+          "rank": 8,
+          "id": "pst",
+          "name": "PST baseline",
+          "game_points": 62.0,
+          "games": 144,
+          "score_percent": 43.05555555555556,
+          "wins": 37,
+          "draws": 50,
+          "losses": 57,
+          "buchholz_game_points": 200.5,
+          "opponents": [
+            "d3h8",
+            "d3h16",
+            "d5h8",
+            "d4h8d3",
+            "d4h8r"
+          ]
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "opening_start": 72,
+      "matches": [
+        {
+          "a": "d4h8r",
+          "b": "d4h16d3",
+          "a_score": 19.0,
+          "b_score": 29.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round4_match1.json"
+        },
+        {
+          "a": "d4h8d3",
+          "b": "pst",
+          "a_score": 29.0,
+          "b_score": 19.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round4_match2.json"
+        },
+        {
+          "a": "d4h16r",
+          "b": "d3h16",
+          "a_score": 27.0,
+          "b_score": 21.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round4_match3.json"
+        },
+        {
+          "a": "d5h8",
+          "b": "d3h8",
+          "a_score": 26.0,
+          "b_score": 22.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round4_match4.json"
+        }
+      ],
+      "standings": [
+        {
+          "rank": 1,
+          "id": "d4h16d3",
+          "name": "D4 H16 D3-init",
+          "game_points": 109.0,
+          "games": 192,
+          "score_percent": 56.770833333333336,
+          "wins": 82,
+          "draws": 54,
+          "losses": 56,
+          "buchholz_game_points": 388.5,
+          "opponents": [
+            "d5h8",
+            "d4h8d3",
+            "d3h16",
+            "d4h8r",
+            "d4h16r"
+          ]
+        },
+        {
+          "rank": 2,
+          "id": "d4h8d3",
+          "name": "D4 H8 D3-init",
+          "game_points": 106.0,
+          "games": 192,
+          "score_percent": 55.208333333333336,
+          "wins": 79,
+          "draws": 54,
+          "losses": 59,
+          "buchholz_game_points": 379.5,
+          "opponents": [
+            "d4h16r",
+            "d4h16d3",
+            "d3h8",
+            "pst",
+            "d5h8"
+          ]
+        },
+        {
+          "rank": 3,
+          "id": "d4h16r",
+          "name": "D4 H16 random-init",
+          "game_points": 103.0,
+          "games": 192,
+          "score_percent": 53.645833333333336,
+          "wins": 67,
+          "draws": 72,
+          "losses": 53,
+          "buchholz_game_points": 388.5,
+          "opponents": [
+            "d4h8d3",
+            "d5h8",
+            "d4h8r",
+            "d3h16",
+            "d4h16d3"
+          ]
+        },
+        {
+          "rank": 4,
+          "id": "d4h8r",
+          "name": "D4 H8 random-init",
+          "game_points": 99.5,
+          "games": 192,
+          "score_percent": 51.822916666666664,
+          "wins": 66,
+          "draws": 67,
+          "losses": 59,
+          "buchholz_game_points": 388.0,
+          "opponents": [
+            "d3h16",
+            "d3h8",
+            "d4h16r",
+            "d4h16d3",
+            "pst"
+          ]
+        },
+        {
+          "rank": 5,
+          "id": "d5h8",
+          "name": "D5 H8 (old best)",
+          "game_points": 93.5,
+          "games": 192,
+          "score_percent": 48.697916666666664,
+          "wins": 62,
+          "draws": 63,
+          "losses": 67,
+          "buchholz_game_points": 379.5,
+          "opponents": [
+            "d4h16d3",
+            "d4h16r",
+            "pst",
+            "d3h8",
+            "d4h8d3"
+          ]
+        },
+        {
+          "rank": 6,
+          "id": "d3h16",
+          "name": "D3 1M H16",
+          "game_points": 89.5,
+          "games": 192,
+          "score_percent": 46.614583333333336,
+          "wins": 58,
+          "draws": 63,
+          "losses": 71,
+          "buchholz_game_points": 392.5,
+          "opponents": [
+            "d4h8r",
+            "pst",
+            "d4h16d3",
+            "d4h16r",
+            "d3h8"
+          ]
+        },
+        {
+          "rank": 7,
+          "id": "d3h8",
+          "name": "D3 1M H8",
+          "game_points": 86.5,
+          "games": 192,
+          "score_percent": 45.052083333333336,
+          "wins": 49,
+          "draws": 75,
+          "losses": 68,
+          "buchholz_game_points": 380.0,
+          "opponents": [
+            "pst",
+            "d4h8r",
+            "d4h8d3",
+            "d5h8",
+            "d3h16"
+          ]
+        },
+        {
+          "rank": 8,
+          "id": "pst",
+          "name": "PST baseline",
+          "game_points": 81.0,
+          "games": 192,
+          "score_percent": 42.1875,
+          "wins": 52,
+          "draws": 58,
+          "losses": 82,
+          "buchholz_game_points": 375.5,
+          "opponents": [
+            "d3h8",
+            "d3h16",
+            "d5h8",
+            "d4h8d3",
+            "d4h8r"
+          ]
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "opening_start": 96,
+      "matches": [
+        {
+          "a": "d4h16d3",
+          "b": "d4h16r",
+          "a_score": 23.0,
+          "b_score": 25.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round5_match1.json"
+        },
+        {
+          "a": "d4h8d3",
+          "b": "d5h8",
+          "a_score": 26.0,
+          "b_score": 22.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round5_match2.json"
+        },
+        {
+          "a": "d4h8r",
+          "b": "pst",
+          "a_score": 31.0,
+          "b_score": 17.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round5_match3.json"
+        },
+        {
+          "a": "d3h16",
+          "b": "d3h8",
+          "a_score": 29.0,
+          "b_score": 19.0,
+          "games": 48,
+          "result_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\swiss_rounds\\round5_match4.json"
+        }
+      ],
+      "standings": [
+        {
+          "rank": 1,
+          "id": "d4h16d3",
+          "name": "D4 H16 D3-init",
+          "game_points": 132.0,
+          "games": 240,
+          "score_percent": 55.0,
+          "wins": 97,
+          "draws": 70,
+          "losses": 73,
+          "buchholz_game_points": 624.5,
+          "opponents": [
+            "d5h8",
+            "d4h8d3",
+            "d3h16",
+            "d4h8r",
+            "d4h16r"
+          ]
+        },
+        {
+          "rank": 2,
+          "id": "d4h8d3",
+          "name": "D4 H8 D3-init",
+          "game_points": 132.0,
+          "games": 240,
+          "score_percent": 55.0,
+          "wins": 95,
+          "draws": 74,
+          "losses": 71,
+          "buchholz_game_points": 579.0,
+          "opponents": [
+            "d4h16r",
+            "d4h16d3",
+            "d3h8",
+            "pst",
+            "d5h8"
+          ]
+        },
+        {
+          "rank": 3,
+          "id": "d4h8r",
+          "name": "D4 H8 random-init",
+          "game_points": 130.5,
+          "games": 240,
+          "score_percent": 54.375,
+          "wins": 90,
+          "draws": 81,
+          "losses": 69,
+          "buchholz_game_points": 582.0,
+          "opponents": [
+            "d3h16",
+            "d3h8",
+            "d4h16r",
+            "d4h16d3",
+            "pst"
+          ]
+        },
+        {
+          "rank": 4,
+          "id": "d4h16r",
+          "name": "D4 H16 random-init",
+          "game_points": 128.0,
+          "games": 240,
+          "score_percent": 53.333333333333336,
+          "wins": 84,
+          "draws": 88,
+          "losses": 68,
+          "buchholz_game_points": 628.5,
+          "opponents": [
+            "d4h8d3",
+            "d5h8",
+            "d4h8r",
+            "d3h16",
+            "d4h16d3"
+          ]
+        },
+        {
+          "rank": 5,
+          "id": "d3h16",
+          "name": "D3 1M H16",
+          "game_points": 118.5,
+          "games": 240,
+          "score_percent": 49.375,
+          "wins": 77,
+          "draws": 83,
+          "losses": 80,
+          "buchholz_game_points": 594.0,
+          "opponents": [
+            "d4h8r",
+            "pst",
+            "d4h16d3",
+            "d4h16r",
+            "d3h8"
+          ]
+        },
+        {
+          "rank": 6,
+          "id": "d5h8",
+          "name": "D5 H8 (old best)",
+          "game_points": 115.5,
+          "games": 240,
+          "score_percent": 48.125,
+          "wins": 74,
+          "draws": 83,
+          "losses": 83,
+          "buchholz_game_points": 595.5,
+          "opponents": [
+            "d4h16d3",
+            "d4h16r",
+            "pst",
+            "d3h8",
+            "d4h8d3"
+          ]
+        },
+        {
+          "rank": 7,
+          "id": "d3h8",
+          "name": "D3 1M H8",
+          "game_points": 105.5,
+          "games": 240,
+          "score_percent": 43.958333333333336,
+          "wins": 58,
+          "draws": 95,
+          "losses": 87,
+          "buchholz_game_points": 594.5,
+          "opponents": [
+            "pst",
+            "d4h8r",
+            "d4h8d3",
+            "d5h8",
+            "d3h16"
+          ]
+        },
+        {
+          "rank": 8,
+          "id": "pst",
+          "name": "PST baseline",
+          "game_points": 98.0,
+          "games": 240,
+          "score_percent": 40.833333333333336,
+          "wins": 62,
+          "draws": 72,
+          "losses": 106,
+          "buchholz_game_points": 602.0,
+          "opponents": [
+            "d3h8",
+            "d3h16",
+            "d5h8",
+            "d4h8d3",
+            "d4h8r"
+          ]
+        }
+      ]
+    }
+  ],
+  "current_standings": [
+    {
+      "rank": 1,
+      "id": "d4h16d3",
+      "name": "D4 H16 D3-init",
+      "game_points": 132.0,
+      "games": 240,
+      "score_percent": 55.0,
+      "wins": 97,
+      "draws": 70,
+      "losses": 73,
+      "buchholz_game_points": 624.5,
+      "opponents": [
+        "d5h8",
+        "d4h8d3",
+        "d3h16",
+        "d4h8r",
+        "d4h16r"
+      ]
+    },
+    {
+      "rank": 2,
+      "id": "d4h8d3",
+      "name": "D4 H8 D3-init",
+      "game_points": 132.0,
+      "games": 240,
+      "score_percent": 55.0,
+      "wins": 95,
+      "draws": 74,
+      "losses": 71,
+      "buchholz_game_points": 579.0,
+      "opponents": [
+        "d4h16r",
+        "d4h16d3",
+        "d3h8",
+        "pst",
+        "d5h8"
+      ]
+    },
+    {
+      "rank": 3,
+      "id": "d4h8r",
+      "name": "D4 H8 random-init",
+      "game_points": 130.5,
+      "games": 240,
+      "score_percent": 54.375,
+      "wins": 90,
+      "draws": 81,
+      "losses": 69,
+      "buchholz_game_points": 582.0,
+      "opponents": [
+        "d3h16",
+        "d3h8",
+        "d4h16r",
+        "d4h16d3",
+        "pst"
+      ]
+    },
+    {
+      "rank": 4,
+      "id": "d4h16r",
+      "name": "D4 H16 random-init",
+      "game_points": 128.0,
+      "games": 240,
+      "score_percent": 53.333333333333336,
+      "wins": 84,
+      "draws": 88,
+      "losses": 68,
+      "buchholz_game_points": 628.5,
+      "opponents": [
+        "d4h8d3",
+        "d5h8",
+        "d4h8r",
+        "d3h16",
+        "d4h16d3"
+      ]
+    },
+    {
+      "rank": 5,
+      "id": "d3h16",
+      "name": "D3 1M H16",
+      "game_points": 118.5,
+      "games": 240,
+      "score_percent": 49.375,
+      "wins": 77,
+      "draws": 83,
+      "losses": 80,
+      "buchholz_game_points": 594.0,
+      "opponents": [
+        "d4h8r",
+        "pst",
+        "d4h16d3",
+        "d4h16r",
+        "d3h8"
+      ]
+    },
+    {
+      "rank": 6,
+      "id": "d5h8",
+      "name": "D5 H8 (old best)",
+      "game_points": 115.5,
+      "games": 240,
+      "score_percent": 48.125,
+      "wins": 74,
+      "draws": 83,
+      "losses": 83,
+      "buchholz_game_points": 595.5,
+      "opponents": [
+        "d4h16d3",
+        "d4h16r",
+        "pst",
+        "d3h8",
+        "d4h8d3"
+      ]
+    },
+    {
+      "rank": 7,
+      "id": "d3h8",
+      "name": "D3 1M H8",
+      "game_points": 105.5,
+      "games": 240,
+      "score_percent": 43.958333333333336,
+      "wins": 58,
+      "draws": 95,
+      "losses": 87,
+      "buchholz_game_points": 594.5,
+      "opponents": [
+        "pst",
+        "d4h8r",
+        "d4h8d3",
+        "d5h8",
+        "d3h16"
+      ]
+    },
+    {
+      "rank": 8,
+      "id": "pst",
+      "name": "PST baseline",
+      "game_points": 98.0,
+      "games": 240,
+      "score_percent": 40.833333333333336,
+      "wins": 62,
+      "draws": 72,
+      "losses": 106,
+      "buchholz_game_points": 602.0,
+      "opponents": [
+        "d3h8",
+        "d3h16",
+        "d5h8",
+        "d4h8d3",
+        "d4h8r"
+      ]
+    }
+  ]
+}

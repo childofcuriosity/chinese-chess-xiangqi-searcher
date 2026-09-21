@@ -1,0 +1,37 @@
+{
+  "settings": {
+    "openings": "openings_final2_192.fen",
+    "opening_pairs": 192,
+    "games_per_match": 384,
+    "seconds_per_move": 0.1,
+    "max_plies": 160,
+    "paired_colors": true,
+    "models_quantized": true
+  },
+  "matches": [
+    {
+      "a": "D4 H16 D3-init",
+      "b": "PST baseline",
+      "a_score": 229.5,
+      "a_score_percent": 59.765625,
+      "a_wins": 172,
+      "draws": 115,
+      "a_losses": 97,
+      "paired_bootstrap_ci95_percent": [56.380208333333336, 63.151041666666664],
+      "a_mean_depth": 9.240831940902295,
+      "b_mean_depth": 9.698467079544955
+    },
+    {
+      "a": "D4 H16 D3-init",
+      "b": "D4 H8 D3-init",
+      "a_score": 208.0,
+      "a_score_percent": 54.166666666666664,
+      "a_wins": 149,
+      "draws": 118,
+      "a_losses": 117,
+      "paired_bootstrap_ci95_percent": [50.260416666666664, 58.072916666666664],
+      "a_mean_depth": 9.183010287429909,
+      "b_mean_depth": 9.240250573495677
+    }
+  ]
+}

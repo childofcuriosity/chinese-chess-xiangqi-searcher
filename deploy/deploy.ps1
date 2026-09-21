@@ -13,7 +13,7 @@
 #       先 Copy-Item deploy\secrets.env.example deploy\secrets.env 并填真实值
 #   - 走 ssh (别名见 secrets.env 的 SERVER), 不走 git
 #   - 上传 python/前端文件到服务器 REMOTE_DIR/
-#   - 自研引擎与 Pikafish PST 桥接引擎同时部署，网页可按局选择
+#   - 自研 PST、自研 NNUE 与 Pikafish PST 桥接引擎同时部署，网页可按局选择
 #   - 更新 systemd 服务 (SERVICE) 并重启, 验证 HTTP 200
 #
 # 常用命令 (把 <alias> 换成 secrets.env 里的 SERVER):
@@ -78,9 +78,28 @@ if ($LocalMd5 -ne $RemoteMd5) {
   Write-Host "[2/5] 自研引擎源码无变化, 跳过编译"
 }
 
+# ---- 自研 NNUE：源码变化时重编译，最佳量化模型始终同步 ----
+$NnueSource = "trainnnue/nnue_engine.cpp"
+$NnueModel = "trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue"
+$LocalNnueMd5 = (Get-FileHash $NnueSource -Algorithm MD5).Hash.ToLower()
+$RemoteNnueMd5Output = ssh $SERVER "if test -f ${REMOTE_DIR}/nnue_engine.cpp; then md5sum ${REMOTE_DIR}/nnue_engine.cpp | cut -d' ' -f1; else echo missing; fi"
+$RemoteNnueMd5 = if ($null -eq $RemoteNnueMd5Output) { "missing" } else { "$RemoteNnueMd5Output".Trim() }
+if ($RemoteNnueMd5 -eq "") { $RemoteNnueMd5 = "missing" }
+if ($LocalNnueMd5 -ne $RemoteNnueMd5) {
+  Write-Host "[2b/5] NNUE 引擎源码有变化, 上传并重新编译 ..."
+  scp $NnueSource "${SERVER}:${REMOTE_DIR}/nnue_engine.cpp"
+  Check "上传 NNUE 引擎源码"
+  ssh $SERVER "cd ${REMOTE_DIR} && g++ -O3 -std=c++17 -march=native -DNDEBUG -o xiangqi_nnue nnue_engine.cpp && chmod +x xiangqi_nnue"
+  Check "编译 NNUE 引擎"
+} else {
+  Write-Host "[2b/5] NNUE 引擎源码无变化, 跳过编译"
+}
+scp $NnueModel "${SERVER}:${REMOTE_DIR}/xiangqi_nnue_best.nnue"
+Check "上传最佳 NNUE 模型"
+
 # ---- Pikafish 源码与 PST evaluate.cpp 变化时重编译 ----
 $LocalPstMd5 = (Get-FileHash "pikafish-pst/src/evaluate.cpp" -Algorithm MD5).Hash.ToLower()
-$RemotePstMd5Output = ssh $SERVER "test -x ${REMOTE_DIR}/pikafish_pst && md5sum ${REMOTE_DIR}/pikafish-pst/src/evaluate.cpp 2>/dev/null | awk '{print `$1}'"
+$RemotePstMd5Output = ssh $SERVER "if test -x ${REMOTE_DIR}/pikafish_pst; then md5sum ${REMOTE_DIR}/pikafish-pst/src/evaluate.cpp | cut -d' ' -f1; else echo missing; fi"
 $RemotePstMd5 = if ($null -eq $RemotePstMd5Output) { "missing" } else { "$RemotePstMd5Output".Trim() }
 if ($RemotePstMd5 -eq "") { $RemotePstMd5 = "missing" }
 if ($LocalPstMd5 -ne $RemotePstMd5) {

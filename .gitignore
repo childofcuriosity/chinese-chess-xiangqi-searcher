@@ -45,5 +45,34 @@ dataset*.txt
 # Deployment secrets
 deploy/secrets.env
 
-# Generated presentation output (slides2 is tracked separately)
+# Generated/legacy presentation output; only slides-formal-web-lite is kept.
 slides/
+slides2/
+slides-formal-web-lite.tar.gz
+
+# NNUE experiments: keep reproducible source, final model and concise reports;
+# exclude local environments, datasets, executables and intermediate checkpoints.
+.venv-gpu/
+.conda-pkgs/
+trainnnue/*
+!trainnnue/README.md
+!trainnnue/nnue_engine.cpp
+!trainnnue/teacher.cpp
+!trainnnue/pst_baseline.cpp
+!trainnnue/generate_data.cpp
+!trainnnue/build_balanced_dataset.py
+!trainnnue/train.py
+!trainnnue/verify_nnue.cpp
+!trainnnue/validate_quant.cpp
+!trainnnue/augment_pst.cpp
+!trainnnue/relabel_data.cpp
+!trainnnue/merge_data.py
+!trainnnue/make_openings.cpp
+!trainnnue/arena.py
+!trainnnue/engine_match.py
+!trainnnue/swiss_tournament.py
+!trainnnue/openings_final2_192.fen
+!trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue
+!trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json
+!trainnnue/direct_match_summary.json
+!trainnnue/swiss_8models_5rounds.json

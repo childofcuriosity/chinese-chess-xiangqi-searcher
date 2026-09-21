@@ -54,6 +54,20 @@ else
   echo "[2/4] 引擎源码无变化, 跳过编译"
 fi
 
+# ---- 自研 NNUE 引擎与最佳量化模型 ----
+NNUE_SOURCE="trainnnue/nnue_engine.cpp"
+NNUE_MODEL="trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue"
+LOCAL_NNUE_MD5=$(md5sum "$NNUE_SOURCE" | awk '{print $1}')
+REMOTE_NNUE_MD5=$(ssh "$SERVER" "md5sum $REMOTE_DIR/nnue_engine.cpp 2>/dev/null | awk '{print \$1}' || echo missing")
+if [ "$LOCAL_NNUE_MD5" != "$REMOTE_NNUE_MD5" ]; then
+  echo "[2b/4] NNUE 引擎源码有变化, 上传并重新编译 ..."
+  scp "$NNUE_SOURCE" "$SERVER:$REMOTE_DIR/nnue_engine.cpp"
+  ssh "$SERVER" "cd $REMOTE_DIR && g++ -O3 -std=c++17 -march=native -DNDEBUG -o xiangqi_nnue nnue_engine.cpp && chmod +x xiangqi_nnue"
+else
+  echo "[2b/4] NNUE 引擎源码无变化, 跳过编译"
+fi
+scp "$NNUE_MODEL" "$SERVER:$REMOTE_DIR/xiangqi_nnue_best.nnue"
+
 echo "[3/4] 更新 systemd 服务并重启 ..."
 ssh "$SERVER" "sudo cp /tmp/xiangqi-web.service /etc/systemd/system/$SERVICE.service \
   && sudo systemctl daemon-reload \
