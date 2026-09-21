@@ -1,21 +1,26 @@
 # Xiangqi NNUE：设计、训练与验证
 
-本目录记录完整象棋 AI 系统中的 **NNUE 评价专题**；规则、搜索、客户端、实验框架和教程的总览见仓库根 [`README.md`](../README.md)。`Iter2-NNUE-D3` 在统一 PST 基准上达到70.18%，并在官方 Pikafish 外部测试中战胜其内置 `UCI_Elo=1900` 档，得分率56.39%。
+本目录记录完整象棋 AI 系统中的 **NNUE 评价专题**；规则、搜索、客户端、实验框架和教程的总览见仓库根 [`README.md`](../README.md)。`Iter2-NNUE-D3` 在统一 PST 基准上达到70.18%；象眼、天启和旋风三组外部实战把当前棋力集中定位在**约 2400 Elo、人类大师水平**。
 
 ## 1. 最终结果
 
-### 外部Pikafish参照
+### 公开引擎实战坐标
 
-对手为官方 Pikafish 2026-01-31 与官方 NNUE 网络。前12个开局用于冻结自研时间倍率和限强档位，其余180个开局逐一换先，形成360盘正式比赛；双方单线程并固定到同一逻辑 CPU。`UCI_Elo=1900` 是 Pikafish `UCI_LimitStrength` 的内置刻度。
+正式比赛统一使用180个开局逐一换先，形成360盘；双方固定到同一逻辑 CPU。换算使用 `对手参考 Elo + 400 × log10(得分率 / (1 − 得分率))`，参考分来自[公开象棋引擎等级分榜](https://zhuanlan.zhihu.com/p/2072972857840350627)。
 
-| 官方对手 | 自研胜/和/负 | 自研得分率 | 配对95% CI | 实际平均用时（自研 / Pikafish） |
-|---|---:|---:|---:|---:|
-| **Pikafish `UCI_Elo=1900`** | **169 / 68 / 123** | **56.39%** | **51.94%–60.83%** | **76.2 / 101.3 ms** |
-| Pikafish 满强 | 6 / 44 / 310 | 7.78% | 5.69%–10.00% | 86.9 / 91.4 ms |
+| 公开引擎 | 自研胜/和/负（得分率） | 换算 Elo |
+|---|---:|---:|
+| [巫师象眼 3.1](iter2_vs_eleeye31_180pairs.json) | 290/31/39（84.86%） | ≈2430 |
+| [象棋天启 V1.1.8](iter2_vs_tianqi118_180pairs.compact.json) | 109/79/172（41.25%） | ≈2369 |
+| [象棋旋风 2007C](iter2_vs_cyclone2007c_180pairs.compact.json) | 60/95/205（29.86%） | ≈2452 |
+| [Pikafish 2026-01-31 · UCI_Elo=1900](iter2_vs_pikafish_elo1900_180pairs.json) | 169/68/123（56.39%） | ≈1945（限强刻度） |
+| [Pikafish 2026-01-31 · 满强](iter2_vs_pikafish_official_180pairs.json) | 6/44/310（7.78%） | ≈3573（跨代边界） |
 
 ![官方Pikafish外部参照](external_benchmark.svg)
 
-逐盘记录与二进制/网络 SHA-256 分别保存在 [`iter2_vs_pikafish_elo1900_180pairs.json`](iter2_vs_pikafish_elo1900_180pairs.json) 和 [`iter2_vs_pikafish_official_180pairs.json`](iter2_vs_pikafish_official_180pairs.json)。完整流程由 [`run_external_match.ps1`](run_external_match.ps1) 复现。
+三个相邻历史引擎换算为 **2369–2452 Elo**，共同支持**约 2400 Elo、人类大师水平**的结论。Pikafish 两行提供现代引擎的限强坐标与满强上界。实际平均用时（自研 / 对手）为：象眼104.0 / 119.4 ms、天启155.0 / 159.6 ms、旋风112.4 / 89.9 ms、Pikafish 1900档76.2 / 101.3 ms、满强86.9 / 91.4 ms；旋风一组中自研实际用时多约25%。
+
+复现入口为 [`run_eleeye_match.ps1`](run_eleeye_match.ps1)、[`run_tianqi_match.ps1`](run_tianqi_match.ps1)、[`run_cyclone_match.ps1`](run_cyclone_match.ps1) 和 [`run_external_match.ps1`](run_external_match.ps1)。逐盘 JSON 保存开局、换先结果、搜索统计、可执行文件/模型 SHA-256 与配对 bootstrap 置信区间；旋风和天启的完整合法着法审计由 [`compact_match_result.py`](compact_match_result.py) 压缩为可提交记录。
 
 ### 内部模型对照
 
@@ -239,6 +244,24 @@ trainnnue/generate_data.exe shard.bin 1000 3 83000 120 2 6 1 8000000
 trainnnue/generate_data.exe shard.bin 1000 3 83000 120 2 6 1 8000000 `
   --teacher nnue --nnue trainnnue/iter1_nnued3_h16_fromd4_gpu.nnue
 ```
+
+公开引擎换先赛；外部二进制由使用者自行准备，仓库保存适配器、参数、逐盘结果与 SHA-256：
+
+```powershell
+trainnnue/run_eleeye_match.ps1 `
+  -EleeyePath "D:\engines\ElephantEye31\ELEEYE.EXE" -Force
+
+trainnnue/run_cyclone_match.ps1 `
+  -CyclonePath "D:\engines\Cyclone2007C\cyclone.exe" `
+  -XqSecondsPerMove 0.31 -CycloneSecondsPerMove 0.10 -Force
+
+trainnnue/run_tianqi_match.ps1 `
+  -TianqiPath "D:\engines\Tianqi118\Tianqi.exe" `
+  -OpeningPairs 180 -OpeningStart 12 `
+  -XqSecondsPerMove 0.46 -TianqiSecondsPerMove 0.10 -Force
+```
+
+旋风2007C使用早期 Cyclone UCI 的 `fen ...` 方言；象眼3.1使用UCCI；天启V1.1.8使用标准UCI。比赛器逐步验证着法合法性，交换红黑后按开局对 bootstrap 计算95%置信区间。
 
 重新生成已提交的关键表格和图：
 

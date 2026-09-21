@@ -33,6 +33,14 @@
 
 官方 Pikafish NNUE 外部基准流水线。每个分片占用独立 CPU，每盘内双方固定同一逻辑核；结果保存官方二进制、网络和自研模型 SHA-256。前12个开局用于时间倍率与 `UCI_LimitStrength` 档位校准，剩余180个开局用于360盘正式换先赛。
 
+### 公开历史引擎流水线
+
+- `trainnnue/run_eleeye_match.ps1`：通过UCCI连接巫师象眼3.1。
+- `trainnnue/run_cyclone_match.ps1`：通过早期Cyclone UCI的`fen ...`方言连接象棋旋风2007C。
+- `trainnnue/run_tianqi_match.ps1`：通过标准UCI连接象棋天启V1.1.8。
+
+三条流水线复用固定开局、逐一换先、单核绑定、实际墙钟统计和配对bootstrap；`engine_match.py`逐步验证着法合法性并保存审计棋谱。
+
 ### `trainnnue/swiss_tournament.py`
 
 8模型、5轮瑞士制。配对按累计盘分接近且避免重复对手；每轮4场占用独立CPU并行。瑞士轮用于候选排序，最终第一、第二与PST仍需直接对抗确认。
@@ -64,12 +72,17 @@
 - [`../trainnnue/iter3_experiment.json`](../trainnnue/iter3_experiment.json)
 - [`../trainnnue/iter2_vs_pikafish_elo1900_180pairs.json`](../trainnnue/iter2_vs_pikafish_elo1900_180pairs.json)
 - [`../trainnnue/iter2_vs_pikafish_official_180pairs.json`](../trainnnue/iter2_vs_pikafish_official_180pairs.json)
+- [`../trainnnue/iter2_vs_eleeye31_180pairs.json`](../trainnnue/iter2_vs_eleeye31_180pairs.json)
+- [`../trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json`](../trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json)
+- [`../trainnnue/iter2_vs_tianqi118_180pairs.compact.json`](../trainnnue/iter2_vs_tianqi118_180pairs.compact.json)
 
 确定性生成的展示结果：[`../trainnnue/RESULTS.generated.md`](../trainnnue/RESULTS.generated.md)。
 
 正式直接测试中，D4-H16-D3init 对 PST 得分率59.77%，配对95% CI为56.38%–63.15%；对D4-H8-D3init为54.17%，CI为50.26%–58.07%。
 
 官方 Pikafish 外部测试中，Iter2 对内置 `UCI_Elo=1900` 档为169胜68和123负，得分率56.39%，配对95% CI为51.94%–60.83%；对满强版本为6胜44和310负，得分率7.78%，CI为5.69%–10.00%。
+
+公开历史引擎测试中，Iter2对象眼3.1为290胜31和39负（84.86%），对天启V1.1.8为109胜79和172负（41.25%），对旋风2007C为60胜95和205负（29.86%）。按[公开象棋引擎等级分榜](https://zhuanlan.zhihu.com/p/2072972857840350627)的2130.4、2430和2600分作锚点，三组成绩分别换算为约2430、2369和2452 Elo，集中支持**约2400 Elo、人类大师水平**。旋风比赛中自研实际平均用时为112.4ms，对手为89.9ms；该结果保留此原始条件。
 
 第一次教师迭代中，D4-H16-D3init加D3无风险搜索生成新的百万数据。量化学生对原D4-H16得分率60.94%，配对95% CI为57.16%–64.71%；对PST得分率63.28%，CI为59.51%–66.93%。原D4-H16对PST为59.77%，因此本轮没有观察到自举偏差导致的PST退化；该结论不能外推到后续无限迭代。
 

@@ -50,6 +50,11 @@ slides/
 slides2/
 slides-formal-web-lite.tar.gz
 
+# Locally supplied third-party engines and archives are benchmark inputs, not redistributable project assets.
+cyclone2007c/
+象棋旋风2007C比赛版.rar
+兵河五四3.6加载象棋天启V1.1.8/
+
 # NNUE experiments: keep reproducible source, final model and concise reports;
 # exclude local environments, datasets, executables and intermediate checkpoints.
 .venv-gpu/
@@ -105,3 +110,8 @@ trainnnue/*
 !trainnnue/run_eleeye_match.ps1
 !trainnnue/eleeye_calibration_a310_b020_12pairs.json
 !trainnnue/iter2_vs_eleeye31_180pairs.json
+!trainnnue/compact_match_result.py
+!trainnnue/run_cyclone_match.ps1
+!trainnnue/run_tianqi_match.ps1
+!trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json
+!trainnnue/iter2_vs_tianqi118_180pairs.compact.json

@@ -8,8 +8,16 @@ import json
 import os
 import random
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from common import LocalBoard
 
 
 def parse_fen(fen: str):
@@ -78,7 +86,8 @@ class Engine:
         while True:
             line = self.process.stdout.readline()
             if not line:
-                raise RuntimeError("engine exited while searching")
+                return (None, time.perf_counter() - start,
+                        {"engine_exit": 1})
             fields = line.strip().split()
             if fields and fields[0] == "move" and len(fields) >= 5:
                 meta = {}
@@ -106,16 +115,20 @@ def play_game(a_exe: Path, a_args: list[str], a_model: Path | None,
               a_seconds: float, b_seconds: float, max_plies: int, blend: float,
               fixed_depth: int, cpu_index: int):
     board, side = parse_fen(fen)
+    rules = LocalBoard()
+    rules.board = [row[:] for row in board]
+    rules.turn = "red" if side == 0 else "black"
     a = Engine(a_exe, a_args, a_model, blend, cpu_index)
     b = Engine(b_exe, b_args, b_model, blend, cpu_index)
     a.setup(fen, a_red, a_seconds, fixed_depth)
     b.setup(fen, not a_red, b_seconds, fixed_depth)
     engines = [a if a_red else b, b if a_red else a]
     stats = {"a": {"seconds": 0.0, "nodes": 0, "depth_sum": 0, "searches": 0,
-                    "fallbacks": 0, "timeouts": 0},
+                    "fallbacks": 0, "timeouts": 0, "engine_exits": 0},
              "b": {"seconds": 0.0, "nodes": 0, "depth_sum": 0, "searches": 0,
-                    "fallbacks": 0, "timeouts": 0}}
+                    "fallbacks": 0, "timeouts": 0, "engine_exits": 0}}
     result, reason, plies = 0.5, "max_plies", 0
+    moves = []
     try:
         for plies in range(1, max_plies + 1):
             engine = engines[side]
@@ -128,10 +141,11 @@ def play_game(a_exe: Path, a_args: list[str], a_model: Path | None,
             st["searches"] += 1
             st["fallbacks"] += meta.get("depth", 1) == 0
             st["timeouts"] += meta.get("timeout", 0)
+            st["engine_exits"] += meta.get("engine_exit", 0)
             if move is None:
                 winner = side ^ 1
                 result = 1.0 if winner == (0 if a_red else 1) else 0.0
-                reason = "resign"
+                reason = "engine_exit" if meta.get("engine_exit") else "resign"
                 break
             r1, c1, r2, c2 = move
             if not all((0 <= r1 < 10, 0 <= r2 < 10, 0 <= c1 < 9, 0 <= c2 < 9)):
@@ -139,9 +153,26 @@ def play_game(a_exe: Path, a_args: list[str], a_model: Path | None,
                 result = 1.0 if winner == (0 if a_red else 1) else 0.0
                 reason = "bad_move"
                 break
+            move_record = {
+                "ply": plies,
+                "side": "red" if side == 0 else "black",
+                "engine": key,
+                "move": list(move),
+                "seconds": used,
+                **meta,
+            }
+            moves.append(move_record)
+            if not rules.is_legal_move(r1, c1, r2, c2):
+                winner = side ^ 1
+                result = 1.0 if winner == (0 if a_red else 1) else 0.0
+                reason = "illegal_move"
+                move_record["piece"] = rules.board[r1][c1]
+                move_record["target"] = rules.board[r2][c2]
+                break
             captured = board[r2][c2]
             board[r2][c2] = board[r1][c1]
             board[r1][c1] = "."
+            rules.move(r1, c1, r2, c2)
             engines[side ^ 1].play(move)
             if captured in ("K", "k"):
                 result = 1.0 if side == (0 if a_red else 1) else 0.0
@@ -152,7 +183,8 @@ def play_game(a_exe: Path, a_args: list[str], a_model: Path | None,
         a.close()
         b.close()
     return {"a_score": result, "a_red": a_red, "plies": plies,
-            "reason": reason, "a_stats": stats["a"], "b_stats": stats["b"]}
+            "reason": reason, "moves": moves,
+            "a_stats": stats["a"], "b_stats": stats["b"]}
 
 
 def main():
@@ -239,6 +271,8 @@ def main():
             100.0 * used_seconds / max(configured_seconds,
                                        searches * configured_seconds))
         summary[f"{key}_mean_depth"] = sum(g[f"{key}_stats"]["depth_sum"] for g in games) / max(1, searches)
+        summary[f"{key}_engine_exits"] = sum(
+            g[f"{key}_stats"].get("engine_exits", 0) for g in games)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({k: v for k, v in summary.items() if k not in ("games", "pair_scores_a")}, ensure_ascii=False), flush=True)

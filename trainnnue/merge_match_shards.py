@@ -87,6 +87,8 @@ def main() -> None:
                                        searches * configured_seconds))
         result[f"{side}_mean_depth"] = sum(
             game[f"{side}_stats"]["depth_sum"] for game in games) / max(1, searches)
+        result[f"{side}_engine_exits"] = sum(
+            game[f"{side}_stats"].get("engine_exits", 0) for game in games)
 
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2),
                            encoding="utf-8")

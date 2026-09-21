@@ -6,13 +6,17 @@
 
 本项目从零实现了一套中国象棋搜索引擎，研究重点是普通 CPU、固定思考时间下的决策质量。系统以可逆增量状态为基础，将规则判断、PST/NNUE 评价、Zobrist 哈希与搜索路径统一到 `make_move()` / `undo_move()`；搜索端组合迭代加深、PVS、置换表、静态搜索、走法排序和选择性剪枝；评价端实现 HalfKA 特征、增量累加器与量化整数推理。
 
-当前最佳模型采用 `XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头`，大小 363 KB。对官方 Pikafish 2026-01-31 NNUE 的外部测试表明：自研引擎对其内置 `UCI_Elo=1900` 档取得 **56.39%** 得分率；对满强版本取得 **7.78%**。内部等时测试中，NNUE 对自研 PST 基线取得 **70.18%**，量化了神经评价器带来的直接增益。
+当前最佳模型采用 `XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头`，大小 363 KB。内部等时测试中，NNUE 对自研 PST 基线取得 **70.18%** 得分率；外部测试覆盖象眼、天启、旋风与官方 Pikafish。三个相邻历史引擎的实战结果独立换算为 **2369–2452 Elo**，共同把当前引擎定位在**约 2400 Elo、人类大师水平**。欢迎[在线试玩 Demo](http://47.102.137.220:8100)。
 
-实战水平约为**天天象棋专2**，欢迎[在线试玩 Demo](http://47.102.137.220:8100)。
+| 公开引擎 | 自研胜/和/负（得分率） | 换算 Elo |
+|---|---:|---:|
+| [巫师象眼 3.1](trainnnue/iter2_vs_eleeye31_180pairs.json) | 290/31/39（84.86%） | ≈2430 |
+| [象棋天启 V1.1.8](trainnnue/iter2_vs_tianqi118_180pairs.compact.json) | 109/79/172（41.25%） | ≈2369 |
+| [象棋旋风 2007C](trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json) | 60/95/205（29.86%） | ≈2452 |
+| [Pikafish 2026-01-31 · UCI_Elo=1900](trainnnue/iter2_vs_pikafish_elo1900_180pairs.json) | 169/68/123（56.39%） | ≈1945（限强刻度） |
+| [Pikafish 2026-01-31 · 满强](trainnnue/iter2_vs_pikafish_official_180pairs.json) | 6/44/310（7.78%） | ≈3573（跨代边界） |
 
-| 外部等强坐标 | 顶级引擎距离 | NNUE 内部增益 | 量化模型大小 |
-|:---:|:---:|:---:|:---:|
-| **vs Pikafish 1900：56.39%** | **vs 满强 Pikafish：7.78%** | **vs 自研 PST：70.18%** | **363 KB** |
+换算锚点来自[公开象棋引擎等级分榜](https://zhuanlan.zhihu.com/p/2072972857840350627)；逐盘证据、实际耗时、可执行文件 SHA-256 和复现命令见[实验结果](trainnnue/RESULTS.generated.md)。
 
 ## 1. 问题定义与技术贡献
 
@@ -146,16 +150,21 @@ XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头 → PST 残差
 
 ## 8. 实验结果
 
-### 8.1 官方 Pikafish 外部参照
+### 8.1 公开引擎实战坐标
 
 ![自研NNUE对官方Pikafish外部参照](trainnnue/external_benchmark.svg)
 
-| 官方对手 | 自研胜 / 和 / 负 | 自研得分率 | 配对 95% CI | 实际平均用时（自研 / Pikafish） |
-|---|---:|---:|---:|---:|
-| **Pikafish `UCI_Elo=1900`** | **169 / 68 / 123** | **56.39%** | **51.94%–60.83%** | **76.2 / 101.3 ms** |
-| Pikafish 满强 | 6 / 44 / 310 | 7.78% | 5.69%–10.00% | 86.9 / 91.4 ms |
+| 公开引擎 | 自研胜/和/负（得分率） | 换算 Elo |
+|---|---:|---:|
+| [巫师象眼 3.1](trainnnue/iter2_vs_eleeye31_180pairs.json) | 290/31/39（84.86%） | ≈2430 |
+| [象棋天启 V1.1.8](trainnnue/iter2_vs_tianqi118_180pairs.compact.json) | 109/79/172（41.25%） | ≈2369 |
+| [象棋旋风 2007C](trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json) | 60/95/205（29.86%） | ≈2452 |
+| [Pikafish 2026-01-31 · UCI_Elo=1900](trainnnue/iter2_vs_pikafish_elo1900_180pairs.json) | 169/68/123（56.39%） | ≈1945（限强刻度） |
+| [Pikafish 2026-01-31 · 满强](trainnnue/iter2_vs_pikafish_official_180pairs.json) | 6/44/310（7.78%） | ≈3573（跨代边界） |
 
-第一行给出当前引擎的外部等强坐标：在 Pikafish 内置 1900 档之上。第二行给出与完整强度官方 NNUE 引擎的距离。两组比赛使用同一批 180 个正式开局、逐一换先和配对统计；官方二进制与网络文件的 SHA-256 写入结果 JSON。
+换算公式为 `对手参考 Elo + 400 × log10(得分率 / (1 − 得分率))`。参考榜给出的象眼、天启、旋风和满强 Pikafish 分别为 2130.4、2430、2600 和 4002.7；Pikafish 1900 是引擎内置限强刻度。三个相邻历史引擎给出 **2369–2452 Elo**，中心落在**约 2400 Elo、人类大师水平**；Pikafish 两行展示现代引擎的限强坐标与满强上界。
+
+全部比赛使用 180 个开局逐一换先，共 360 盘，并固定单核。实际平均用时（自研 / 对手）为：象眼 104.0 / 119.4 ms，天启 155.0 / 159.6 ms，旋风 112.4 / 89.9 ms，Pikafish 1900 档 76.2 / 101.3 ms，满强 86.9 / 91.4 ms。旋风一组中自研实际用时多约 25%，表中按原始成绩保留该条件。
 
 ### 8.2 NNUE 代际结果
 
@@ -201,6 +210,9 @@ python gui.py
 |---|---|---|
 | 引擎 A/B 回归 | `python ab_selfplay.py baseline.exe candidate.exe` | 分时间档日志与汇总 JSON |
 | 官方 Pikafish 外部赛 | `trainnnue/run_external_match.ps1` | 换先逐盘结果、实际耗时与配对 CI |
+| 巫师象眼 3.1 外部赛 | `trainnnue/run_eleeye_match.ps1` | UCCI 桥接、单核换先逐盘结果 |
+| 象棋旋风 2007C 外部赛 | `trainnnue/run_cyclone_match.ps1` | Cyclone UCI 桥接、合法性审计与逐盘结果 |
+| 象棋天启 V1.1.8 外部赛 | `trainnnue/run_tianqi_match.ps1` | UCI 桥接、合法性审计与逐盘结果 |
 | NNUE 换先赛 | `python trainnnue/engine_match.py ...` | 逐盘 JSON、得分率、配对 CI |
 | 多模型瑞士轮 | `python trainnnue/swiss_tournament.py` | 排名与交手记录 |
 | 教师迭代 | `trainnnue/run_teacher_iteration.ps1` | 数据、模型、校验与对局产物 |
