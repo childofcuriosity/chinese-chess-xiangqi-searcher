@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
+SLIDES_NNUE_ASSETS = HERE.parent / "slides-formal-web-lite" / "assets" / "nnue"
 
 
 def load(name: str):
@@ -277,6 +278,8 @@ def main() -> None:
     parser.add_argument("--iteration-pst-curve", "--iteration-curve",
                         dest="iteration_pst_curve", type=Path,
                         default=HERE / "iteration_vs_pst.svg")
+    parser.add_argument("--slides-iteration-pst-curve", type=Path,
+                        default=SLIDES_NNUE_ASSETS / "iteration-vs-pst.svg")
     parser.add_argument("--check-artifacts", action="store_true")
     args = parser.parse_args()
     if args.check_artifacts:
@@ -294,9 +297,13 @@ def main() -> None:
     args.iter3_curve.write_text(curve_svg(
         "iter3_nnued3_h16_fromiter2_gpu.nnue.json",
         "Iter3-NNUE-D3 训练曲线"), encoding="utf-8")
-    args.iteration_pst_curve.write_text(iteration_vs_pst_svg(), encoding="utf-8")
+    iteration_curve = iteration_vs_pst_svg()
+    args.iteration_pst_curve.write_text(iteration_curve, encoding="utf-8")
+    args.slides_iteration_pst_curve.parent.mkdir(parents=True, exist_ok=True)
+    args.slides_iteration_pst_curve.write_text(iteration_curve, encoding="utf-8")
     for path in (args.output, args.curve, args.iter1_curve, args.iter2_curve,
-                 args.iter3_curve, args.iteration_pst_curve):
+                 args.iter3_curve, args.iteration_pst_curve,
+                 args.slides_iteration_pst_curve):
         print(f"wrote {path}")
 
 

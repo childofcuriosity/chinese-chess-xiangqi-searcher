@@ -1,121 +1,181 @@
-# 中国象棋 AI：从规则、评价到搜索与产品化
+# 中国象棋 AI：增量搜索与量化 NNUE 技术报告
 
-这是一个从零实现的中国象棋 AI 系统，而不只是一个搜索函数或单独的 NNUE 模型。项目覆盖棋盘与规则建模、增量状态、PST/NNUE 评价、Alpha-Beta 系列搜索、实验工具、桌面与网页交互，以及 Linux 一键部署。
+[在线对弈](http://47.102.137.220:8100) · [交互式教程](slides-formal-web-lite/index.html) · [运行说明](docs/RUNNING.md) · [实验设计](docs/EXPERIMENTS.md) · [NNUE 专题](trainnnue/README.md)
 
-[在线对弈](http://47.102.137.220:8100) · [完整教程](slides-formal-web-lite/index.html) · [运行与配置](docs/RUNNING.md) · [实验设计](docs/EXPERIMENTS.md) · [NNUE 专题](trainnnue/README.md)
+## 摘要
 
-## 研究问题
+本项目从零实现了一套中国象棋搜索引擎，研究重点是普通 CPU、固定思考时间下的决策质量。系统以可逆增量状态为基础，将规则判断、PST/NNUE 评价、Zobrist 哈希与搜索路径统一到 `make_move()` / `undo_move()`；搜索端组合迭代加深、PVS、置换表、静态搜索、走法排序和选择性剪枝；评价端实现 HalfKA 特征、增量累加器与量化整数推理。
 
-项目围绕一个具体问题展开：**怎样在普通 CPU 和有限思考时间下，做出一个规则正确、能解释、能实验、也能真正交付给用户的中国象棋引擎？**
+当前最佳模型采用 `XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头`，大小 363 KB。在 192 个保留开局逐一换先、每步 0.10 秒、单核运行的 384 盘测试中，对自研 PST 基线取得 **70.18% 得分率**，战绩为 **218 胜 / 103 和 / 63 负**，配对 95% CI 为 **66.80%–73.44%**。
 
-它可以拆成四个相互依赖的问题：
+## 1. 问题定义与技术贡献
 
-1. 如何准确表示棋盘、生成着法，并保证每次试走和撤销后状态完全一致？
-2. 如何把一个局面压缩成可比较的分数，同时兼顾表达能力与搜索速度？
-3. 如何在指数增长的博弈树中，把时间优先花在最可能影响决策的分支上？
-4. 如何用可复核实验判断修改是否真的更强，并把同一引擎接入桌面、网页和服务器？
+项目围绕三个相互制约的问题展开：
 
-## 系统骨架
+1. 如何让棋盘及其派生状态在数百万次试走中精确、低成本地往返？
+2. 如何利用走法排序、缓存和选择性搜索，在固定时间内完成更深的有效搜索？
+3. 如何设计一个表达能力足够、推理成本足够低的神经评价器，使等时棋力获得提升？
 
-根 README 采用 [`slides-formal-web-lite`](slides-formal-web-lite/index.html) 的教学骨架：先让棋走起来，再获得棋感，最后学会向前推演。
+对应的核心实现如下。
 
-### 第一阶段：让棋走起来
+| 模块 | 实现 | 验证方式 |
+|---|---|---|
+| 增量状态 | 棋盘、棋子表、将帅位置、占位、PST、Hash、NNUE 累加器同步更新 | 随机 `make/undo/null/rebuild` 往返检查 |
+| 搜索 | 迭代加深、PVS、TT、QS/SEE、走法排序、LMR、Null Move、Futility | 固定开局、固定时间、换先 A/B 对局 |
+| 评价 | PST 基线与量化 HalfKA NNUE 双路径 | 离线拟合、量化一致性、等时直接对局 |
+| 实验 | 平衡数据集、教师可配置、训练早停、配对统计、图表自动生成 | JSON 原始记录与可重复脚本 |
+| 工程 | stdio 引擎协议、pygame、FastAPI/WebSocket、Pikafish 桥接 | 单元测试、端到端测试、部署后 HTTP 检查 |
 
-核心实现位于 [`xiangqi_ai.cpp`](xiangqi_ai.cpp) 与 [`common.py`](common.py)。
+## 2. 系统设计
 
-- `board[10][9] + turn` 定义完整局面；大写为红方、小写为黑方。
-- 七类棋子分别生成伪合法着，再通过 make → 查将 → undo 过滤成合法着。
-- 棋子列表、将帅位置、PST分数、Zobrist hash 和重复历史都随走子增量维护。
-- 吃子通过交换补洞保持棋子列表连续；undo 必须精确恢复棋盘和所有派生状态。
-- 服务端再次验证人的着法，不能依赖浏览器前端保证规则正确。
+```mermaid
+flowchart LR
+    POS[局面] --> STATE[增量状态]
+    STATE --> MOVE[着法生成与合法性]
+    MOVE --> SEARCH[迭代加深 PVS]
+    SEARCH --> ORDER[TT / 历史 / 杀手着排序]
+    SEARCH --> PRUNE[LMR / Null / Futility]
+    SEARCH --> QS[QS / SEE]
+    SEARCH --> EVAL{静态评价}
+    EVAL --> PST[PST 增量分数]
+    EVAL --> NNUE[HalfKA NNUE 累加器]
+    SEARCH --> BEST[最佳着法]
 
-这一层的价值不是“棋子终于会动”，而是为搜索、评价和实验提供可逆、可验证的状态机。
-
-### 第二阶段：给局面一点棋感
-
-项目同时保留两条评价路线，便于对照和回归：
-
-- **自研 PST 引擎**：材料价值 + 中残局棋子位置表；走子时只更新起点、终点和被吃子贡献。
-- **自研 NNUE 引擎**：在 PST 上叠加轻量神经网络残差；第一层同样通过 make/undo 增量维护，量化后由 CPU 整数推理。
-
-NNUE采用 `XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头`，模型363KB。实验以前一代量化模型+D3搜索为教师连续完成三次百万数据迭代；Iter2对PST达到70.18%的实测峰值，Iter3轻微回落到70.05%后按约定停止。网页现已部署Iter2，它们都是评价模块的升级，不改变项目其他组件的地位。数据生成、训练、量化和比赛细节集中在 [`trainnnue/README.md`](trainnnue/README.md)。
-
-### 第三阶段：向前推演
-
-搜索从 Minimax 骨架逐步扩展为限时的选择性搜索：
-
-- 迭代加深保证超时时仍有上一完整深度的答案。
-- Alpha-Beta/PVS、期望窗口与内部迭代加深减少不必要的精确搜索。
-- Zobrist hash + 置换表复用相同局面的深度、界类型和最佳着。
-- Quiescence Search 与 SEE 降低在激烈交换中截断产生的地平线效应。
-- 历史启发、杀手着、MVV-LVA 和 TT move 改善走法顺序。
-- LMR、LMP、futility、razoring、reverse futility 和 null move 把预算集中到更可能改变结果的分支；关键失败路径允许重搜。
-- 重复局面与简化长将判断直接进入搜索终止条件。
-
-这些技术不是孤立技巧：评价越慢，可完成深度越低；排序越好，Alpha-Beta越有效；剪枝越激进，越需要固定开局和公平 A/B 测试控制风险。
-
-### 工程层：把引擎做成可使用的系统
-
-```text
-pygame 桌面端 ─┐
-               ├─ common.py / 自定义 stdio 协议 ─ PST 或 NNUE 搜索引擎
-FastAPI 网页端 ─┘                 │
-        │                         ├─ 本地搜索
-        ├─ WebSocket 会话         └─ 可选 ChessDB 云开局库
-        └─ 服务端规则校验
-
-实验脚本 ─ 固定/随机开局 ─ 换先对战 ─ JSON结果 ─ 表格/曲线
-部署脚本 ─ 上传 ─ 按哈希编译 ─ systemd重启 ─ HTTP验证
+    TEACHER[教师搜索] --> DATA[红黑平衡数据集]
+    DATA --> TRAIN[训练 / 量化 / 一致性校验]
+    TRAIN --> NNUE
+    NNUE --> MATCH[保留开局换先赛]
+    MATCH --> TEACHER
 ```
 
-- [`gui.py`](gui.py)：pygame 桌面端。
-- [`webapp.py`](webapp.py) + [`static/index.html`](static/index.html)：多人网页端，每局独立引擎进程，支持断线续局。
-- [`pikafish_bridge.py`](pikafish_bridge.py)：在 Pikafish UCI 与本项目 stdio 协议之间转换。
-- [`deploy/deploy.ps1`](deploy/deploy.ps1)：同步代码、编译三个引擎、上传 NNUE 模型、重启服务并验证 HTTP。
-- [`slides-formal-web-lite`](slides-formal-web-lite/index.html)：从盘面表示一直讲到选择性搜索和 NNUE 的完整交互式教程。
+主搜索器保留 PST 与 NNUE 两条评价路径。教师搜索生成局面标签，训练结果量化后进入 C++ 推理器，通过一致性校验和等时比赛的模型再用于下一轮数据生成。搜索、训练和对局因此形成可重复的闭环。
 
-| pygame桌面端 | 引擎计算日志 |
-|---:|---:|
-| ![桌面端棋盘](开局界面.png) | ![引擎计算日志](计算日志界面.png) |
+## 3. 增量状态与规则实现
 
-## 核心发现
+局面由 `board[10][9] + turn` 表示，大写棋子属于红方，小写棋子属于黑方。七类棋子分别生成伪合法着，再通过试走、查将和撤销得到合法着法。
 
-1. **正确的增量状态是整个系统的地基。** PST、Zobrist、棋子列表与 NNUE 都依赖 make/undo；任何一项不能精确恢复都会污染整棵搜索树。
-2. **搜索优化必须成组理解。** 好的走法排序决定剪枝效率，静态搜索决定叶子质量，时间管理决定深度是否真正可用；单看某个启发式的节点数容易误判。
-3. **评价模型必须和搜索预算共同设计。** 更复杂的网络可能降低MSE，却因每节点成本而少完成一层。最终选择 H16 是量化后等时比赛的结果，而不是只看离线损失。
-4. **教师越深不一定越适合轻量学生。** 百万级、红黑平衡的 D3/D4 数据比少量更深 D5 标签更适合当前网络容量。
-5. **公平实验需要换先、保留开局和成对统计。** 少量从初始局面开始的自对弈只能用于回归，不能支持稳定棋力结论。
+一次走子同时维护：
 
-## 核心成果（STAR）
+- 棋盘与双方棋子列表；
+- 将帅坐标、行列占位和攻击查询所需状态；
+- 材料与 PST 增量分数；
+- Zobrist hash、重复局面与搜索路径；
+- NNUE 双视角第一层累加器。
 
-| 情境 / 任务 | 我的行动 | 结果 | 可核验入口 |
-|---|---|---|---|
-| 从零建立可搜索的中国象棋状态机 | 实现着法、查将、终局、增量棋子列表与可逆 make/undo | 规则、评价、哈希和搜索共享同一套状态语义 | `xiangqi_ai.cpp`, `common.py`, `tests/` |
-| 在普通CPU的有限时间内提高决策质量 | 组合迭代加深、PVS、TT、QS/SEE、排序、选择性剪枝和时间控制 | 形成完整限时搜索器，并能逐项做回归实验 | `xiangqi_ai.cpp`, 教程第4–5章 |
-| PST表达有限，但复杂评价会挤占搜索深度 | 设计HalfKA残差NNUE、整数推理与增量累加器，并把单轮/连续教师迭代固化为可续跑流水线 | 三轮迭代在Iter2达到对PST 70.18%的实测峰值 | `trainnnue/`, `iter2_experiment.json`, `iter3_experiment.json` |
-| 小样本自对弈容易把先手和开局偏差当成提升 | 建立固定保留开局、逐开局换先、瑞士轮与配对bootstrap流程 | 模型选择同时有离线指标、直接对局和置信区间 | `docs/EXPERIMENTS.md`, `trainnnue/*match*.py` |
-| 算法需要成为真正可用的产品 | 接入pygame、FastAPI/WebSocket、Pikafish桥接和ChessDB回退 | 同一规则/协议支持桌面、网页和三种引擎选项 | `gui.py`, `webapp.py`, `static/` |
-| 本地成果需要可复现地交付 | 编写PowerShell部署、systemd配置、版本清单和全项目教程 | 可用统一脚本构建、部署、核验模型并复现关键表图 | `deploy/`, `docs/RUNNING.md`, `slides-formal-web-lite/` |
+吃子时使用交换补洞保持棋子表连续。撤销操作恢复棋盘、索引、分数、哈希和累加器的原值，使搜索树中的兄弟分支共享同一套状态对象。浏览器与服务端共同校验人类着法，规则检查保持一致。
 
-## 已验证结果
+## 4. 静态评价
 
-- NNUE 增量累加器通过 **822,487** 次随机 make/undo/null/rebuild 转换一致性检查。
-- 最佳 D4-H16（D3初始化）量化模型在384盘固定保留开局、逐开局换先、单核等时测试中，对 PST 为 **172胜115和97负，得分率59.77%**，配对95% CI为 **[56.38%, 63.15%]**。
-- 第一次教师迭代候选对原最佳D4-H16为 **174胜120和90负，得分率60.94%**；对PST为 **188胜110和86负，得分率63.28%**。说明本轮自举没有造成PST退化，但候选尚未替换线上模型。
-- 第二次迭代同时用Iter1作教师和初始化；对Iter1为 **143胜137和104负，得分率55.08%**，对PST为 **218胜103和63负，得分率70.18%**。Iter2已作为当前最佳部署到网页Demo。
-- 第三次迭代对Iter2为 **132胜142和110负，得分率52.86%**；对PST为 **224胜90和70负，得分率70.05%**。相对Iter2轻微回落0.13个百分点，按预先约定停止；差异不显著，因此结论是平台而非已证明的退化。
-- 同条件直接对 D4-H8 为 **54.17%**，平均完成深度9.18 vs 9.24，说明 H16 的额外评价成本在本实现中可接受。
-- 网页端已部署，PST、NNUE 与 Pikafish PST 三个选项走同一会话和规则接口。
+### 4.1 材料价值与 PST
 
-![PST初代到迭代世代4的对PST得分率](trainnnue/iteration_vs_pst.svg)
+PST 路线把每枚棋子的基础价值与所在格位置分相加，红方记正、黑方记负。`current_score` 在走子时完成增量更新：移除起点贡献、加入终点贡献，吃子时再移除目标棋子贡献，因此 `evaluate()` 可以直接返回缓存分数。
 
-统一的384盘换先等时测试显示：对PST得分率从50%基准依次提高到59.77%、63.28%和70.18%，第四世代为70.05%，因此第三世代模型成为当前部署版本。
+PST 为搜索提供常数时间评价，也构成神经评价器的残差基线。两条评价路线使用相同的局面、走法与搜索代码，直接比较集中在评价模块本身。
 
-关键 NNUE 表格、训练曲线和代际结果图不是手工维护：运行 `python trainnnue/report_results.py` 可由 JSON 结果重新生成 [`RESULTS.generated.md`](trainnnue/RESULTS.generated.md)、[`training_curve.svg`](trainnnue/training_curve.svg) 和 [`iteration_vs_pst.svg`](trainnnue/iteration_vs_pst.svg)。
+### 4.2 NNUE 网络结构
 
-## 运行与配置
+```text
+XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头 → PST 残差
+```
 
-完整环境、模型/数据版本、编译命令、环境变量和部署说明见 [`docs/RUNNING.md`](docs/RUNNING.md)。最短路径：
+- **输入特征**：以本方将帅为锚点，组合 9 个将位桶、14 个相对阵营/棋子通道和 90 个格点。
+- **双视角**：红黑双方分别定向，同一组特征权重共享使用。
+- **隐藏层**：宽度 `H=16`，采用截断 ReLU。
+- **输出**：预测相对 PST 的修正量，并按局面阶段选择输出参数。
+- **推理**：模型量化后由 C++ 整数路径执行，文件大小 363,128 bytes。
+
+### 4.3 增量累加器
+
+第一层计算结果缓存在引擎对象的双视角累加器中。普通走子只减去源格特征、加入目标格特征，并在吃子时减去被吃棋子特征；将帅移动触发对应锚点视角重建。`undo_move()` 执行严格逆更新，`null move` 只改变待走方。
+
+该设计把高维稀疏层的计算从“每次评价扫描全部棋子”改为“每次走子更新发生变化的特征”，使 NNUE 能够进入静态搜索的高频评价路径。
+
+### 4.4 训练与教师迭代
+
+初代训练数据由无风险剪枝的 PST 教师搜索生成，并对红黑待走局面进行平衡。后续迭代把教师配置切换为上一代量化 NNUE 加 D3 搜索，每代重新生成 100 万条局面。Sigmoid 温度 `K` 由数据独立统计后冻结；模型训练、量化导出和 C++ 校验由同一流水线完成。
+
+## 5. 完整搜索
+
+搜索器从 Minimax 递归出发：红方选择最高分支，黑方选择最低分支，叶节点调用静态评价。工程实现以限时迭代加深为外层框架，从浅到深重复搜索，并始终保存最近一次完整深度的最佳着与分数。
+
+| 机制 | 保存或计算的内容 | 搜索收益 |
+|---|---|---|
+| Alpha-Beta / PVS | 当前分数窗口 | 截断无法改变上层选择的分支 |
+| Aspiration Window | 围绕上一深度分数的窄窗口 | 提高常见稳定局面的截断效率 |
+| Zobrist Hash / TT | 深度、分数、边界类型、最佳着 | 复用置换局面并提供首选着法 |
+| Quiescence Search | 吃子、将军等强制变化 | 把叶节点推进到更稳定的局面 |
+| SEE | 目标格连续交换的静态收益 | 改善吃子排序与静态搜索效率 |
+
+置换表中的分数已经包含对应叶节点的 PST 或 NNUE 评价；命中时按保存深度和边界类型参与当前搜索。迭代加深产生的主变化与 TT move 又为下一深度提供排序信息。
+
+## 6. 选择性搜索与时间管理
+
+完整宽度随深度指数增长，选择性搜索依据局面类型和走法次序分配节点预算。
+
+| 类别 | 方法 | 决策依据 |
+|---|---|---|
+| 走法排序 | TT Move、MVV-LVA、Killer、Counter Move、History | 历史搜索与战术价值 |
+| 深度缩减 | LMR、LMP | 排名靠后、深度和局面安静程度 |
+| 前向剪枝 | Null Move、Futility、Reverse Futility、Razoring | 静态分数与 Alpha-Beta 窗口距离 |
+| 恢复机制 | 窄窗口失败后重搜、关键着完整深度 | 搜索结果越过当前界限 |
+
+时间管理在节点循环中检查截止时间，迭代边界负责提交完整结果。训练教师使用相同规则、评价和静态搜索，同时关闭依赖经验假设的前向剪枝，为固定深度监督标签提供稳定计算路径。
+
+## 7. 实验设计
+
+### 7.1 对局协议
+
+| 项目 | 设置 |
+|---|---|
+| 开局集 | 192 个独立保留开局 |
+| 颜色控制 | 每个开局逐一换先 |
+| 总盘数 | 384 盘 / 组 |
+| 资源 | 单 CPU 核 |
+| 时间控制 | 每步 0.10 秒 |
+| 得分率 | `(胜局 + 0.5 × 和局) / 总局数` |
+| 区间估计 | 按开局对聚类的配对 bootstrap 95% CI |
+
+固定开局、逐局换先和成对统计共同控制先手、开局与样本相关性。离线指标用于检查模型拟合和量化误差，最终模型选择依据相同资源约束下的直接对局。
+
+### 7.2 一致性验证
+
+NNUE 推理链路覆盖以下检查：
+
+- Python 与 C++ 的 HalfKA 特征索引一致；
+- 增量累加器与全量重建逐元素一致；
+- `undo` 后棋盘、分数、Hash、将位、累加器与评价完整恢复；
+- 量化模型与整数参考实现逐局面对齐；
+- 模型文件的版本、维度与校验值经过加载检查。
+
+随机合法走子测试累计完成 **822,487 次** `make/undo/null/rebuild` 转换，增量结果与全量重算一致。
+
+## 8. 实验结果
+
+### 8.1 代际结果
+
+![PST 初代到迭代世代 4 的对 PST 得分率](trainnnue/iteration_vs_pst.svg)
+
+| 迭代世代 | 教师与数据 | 对 PST 得分率 | 胜 / 和 / 负 |
+|---:|---|---:|---:|
+| PST 初代 | PST 基线 | 50.00% | 基准 |
+| 1 | PST D3、D4 各 100 万条 | 59.77% | 172 / 115 / 97 |
+| 2 | 上一代 NNUE + D3，100 万条 | 63.28% | 188 / 110 / 86 |
+| **3** | **上一代 NNUE + D3，100 万条** | **70.18%** | **218 / 103 / 63** |
+| 4 | 上一代 NNUE + D3，100 万条 | 70.05% | 224 / 90 / 70 |
+
+第三世代取得最高实测得分率，配对 95% CI 为 **66.80%–73.44%**，当前网页与本地 NNUE 入口均使用该模型。第四世代与第三世代进入同一性能平台，代际实验由此完成。
+
+### 8.2 网络宽度与搜索成本
+
+在相同条件下，D4-H16 对 D4-H8 得分率为 **54.17%**，平均完成深度为 **9.18 vs 9.24**。H16 的额外评价成本保持在很小的深度差内，同时获得直接对局优势，因此成为最终宽度。
+
+完整离线指标、训练曲线、瑞士轮排名、逐代对局和 checkpoint 信息集中在 [trainnnue/README.md](trainnnue/README.md) 与自动生成的 [RESULTS.generated.md](trainnnue/RESULTS.generated.md)。
+
+## 9. 可复现性
+
+### 9.1 运行引擎
+
+完整环境、模型版本、编译参数与环境变量见 [docs/RUNNING.md](docs/RUNNING.md)。网页端最短运行路径：
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -123,39 +183,50 @@ python webapp.py
 # http://localhost:8000
 ```
 
-网页默认选择自研 NNUE；也可切换自研 PST 或 Pikafish PST。桌面端运行 `python gui.py`。
+桌面端运行：
 
-## 核心实验脚本
+```powershell
+python gui.py
+```
 
-| 目的 | 命令/入口 | 产物 |
+### 9.2 实验入口
+
+| 任务 | 命令 / 脚本 | 产物 |
 |---|---|---|
-| 引擎修改回归 | `python ab_selfplay.py baseline.exe candidate.exe` | 多时间档逐局日志与 `summary.json` |
-| 对战 Pikafish | `python cross_arena.py --pairs 10 --seconds 1` | `cross_arena_summary.json` |
-| NNUE直接换先赛 | `python trainnnue/engine_match.py ...` | 逐盘JSON与配对CI |
-| 8模型瑞士轮 | `python trainnnue/swiss_tournament.py` | `swiss_8models_5rounds.json` |
-| 生成关键表/图 | `python trainnnue/report_results.py` | Markdown结果表与SVG学习曲线 |
-| 网页/云库测试 | `python -m pytest tests -q` | 单元与WebSocket端到端结果 |
+| 引擎 A/B 回归 | `python ab_selfplay.py baseline.exe candidate.exe` | 分时间档日志与汇总 JSON |
+| 对战 Pikafish | `python cross_arena.py --pairs 10 --seconds 1` | 对局结果与汇总统计 |
+| NNUE 换先赛 | `python trainnnue/engine_match.py ...` | 逐盘 JSON、得分率、配对 CI |
+| 多模型瑞士轮 | `python trainnnue/swiss_tournament.py` | 排名与交手记录 |
+| 教师迭代 | `trainnnue/run_teacher_iteration.ps1` | 数据、模型、校验与对局产物 |
+| 重建结果 | `python trainnnue/report_results.py` | Markdown 表格与 SVG 曲线 |
+| 自动测试 | `python -m pytest tests -q` | 规则与 WebSocket 测试结果 |
 
-更严格的 A/B 方法和解释边界见 [`AB_SELFPLAY.md`](AB_SELFPLAY.md)。
+保存的 JSON 结果可以一键生成 [实验汇总](trainnnue/RESULTS.generated.md)、[训练曲线](trainnnue/training_curve.svg)和[代际棋力曲线](trainnnue/iteration_vs_pst.svg)，使数字、表格与图片保持同源。具体 A/B 协议见 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) 和 [AB_SELFPLAY.md](AB_SELFPLAY.md)。
 
-## 仓库结构
+## 10. 工程接口
 
-| 路径 | 职责 |
+搜索核心通过简洁的 stdio 协议与外围程序通信，同一引擎可用于本地界面、网页会话和批量实验。网页端通过 FastAPI/WebSocket 管理独立对局，可切换自研 NNUE、自研 PST 与 Pikafish PST；`pikafish_bridge.py` 负责 UCI 协议转换；[`deploy/deploy.ps1`](deploy/deploy.ps1) 负责远程同步、编译、模型上传、服务重启和 HTTP 检查。
+
+| pygame 棋盘 | 搜索深度、分数、节点与主变化日志 |
+|:---:|:---:|
+| ![桌面端棋盘](开局界面.png) | ![引擎计算日志](计算日志界面.png) |
+
+## 11. 仓库结构
+
+| 路径 | 内容 |
 |---|---|
-| `xiangqi_ai.cpp` | PST 评价的主搜索引擎 |
-| `trainnnue/` | NNUE 数据、训练、量化、验证和比赛专题 |
-| `common.py` | 客户端共享规则、云库与引擎进程通信 |
-| `gui.py` | pygame 桌面端 |
-| `webapp.py`, `static/` | FastAPI/WebSocket 网页端 |
-| `selfplay.py`, `ab_selfplay.py`, `cross_arena.py` | 回归与外部引擎实验 |
-| `tests/` | 规则、云库、会话与网页端测试 |
-| `deploy/` | Linux服务器配置和一键部署 |
-| `slides-formal-web-lite/` | 全项目正式教程 |
+| [`xiangqi_ai.cpp`](xiangqi_ai.cpp) | PST 评价、增量状态与主搜索器 |
+| [`trainnnue/`](trainnnue/) | 数据生成、训练、量化、校验、比赛与模型 |
+| [`common.py`](common.py) | 共享规则、云开局库与引擎进程通信 |
+| [`gui.py`](gui.py) | pygame 交互界面 |
+| [`webapp.py`](webapp.py), [`static/`](static/) | FastAPI/WebSocket 交互接口 |
+| [`tests/`](tests/) | 规则、云库、会话与网页测试 |
+| [`deploy/`](deploy/) | Linux 服务配置与部署脚本 |
+| [`slides-formal-web-lite/`](slides-formal-web-lite/) | 从规则、评价到搜索和 NNUE 的交互式教程 |
 
-## 结果与局限
+## 12. 下一阶段实验
 
-**已经验证：** 当前源码和模型的一致性、量化推理、指定开局与时间控制下 NNUE 对 PST 的优势、网页端三引擎接入与服务器部署。
-
-**仍需扩大验证：** 384盘足以用于本项目工程验收，但不是跨机器、跨时间控制的大样本 Elo 标定；历史“可战胜固定深度7 Pikafish”的观察没有同等级保留开局与置信区间，因此不作为正式结果。
-
-**已知边界：** 引擎实现普通重复局面和简化长将判断，尚未覆盖完整平台级长捉/长杀裁决；达到最大 ply 的对局按实验和棋处理；ChessDB是外部服务，失败时只能自动回退本地搜索；网页采用每局一个进程，默认并发上限16，不是大规模对弈平台架构。
+- 扩展多时间控制的大规模换先赛，建立稳定的 Elo 测量基准。
+- 补全平台级长捉、长杀裁决与对应局面测试集。
+- 继续优化 NNUE 累加器、整数推理和搜索协同效率。
+- 比较更丰富的轻量输出头与当前 H16 结构的等时收益。
