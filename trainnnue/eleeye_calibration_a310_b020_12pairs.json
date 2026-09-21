@@ -1,0 +1,660 @@
+{
+    "a_name":  "XQ-NNUE-Iter2",
+    "b_name":  "ElephantEye-3.1",
+    "a_exe":  "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\nnue_engine_iteration.exe",
+    "a_model":  "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\iter2_nnued3_h16_fromiter1_gpu.nnue",
+    "b_exe":  "E:\\miniforge\\python.exe",
+    "b_model":  null,
+    "seconds":  0.02,
+    "max_plies":  160,
+    "fixed_depth":  0,
+    "a_args":  [
+
+               ],
+    "b_args":  [
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\eleeye_bridge.py"
+               ],
+    "a_seconds_per_move":  0.31,
+    "b_seconds_per_move":  0.02,
+    "shards":  [
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part00.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part01.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part02.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part03.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part04.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part05.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part06.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part07.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part08.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part09.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part10.json",
+                   "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\eleeye_match_shards\\start0_pairs12_a310_b20\\part11.json"
+               ],
+    "opening_pairs":  12,
+    "games":  [
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  98,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  4.904937900006189,
+                                      "nodes":  1649890,
+                                      "depth_sum":  449,
+                                      "searches":  49,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "b_stats":  {
+                                      "seconds":  6.275154799997836,
+                                      "nodes":  1073721,
+                                      "depth_sum":  237,
+                                      "searches":  49,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  0,
+                      "fen":  "r1bakabnr/9/nc4c2/p1p3p1p/4p4/4P4/PCP3P1P/R6C1/9/1NBAKABNR w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  false,
+                      "plies":  43,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  1.9547469000026467,
+                                      "nodes":  552309,
+                                      "depth_sum":  134,
+                                      "searches":  21,
+                                      "fallbacks":  0,
+                                      "timeouts":  3
+                                  },
+                      "b_stats":  {
+                                      "seconds":  2.5619806999930006,
+                                      "nodes":  364026,
+                                      "depth_sum":  85,
+                                      "searches":  22,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  0,
+                      "fen":  "r1bakabnr/9/nc4c2/p1p3p1p/4p4/4P4/PCP3P1P/R6C1/9/1NBAKABNR w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  139,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  6.481935100026021,
+                                      "nodes":  2864950,
+                                      "depth_sum":  711,
+                                      "searches":  69,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "b_stats":  {
+                                      "seconds":  7.775685099986731,
+                                      "nodes":  1610059,
+                                      "depth_sum":  343,
+                                      "searches":  70,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  1,
+                      "fen":  "rnbaka1nr/9/c6c1/p1p1p1p1p/3C2b2/2P6/P3P1P1P/4C4/7R1/1NBAKABNR b"
+                  },
+                  {
+                      "a_score":  0.0,
+                      "a_red":  false,
+                      "plies":  123,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  5.758784199995716,
+                                      "nodes":  6537560,
+                                      "depth_sum":  669,
+                                      "searches":  62,
+                                      "fallbacks":  0,
+                                      "timeouts":  3
+                                  },
+                      "b_stats":  {
+                                      "seconds":  3.4961683999899833,
+                                      "nodes":  3026409,
+                                      "depth_sum":  349,
+                                      "searches":  61,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  1,
+                      "fen":  "rnbaka1nr/9/c6c1/p1p1p1p1p/3C2b2/2P6/P3P1P1P/4C4/7R1/1NBAKABNR b"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  87,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  3.640135099998588,
+                                      "nodes":  1444891,
+                                      "depth_sum":  375,
+                                      "searches":  43,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "b_stats":  {
+                                      "seconds":  5.965260800006945,
+                                      "nodes":  1018736,
+                                      "depth_sum":  193,
+                                      "searches":  44,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  2,
+                      "fen":  "rnbakabnr/9/9/p1p1p3p/6pc1/1c7/P1P1P1PCP/1C2B4/9/RNBAKA1NR b"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  false,
+                      "plies":  80,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  4.05994020000071,
+                                      "nodes":  1744133,
+                                      "depth_sum":  397,
+                                      "searches":  40,
+                                      "fallbacks":  0,
+                                      "timeouts":  1
+                                  },
+                      "b_stats":  {
+                                      "seconds":  3.687091400006466,
+                                      "nodes":  1039939,
+                                      "depth_sum":  170,
+                                      "searches":  40,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  2,
+                      "fen":  "rnbakabnr/9/9/p1p1p3p/6pc1/1c7/P1P1P1PCP/1C2B4/9/RNBAKA1NR b"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  122,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  7.017250099994271,
+                                      "nodes":  3136761,
+                                      "depth_sum":  552,
+                                      "searches":  61,
+                                      "fallbacks":  0,
+                                      "timeouts":  6
+                                  },
+                      "b_stats":  {
+                                      "seconds":  7.312506000005669,
+                                      "nodes":  1621684,
+                                      "depth_sum":  275,
+                                      "searches":  61,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  3,
+                      "fen":  "rnbak1bnr/4a4/5c3/p1p1p1p1p/5C3/1c7/P1P1P1P1P/1C7/9/RNBAKABNR w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  false,
+                      "plies":  77,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  3.3378264000057243,
+                                      "nodes":  2754490,
+                                      "depth_sum":  392,
+                                      "searches":  38,
+                                      "fallbacks":  0,
+                                      "timeouts":  2
+                                  },
+                      "b_stats":  {
+                                      "seconds":  2.6421705999819096,
+                                      "nodes":  1102366,
+                                      "depth_sum":  164,
+                                      "searches":  39,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  3,
+                      "fen":  "rnbak1bnr/4a4/5c3/p1p1p1p1p/5C3/1c7/P1P1P1P1P/1C7/9/RNBAKABNR w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  42,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  2.761059700005717,
+                                      "nodes":  1009518,
+                                      "depth_sum":  183,
+                                      "searches":  21,
+                                      "fallbacks":  0,
+                                      "timeouts":  3
+                                  },
+                      "b_stats":  {
+                                      "seconds":  2.098748799999157,
+                                      "nodes":  406514,
+                                      "depth_sum":  70,
+                                      "searches":  21,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  4,
+                      "fen":  "1n1ak1bnr/4a4/r3b2c1/p1p1p1pC1/1c6p/2P6/PC2P1P1P/2N5B/9/R1BAKA1NR w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  false,
+                      "plies":  87,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  4.193760700010898,
+                                      "nodes":  1383450,
+                                      "depth_sum":  346,
+                                      "searches":  43,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "b_stats":  {
+                                      "seconds":  5.077456700004404,
+                                      "nodes":  1133188,
+                                      "depth_sum":  187,
+                                      "searches":  44,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  4,
+                      "fen":  "1n1ak1bnr/4a4/r3b2c1/p1p1p1pC1/1c6p/2P6/PC2P1P1P/2N5B/9/R1BAKA1NR w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  54,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  3.3004562000060105,
+                                      "nodes":  1049213,
+                                      "depth_sum":  215,
+                                      "searches":  27,
+                                      "fallbacks":  0,
+                                      "timeouts":  2
+                                  },
+                      "b_stats":  {
+                                      "seconds":  2.9353922000045714,
+                                      "nodes":  746851,
+                                      "depth_sum":  114,
+                                      "searches":  27,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  5,
+                      "fen":  "1nb1kabnr/1C2a4/rc5c1/p1p1p1p1p/6P2/9/P1P1P3P/8C/9/RNBAKABNR w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  false,
+                      "plies":  87,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  3.5479236999999557,
+                                      "nodes":  1453305,
+                                      "depth_sum":  367,
+                                      "searches":  43,
+                                      "fallbacks":  0,
+                                      "timeouts":  1
+                                  },
+                      "b_stats":  {
+                                      "seconds":  5.019799800011242,
+                                      "nodes":  1122185,
+                                      "depth_sum":  213,
+                                      "searches":  44,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  5,
+                      "fen":  "1nb1kabnr/1C2a4/rc5c1/p1p1p1p1p/6P2/9/P1P1P3P/8C/9/RNBAKABNR w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  15,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  0.9765375000024505,
+                                      "nodes":  462099,
+                                      "depth_sum":  102,
+                                      "searches":  7,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "b_stats":  {
+                                      "seconds":  1.0666660000060801,
+                                      "nodes":  50203,
+                                      "depth_sum":  15,
+                                      "searches":  8,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  6,
+                      "fen":  "rnbakabnr/2c6/7c1/p1p1p3p/1C4p2/9/P1P1P1P1P/7C1/8R/RNBAKABN1 b"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  false,
+                      "plies":  102,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  5.338658100008615,
+                                      "nodes":  2480474,
+                                      "depth_sum":  497,
+                                      "searches":  51,
+                                      "fallbacks":  0,
+                                      "timeouts":  1
+                                  },
+                      "b_stats":  {
+                                      "seconds":  5.5686239000096975,
+                                      "nodes":  1400376,
+                                      "depth_sum":  262,
+                                      "searches":  51,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  6,
+                      "fen":  "rnbakabnr/2c6/7c1/p1p1p3p/1C4p2/9/P1P1P1P1P/7C1/8R/RNBAKABN1 b"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  85,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  3.272643500000413,
+                                      "nodes":  1804658,
+                                      "depth_sum":  420,
+                                      "searches":  42,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "b_stats":  {
+                                      "seconds":  4.848763800022425,
+                                      "nodes":  1376617,
+                                      "depth_sum":  228,
+                                      "searches":  43,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  7,
+                      "fen":  "r1bakabn1/9/2n4cr/pcp1p1p1p/9/2P6/P3P1P1P/C3C4/9/RNBAKABNR b"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  false,
+                      "plies":  82,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  3.7731036999939533,
+                                      "nodes":  1639093,
+                                      "depth_sum":  366,
+                                      "searches":  41,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "b_stats":  {
+                                      "seconds":  3.9353530000116734,
+                                      "nodes":  1614176,
+                                      "depth_sum":  198,
+                                      "searches":  41,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  7,
+                      "fen":  "r1bakabn1/9/2n4cr/pcp1p1p1p/9/2P6/P3P1P1P/C3C4/9/RNBAKABNR b"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  78,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  3.7011053999922296,
+                                      "nodes":  1228498,
+                                      "depth_sum":  304,
+                                      "searches":  39,
+                                      "fallbacks":  0,
+                                      "timeouts":  2
+                                  },
+                      "b_stats":  {
+                                      "seconds":  4.5153578000063135,
+                                      "nodes":  816869,
+                                      "depth_sum":  152,
+                                      "searches":  39,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  8,
+                      "fen":  "rnbaka1nr/1c7/8b/p1p1p1p1p/9/2P4c1/P3P1P1P/C6C1/8R/RNBAKABN1 w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  false,
+                      "plies":  145,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  6.6900591000048735,
+                                      "nodes":  3423131,
+                                      "depth_sum":  603,
+                                      "searches":  72,
+                                      "fallbacks":  0,
+                                      "timeouts":  3
+                                  },
+                      "b_stats":  {
+                                      "seconds":  5.7439040999888675,
+                                      "nodes":  1990460,
+                                      "depth_sum":  322,
+                                      "searches":  73,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  8,
+                      "fen":  "rnbaka1nr/1c7/8b/p1p1p1p1p/9/2P4c1/P3P1P1P/C6C1/8R/RNBAKABN1 w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  71,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  3.199610300009226,
+                                      "nodes":  1386167,
+                                      "depth_sum":  293,
+                                      "searches":  35,
+                                      "fallbacks":  0,
+                                      "timeouts":  3
+                                  },
+                      "b_stats":  {
+                                      "seconds":  4.146642299991072,
+                                      "nodes":  791539,
+                                      "depth_sum":  131,
+                                      "searches":  36,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  9,
+                      "fen":  "1nb1kabnr/r3a2c1/1c7/2p1p1p2/p7p/4P4/P1P3P1P/3A2C2/8C/RNB1KABNR b"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  false,
+                      "plies":  138,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  7.319469400012167,
+                                      "nodes":  4319825,
+                                      "depth_sum":  662,
+                                      "searches":  69,
+                                      "fallbacks":  0,
+                                      "timeouts":  4
+                                  },
+                      "b_stats":  {
+                                      "seconds":  5.240882099977171,
+                                      "nodes":  2285098,
+                                      "depth_sum":  345,
+                                      "searches":  69,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  9,
+                      "fen":  "1nb1kabnr/r3a2c1/1c7/2p1p1p2/p7p/4P4/P1P3P1P/3A2C2/8C/RNB1KABNR b"
+                  },
+                  {
+                      "a_score":  0.5,
+                      "a_red":  true,
+                      "plies":  160,
+                      "reason":  "max_plies",
+                      "a_stats":  {
+                                      "seconds":  7.334875100015779,
+                                      "nodes":  4262451,
+                                      "depth_sum":  876,
+                                      "searches":  80,
+                                      "fallbacks":  0,
+                                      "timeouts":  1
+                                  },
+                      "b_stats":  {
+                                      "seconds":  8.424813599987829,
+                                      "nodes":  2516451,
+                                      "depth_sum":  547,
+                                      "searches":  80,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  10,
+                      "fen":  "rnbakabnr/5c3/6c2/p1p1p1p1p/9/9/P1P1P1P1P/1C4C2/8R/RNBAKABN1 b"
+                  },
+                  {
+                      "a_score":  0.5,
+                      "a_red":  false,
+                      "plies":  160,
+                      "reason":  "max_plies",
+                      "a_stats":  {
+                                      "seconds":  7.797878300003504,
+                                      "nodes":  6046070,
+                                      "depth_sum":  807,
+                                      "searches":  80,
+                                      "fallbacks":  0,
+                                      "timeouts":  3
+                                  },
+                      "b_stats":  {
+                                      "seconds":  4.088198299992655,
+                                      "nodes":  4644711,
+                                      "depth_sum":  388,
+                                      "searches":  80,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  10,
+                      "fen":  "rnbakabnr/5c3/6c2/p1p1p1p1p/9/9/P1P1P1P1P/1C4C2/8R/RNBAKABN1 b"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  true,
+                      "plies":  142,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  6.636683300010191,
+                                      "nodes":  2798702,
+                                      "depth_sum":  666,
+                                      "searches":  71,
+                                      "fallbacks":  0,
+                                      "timeouts":  1
+                                  },
+                      "b_stats":  {
+                                      "seconds":  7.375831300010759,
+                                      "nodes":  2112960,
+                                      "depth_sum":  360,
+                                      "searches":  71,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  11,
+                      "fen":  "rnbakab1r/8n/3c5/p1p1p1p1p/9/9/P1P1P1PcP/4BC3/1C7/RN1AKABNR w"
+                  },
+                  {
+                      "a_score":  1.0,
+                      "a_red":  false,
+                      "plies":  101,
+                      "reason":  "resign",
+                      "a_stats":  {
+                                      "seconds":  4.149946199988335,
+                                      "nodes":  2504992,
+                                      "depth_sum":  468,
+                                      "searches":  50,
+                                      "fallbacks":  0,
+                                      "timeouts":  1
+                                  },
+                      "b_stats":  {
+                                      "seconds":  3.454226500016375,
+                                      "nodes":  1757673,
+                                      "depth_sum":  262,
+                                      "searches":  51,
+                                      "fallbacks":  0,
+                                      "timeouts":  0
+                                  },
+                      "opening":  11,
+                      "fen":  "rnbakab1r/8n/3c5/p1p1p1p1p/9/9/P1P1P1PcP/4BC3/1C7/RN1AKABNR w"
+                  }
+              ],
+    "pair_scores_a":  [
+                          2.0,
+                          1.0,
+                          2.0,
+                          2.0,
+                          2.0,
+                          2.0,
+                          2.0,
+                          2.0,
+                          2.0,
+                          2.0,
+                          1.0,
+                          2.0
+                      ],
+    "a_score":  22.0,
+    "b_score":  2.0,
+    "a_score_percent":  91.66666666666667,
+    "a_ci95_percent":  [
+                           79.16666666666667,
+                           100.0
+                       ],
+    "a_wins":  21,
+    "draws":  2,
+    "a_losses":  1,
+    "a_nodes":  57936630,
+    "a_searches":  1154,
+    "a_seconds":  111.14932610009419,
+    "a_mean_seconds_per_search":  0.09631657374358249,
+    "a_time_utilization_percent":  31.069862497929833,
+    "a_mean_depth":  9.405545927209705,
+    "b_nodes":  35622811,
+    "b_searches":  1164,
+    "b_seconds":  113.25667800000883,
+    "b_mean_seconds_per_search":  0.09729955154639934,
+    "b_time_utilization_percent":  486.49775773199667,
+    "b_mean_depth":  4.819587628865979,
+    "protocol":  {
+                     "opening_file":  "trainnnue/openings_final2_192.fen",
+                     "color_control":  "each opening played twice with colors reversed",
+                     "cpu":  "both engines pinned to the same logical CPU; parallel pairs use disjoint CPUs",
+                     "threads":  1,
+                     "time_control":  "fixed time per move; nominal times calibrated on openings 0..11",
+                     "eleeye_version":  "ElephantEye 3.1",
+                     "eleeye_protocol":  "UCCI 3.0",
+                     "eleeye_book":  "disabled",
+                     "eleeye_sha256":  "1B2CDDD61FF5B73A1F6AE23E929CBEEE9DAF380A8144647021CDB3F82913959B",
+                     "xq_nnue_sha256":  "FCBBF45199BEB344EA2698D60454D61E791D2A73FB4A190C47B7C9EEE7F85CB3"
+                 }
+}

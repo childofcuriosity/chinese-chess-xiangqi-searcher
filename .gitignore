@@ -102,3 +102,6 @@ trainnnue/*
 !trainnnue/iter2_vs_pikafish_official_180pairs.json
 !trainnnue/iter2_vs_pikafish_elo1900_180pairs.json
 !trainnnue/external_benchmark.svg
+!trainnnue/run_eleeye_match.ps1
+!trainnnue/eleeye_calibration_a310_b020_12pairs.json
+!trainnnue/iter2_vs_eleeye31_180pairs.json
