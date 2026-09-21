@@ -107,7 +107,11 @@ FastAPI 网页端 ─┘                 │
 - 同条件直接对 D4-H8 为 **54.17%**，平均完成深度9.18 vs 9.24，说明 H16 的额外评价成本在本实现中可接受。
 - 网页端已部署，PST、NNUE 与 Pikafish PST 三个选项走同一会话和规则接口。
 
-关键 NNUE 表格和训练曲线不是手工维护：运行 `python trainnnue/report_results.py` 可由 JSON 结果重新生成 [`RESULTS.generated.md`](trainnnue/RESULTS.generated.md) 和 [`training_curve.svg`](trainnnue/training_curve.svg)。
+![PST初代到迭代世代4的对PST得分率](trainnnue/iteration_vs_pst.svg)
+
+统一的384盘换先等时测试显示：对PST得分率从50%基准依次提高到59.77%、63.28%和70.18%，第四世代为70.05%，因此第三世代模型成为当前部署版本。
+
+关键 NNUE 表格、训练曲线和代际结果图不是手工维护：运行 `python trainnnue/report_results.py` 可由 JSON 结果重新生成 [`RESULTS.generated.md`](trainnnue/RESULTS.generated.md)、[`training_curve.svg`](trainnnue/training_curve.svg) 和 [`iteration_vs_pst.svg`](trainnnue/iteration_vs_pst.svg)。
 
 ## 运行与配置
 
