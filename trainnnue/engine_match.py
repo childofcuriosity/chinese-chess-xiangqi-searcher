@@ -28,15 +28,16 @@ def parse_fen(fen: str):
 
 
 class Engine:
-    def __init__(self, executable: Path, nnue: Path | None, blend: float,
-                 cpu_index: int):
-        command = [str(executable.resolve())]
+    def __init__(self, executable: Path, extra_args: list[str],
+                 nnue: Path | None, blend: float, cpu_index: int):
+        command = [str(executable.resolve()), *extra_args]
         if nnue is not None:
             command += ["--nnue", str(nnue.resolve()), "--nnue-blend", str(blend)]
         env = os.environ.copy()
         env.pop("XQ_NNUE_BLEND", None)
         for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
             env[key] = "1"
+        env["XQ_CPU_INDEX"] = str(cpu_index)
         self.process = subprocess.Popen(
             command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
@@ -99,15 +100,16 @@ class Engine:
             self.process.kill()
 
 
-def play_game(a_exe: Path, a_model: Path | None,
-              b_exe: Path, b_model: Path | None, fen: str, a_red: bool,
-              seconds: float, max_plies: int, blend: float,
+def play_game(a_exe: Path, a_args: list[str], a_model: Path | None,
+              b_exe: Path, b_args: list[str], b_model: Path | None,
+              fen: str, a_red: bool,
+              a_seconds: float, b_seconds: float, max_plies: int, blend: float,
               fixed_depth: int, cpu_index: int):
     board, side = parse_fen(fen)
-    a = Engine(a_exe, a_model, blend, cpu_index)
-    b = Engine(b_exe, b_model, blend, cpu_index)
-    a.setup(fen, a_red, seconds, fixed_depth)
-    b.setup(fen, not a_red, seconds, fixed_depth)
+    a = Engine(a_exe, a_args, a_model, blend, cpu_index)
+    b = Engine(b_exe, b_args, b_model, blend, cpu_index)
+    a.setup(fen, a_red, a_seconds, fixed_depth)
+    b.setup(fen, not a_red, b_seconds, fixed_depth)
     engines = [a if a_red else b, b if a_red else a]
     stats = {"a": {"seconds": 0.0, "nodes": 0, "depth_sum": 0, "searches": 0,
                     "fallbacks": 0, "timeouts": 0},
@@ -156,8 +158,10 @@ def play_game(a_exe: Path, a_model: Path | None,
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--a-exe", type=Path, required=True)
+    p.add_argument("--a-arg", action="append", default=[])
     p.add_argument("--a-model", type=Path)
     p.add_argument("--b-exe", type=Path, required=True)
+    p.add_argument("--b-arg", action="append", default=[])
     p.add_argument("--b-model", type=Path)
     p.add_argument("--a-name", required=True)
     p.add_argument("--b-name", required=True)
@@ -165,12 +169,18 @@ def main():
     p.add_argument("--opening-start", type=int, default=0)
     p.add_argument("--limit", type=int, default=24)
     p.add_argument("--seconds", type=float, default=0.1)
+    p.add_argument("--a-seconds", type=float)
+    p.add_argument("--b-seconds", type=float)
     p.add_argument("--max-plies", type=int, default=160)
     p.add_argument("--blend", type=float, default=1.0)
     p.add_argument("--fixed-depth", type=int, default=0)
     p.add_argument("--cpu-index", type=int, default=0)
     p.add_argument("--output", type=Path, required=True)
     args = p.parse_args()
+    a_seconds = args.a_seconds if args.a_seconds is not None else args.seconds
+    b_seconds = args.b_seconds if args.b_seconds is not None else args.seconds
+    if a_seconds <= 0 or b_seconds <= 0:
+        p.error("engine time controls must be positive")
     if not 0 <= args.cpu_index < (os.cpu_count() or 1):
         p.error("invalid --cpu-index")
     all_openings = [x.strip() for x in args.openings.read_text(encoding="utf-8").splitlines() if x.strip()]
@@ -180,8 +190,9 @@ def main():
     games = []
     for local_index, fen in enumerate(openings):
         for a_red in (True, False):
-            game = play_game(args.a_exe, args.a_model, args.b_exe, args.b_model,
-                             fen, a_red, args.seconds, args.max_plies,
+            game = play_game(args.a_exe, args.a_arg, args.a_model,
+                             args.b_exe, args.b_arg, args.b_model,
+                             fen, a_red, a_seconds, b_seconds, args.max_plies,
                              args.blend, args.fixed_depth, args.cpu_index)
             game.update({"opening": args.opening_start + local_index, "fen": fen})
             games.append(game)
@@ -197,10 +208,15 @@ def main():
     bootstrap.sort()
     summary = {
         "a_name": args.a_name, "b_name": args.b_name,
-        "a_exe": str(args.a_exe), "a_model": str(args.a_model) if args.a_model else None,
-        "b_exe": str(args.b_exe), "b_model": str(args.b_model) if args.b_model else None,
+        "a_exe": str(args.a_exe), "a_args": args.a_arg,
+        "a_model": str(args.a_model) if args.a_model else None,
+        "b_exe": str(args.b_exe), "b_args": args.b_arg,
+        "b_model": str(args.b_model) if args.b_model else None,
         "opening_start": args.opening_start, "opening_pairs": len(openings),
-        "seconds": args.seconds, "max_plies": args.max_plies,
+        "seconds": args.seconds,
+        "a_seconds_per_move": a_seconds,
+        "b_seconds_per_move": b_seconds,
+        "max_plies": args.max_plies,
         "fixed_depth": args.fixed_depth, "cpu_index": args.cpu_index,
         "games": games, "pair_scores_a": pair_scores,
         "a_score": sum(scores), "b_score": len(scores) - sum(scores),
@@ -214,6 +230,14 @@ def main():
     for key in ("a", "b"):
         summary[f"{key}_nodes"] = sum(g[f"{key}_stats"]["nodes"] for g in games)
         searches = sum(g[f"{key}_stats"]["searches"] for g in games)
+        used_seconds = sum(g[f"{key}_stats"]["seconds"] for g in games)
+        summary[f"{key}_searches"] = searches
+        summary[f"{key}_seconds"] = used_seconds
+        summary[f"{key}_mean_seconds_per_search"] = used_seconds / max(1, searches)
+        configured_seconds = a_seconds if key == "a" else b_seconds
+        summary[f"{key}_time_utilization_percent"] = (
+            100.0 * used_seconds / max(configured_seconds,
+                                       searches * configured_seconds))
         summary[f"{key}_mean_depth"] = sum(g[f"{key}_stats"]["depth_sum"] for g in games) / max(1, searches)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

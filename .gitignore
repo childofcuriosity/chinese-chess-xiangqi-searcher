@@ -98,3 +98,7 @@ trainnnue/*
 !trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json
 !trainnnue/direct_match_summary.json
 !trainnnue/swiss_8models_5rounds.json
+!trainnnue/run_external_match.ps1
+!trainnnue/iter2_vs_pikafish_official_180pairs.json
+!trainnnue/iter2_vs_pikafish_elo1900_180pairs.json
+!trainnnue/external_benchmark.svg

@@ -48,6 +48,17 @@ def main() -> None:
     bootstrap.sort()
 
     result = {key: reference[key] for key in invariant}
+    optional_invariant = {
+        "a_args": [],
+        "b_args": [],
+        "a_seconds_per_move": reference["seconds"],
+        "b_seconds_per_move": reference["seconds"],
+    }
+    for key, default in optional_invariant.items():
+        value = reference.get(key, default)
+        if any(shard.get(key, default) != value for shard in shards[1:]):
+            raise ValueError(f"incompatible shard field {key}")
+        result[key] = value
     result.update({
         "shards": [str(path) for path in args.inputs],
         "opening_pairs": len(by_opening),
@@ -66,6 +77,14 @@ def main() -> None:
         result[f"{side}_nodes"] = sum(
             game[f"{side}_stats"]["nodes"] for game in games)
         searches = sum(game[f"{side}_stats"]["searches"] for game in games)
+        used_seconds = sum(game[f"{side}_stats"]["seconds"] for game in games)
+        result[f"{side}_searches"] = searches
+        result[f"{side}_seconds"] = used_seconds
+        result[f"{side}_mean_seconds_per_search"] = used_seconds / max(1, searches)
+        configured_seconds = result[f"{side}_seconds_per_move"]
+        result[f"{side}_time_utilization_percent"] = (
+            100.0 * used_seconds / max(configured_seconds,
+                                       searches * configured_seconds))
         result[f"{side}_mean_depth"] = sum(
             game[f"{side}_stats"]["depth_sum"] for game in games) / max(1, searches)
 
@@ -73,7 +92,9 @@ def main() -> None:
                            encoding="utf-8")
     summary_keys = ("a_name", "b_name", "opening_pairs", "a_score", "b_score",
                     "a_score_percent", "a_ci95_percent", "a_wins", "draws",
-                    "a_losses", "a_mean_depth", "b_mean_depth")
+                    "a_losses", "a_mean_depth", "b_mean_depth",
+                    "a_mean_seconds_per_search", "b_mean_seconds_per_search",
+                    "a_time_utilization_percent", "b_time_utilization_percent")
     print(json.dumps({key: result[key] for key in summary_keys},
                      ensure_ascii=False, indent=2))
 

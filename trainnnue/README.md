@@ -1,10 +1,25 @@
 # Xiangqi NNUE：设计、训练与验证
 
-本目录只记录完整象棋 AI 系统中的 **NNUE 评价专题**；规则、搜索、客户端、实验框架和教程的总览见仓库根 [`README.md`](../README.md)。实验完成三轮“上一代量化NNUE + D3搜索”教师迭代。`Iter2-NNUE-D3` 在统一PST基准上达到峰值70.18%，Iter3轻微回落到70.05%，因此选择Iter2作为最佳并已部署到网页Demo。
+本目录记录完整象棋 AI 系统中的 **NNUE 评价专题**；规则、搜索、客户端、实验框架和教程的总览见仓库根 [`README.md`](../README.md)。`Iter2-NNUE-D3` 在统一 PST 基准上达到70.18%，并在官方 Pikafish 外部测试中战胜其内置 `UCI_Elo=1900` 档，得分率56.39%。
 
 ## 1. 最终结果
 
-统一条件：192 个保留开局，每个开局交换红黑，共384盘；每步0.10秒；最长160 ply；每个对局进程固定到一个逻辑 CPU；置信区间以“开局对”而非单盘为抽样单位。
+### 外部Pikafish参照
+
+对手为官方 Pikafish 2026-01-31 与官方 NNUE 网络。前12个开局用于冻结自研时间倍率和限强档位，其余180个开局逐一换先，形成360盘正式比赛；双方单线程并固定到同一逻辑 CPU。`UCI_Elo=1900` 是 Pikafish `UCI_LimitStrength` 的内置刻度。
+
+| 官方对手 | 自研胜/和/负 | 自研得分率 | 配对95% CI | 实际平均用时（自研 / Pikafish） |
+|---|---:|---:|---:|---:|
+| **Pikafish `UCI_Elo=1900`** | **169 / 68 / 123** | **56.39%** | **51.94%–60.83%** | **76.2 / 101.3 ms** |
+| Pikafish 满强 | 6 / 44 / 310 | 7.78% | 5.69%–10.00% | 86.9 / 91.4 ms |
+
+![官方Pikafish外部参照](external_benchmark.svg)
+
+逐盘记录与二进制/网络 SHA-256 分别保存在 [`iter2_vs_pikafish_elo1900_180pairs.json`](iter2_vs_pikafish_elo1900_180pairs.json) 和 [`iter2_vs_pikafish_official_180pairs.json`](iter2_vs_pikafish_official_180pairs.json)。完整流程由 [`run_external_match.ps1`](run_external_match.ps1) 复现。
+
+### 内部模型对照
+
+统一条件：192 个保留开局，每个开局交换红黑，共384盘；每步0.10秒；最长160 ply；每个对局进程固定到一个逻辑 CPU；置信区间以开局对为抽样单位。
 
 | 直接对抗 | 胜/和/负 | 得分率 | 配对95% CI |
 |---|---:|---:|---:|
@@ -126,11 +141,11 @@ Sigmoid 温度 `K` 只在 calibration 集上做一维统计拟合，随后冻结
 
 ### 第一次教师迭代
 
-`Iter1-NNUE-D3` 从D4-H16初始化，使用独立校准的 `K=60.667468`。最大150轮、最少25轮、patience 15；最佳验证点出现在第4轮，第25轮早停。验证集概率MSE为0.007689、teacher MAE为20.60cp、残差相关系数为0.643。量化后30k局面MAE为20.45cp，且再次通过822,487次累加器转换验证。
+`Iter1-NNUE-D3` 从D4-H16初始化，使用独立校准的 `K=60.667468`。最大150轮、最少25轮、patience 15；最佳验证点出现在第4轮，第25轮早停。验证集概率MSE为0.007689、teacher MAE为20.60cp、残差相关系数为0.643。量化后30k局面MAE为20.45cp。
 
 ### 第二次教师迭代
 
-`Iter2-NNUE-D3` 的教师和初始化都使用 `Iter1-NNUE-D3`。独立校准 `K=54.708417`；最佳验证点出现在第5轮，第25轮早停。验证集概率MSE为0.009012、teacher MAE为21.78cp、残差相关系数为0.711。量化后30k局面MAE为21.63cp、相关系数0.726，并通过同一组822,487次增量转换验证。
+`Iter2-NNUE-D3` 的教师和初始化都使用 `Iter1-NNUE-D3`。独立校准 `K=54.708417`；最佳验证点出现在第5轮，第25轮早停。验证集概率MSE为0.009012、teacher MAE为21.78cp、残差相关系数为0.711。量化后30k局面MAE为21.63cp、相关系数0.726。
 
 ### 第三次教师迭代与停止点
 
@@ -138,19 +153,14 @@ Sigmoid 温度 `K` 只在 calibration 集上做一维统计拟合，随后冻结
 
 Iter3对Iter2点估计为52.86%，但区间跨50%；对PST为70.05%，比Iter2的70.18%低0.13个百分点。按预先约定的“第一次点估计回落即停止”规则，不再生成Iter4，保留Iter2为当前实验最佳。该差异远未达到统计显著，只能称为平台/轻微观测回落，不能声称Iter3真实棋力更弱。
 
-## 5. 定点推理与正确性
+## 5. 定点推理
 
 - 特征权重/偏置使用固定 Q12，累加器为 int32。
 - 输出层折入冻结 K 后使用安全的二次幂 scale；最终模型输出 scale 为128。
 - 输出 dot/bias 使用 int64，只做一次带符号定点除法；C++ 热路径不执行 sigmoid。
 - 模型文件包含 magic、版本、结构尺寸和元数据，加载失败会明确报错；不加载模型时安全回退 PST。
 
-正确性门槛：
-
-- 822,487次随机合法 make/undo/null/rebuild 转换中，增量累加器与全量重算逐元素一致。
-- 覆盖吃子、将帅移动、撤销、null move、setboard，以及旋转180度并交换红黑后的反对称检查。
-- 最终量化模型在30k D4验证子集上：MAE 22.01cp、RMSE 41.19cp、相关系数0.493、`|target|>=20`符号正确率81.5%。
-- NNUE未加载时与 PST 公平版本在固定深度下着法、分数、节点数一致，排除搜索代码漂移。
+最终量化模型在30k D4验证子集上的离线指标为：MAE 22.01cp、RMSE 41.19cp、相关系数0.493、`|target|>=20`符号正确率81.5%。这些指标用于描述模型拟合，最终选择仍由固定开局换先赛决定。
 
 ## 6. 实验结论
 
@@ -203,7 +213,7 @@ trainnnue/verify_nnue.exe `
 
 # 启动当前网页部署引擎
 trainnnue/nnue_engine.exe `
-  --nnue trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue `
+  --nnue trainnnue/iter2_nnued3_h16_fromiter1_gpu.nnue `
   --nnue-blend 1
 ```
 
@@ -237,11 +247,11 @@ python trainnnue/report_results.py
 git diff --exit-code -- trainnnue/RESULTS.generated.md `
   trainnnue/training_curve.svg trainnnue/iter1_training_curve.svg `
   trainnnue/iter2_training_curve.svg trainnnue/iter3_training_curve.svg `
-  trainnnue/iteration_vs_pst.svg
+  trainnnue/iteration_vs_pst.svg trainnnue/external_benchmark.svg
 ```
 
 脚本只依赖Python标准库；若结果JSON发生变化，生成文件也必须随之更新。
 
-## 9. 适用边界
+## 9. 实验范围与下一步
 
-这些比赛证明当前模型在指定机器、搜索框架、开局套件和时间控制下优于 PST，但不等同于跨平台大样本 Elo 标定。引擎沿用原有重复局面与简化长将规则，尚未实现完整平台级长捉/长杀裁决。
+当前数字对应本机单线程、指定开局集、最长160 ply和现有循环规则。Pikafish 1900表示其内置UCI限强刻度。下一阶段将扩展多时间控制复验，并加入完整长捉、长杀裁决后的规则一致性对照。

@@ -4,6 +4,7 @@
 import os
 import subprocess
 import sys
+import ctypes
 from pathlib import Path
 
 
@@ -19,8 +20,20 @@ def uci_to_xy(move):
 
 class Bridge:
     def __init__(self):
+        cpu_index = int(os.environ.get("XQ_CPU_INDEX", "0"))
+        if os.name == "nt":
+            kernel32 = ctypes.windll.kernel32
+            kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            kernel32.SetProcessAffinityMask.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+            kernel32.SetProcessAffinityMask.restype = ctypes.c_int
+            handle = kernel32.GetCurrentProcess()
+            if not kernel32.SetProcessAffinityMask(handle, ctypes.c_size_t(1 << cpu_index)):
+                raise OSError("SetProcessAffinityMask failed")
+        elif hasattr(os, "sched_setaffinity"):
+            allowed = sorted(os.sched_getaffinity(0))
+            os.sched_setaffinity(0, {allowed[cpu_index % len(allowed)]})
         here = Path(__file__).resolve().parent
-        configured = os.environ.get("PIKAFISH_PST_PATH")
+        configured = os.environ.get("PIKAFISH_PATH") or os.environ.get("PIKAFISH_PST_PATH")
         if configured:
             executable = Path(configured)
         elif os.name == "nt":
@@ -34,6 +47,7 @@ class Bridge:
             text=True, encoding="utf-8", errors="replace", bufsize=1,
         )
         self.moves = []
+        self.position = "startpos"
         seconds = float(os.environ.get("PIKAFISH_MOVE_TIME", "5"))
         self.movetime_ms = max(1, round(seconds * 1000))
         self._initialize()
@@ -59,12 +73,17 @@ class Bridge:
         self.send("setoption name Threads value 1")
         self.send("setoption name Hash value 128")
         self.send("setoption name Ponder value false")
+        self.send("setoption name Move Overhead value 0")
+        elo = int(os.environ.get("PIKAFISH_ELO", "0"))
+        if elo:
+            self.send("setoption name UCI_LimitStrength value true")
+            self.send(f"setoption name UCI_Elo value {elo}")
         self.send("isready")
         self.wait_for("readyok")
 
     def search(self):
         suffix = " moves " + " ".join(self.moves) if self.moves else ""
-        self.send("position startpos" + suffix)
+        self.send(f"position {self.position}" + suffix)
         self.send(f"go movetime {self.movetime_ms}")
         score = None
         while True:
@@ -103,6 +122,9 @@ class Bridge:
                 print("readyok", flush=True)
             elif command == "time" and len(parts) >= 2:
                 self.movetime_ms = max(1, round(float(parts[1]) * 1000))
+            elif command == "setboard" and len(parts) >= 3:
+                self.position = "fen " + " ".join(parts[1:])
+                self.moves.clear()
             elif command == "move" and len(parts) >= 5:
                 self.moves.append(xy_to_uci(*[int(value) for value in parts[1:5]]))
             elif command == "search":

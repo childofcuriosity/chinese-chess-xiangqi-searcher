@@ -6,7 +6,11 @@
 
 本项目从零实现了一套中国象棋搜索引擎，研究重点是普通 CPU、固定思考时间下的决策质量。系统以可逆增量状态为基础，将规则判断、PST/NNUE 评价、Zobrist 哈希与搜索路径统一到 `make_move()` / `undo_move()`；搜索端组合迭代加深、PVS、置换表、静态搜索、走法排序和选择性剪枝；评价端实现 HalfKA 特征、增量累加器与量化整数推理。
 
-当前最佳模型采用 `XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头`，大小 363 KB。在 192 个保留开局逐一换先、每步 0.10 秒、单核运行的 384 盘测试中，对自研 PST 基线取得 **70.18% 得分率**，战绩为 **218 胜 / 103 和 / 63 负**，配对 95% CI 为 **66.80%–73.44%**。
+当前最佳模型采用 `XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头`，大小 363 KB。对官方 Pikafish 2026-01-31 NNUE 的外部测试表明：自研引擎对其内置 `UCI_Elo=1900` 档取得 **56.39%** 得分率；对满强版本取得 **7.78%**。内部等时测试中，NNUE 对自研 PST 基线取得 **70.18%**，量化了神经评价器带来的直接增益。
+
+| 外部等强坐标 | 顶级引擎距离 | NNUE 内部增益 | 量化模型大小 |
+|:---:|:---:|:---:|:---:|
+| **vs Pikafish 1900：56.39%** | **vs 满强 Pikafish：7.78%** | **vs 自研 PST：70.18%** | **363 KB** |
 
 ## 1. 问题定义与技术贡献
 
@@ -18,13 +22,13 @@
 
 对应的核心实现如下。
 
-| 模块 | 实现 | 验证方式 |
+| 模块 | 实现 | 工程作用 |
 |---|---|---|
-| 增量状态 | 棋盘、棋子表、将帅位置、占位、PST、Hash、NNUE 累加器同步更新 | 随机 `make/undo/null/rebuild` 往返检查 |
-| 搜索 | 迭代加深、PVS、TT、QS/SEE、走法排序、LMR、Null Move、Futility | 固定开局、固定时间、换先 A/B 对局 |
-| 评价 | PST 基线与量化 HalfKA NNUE 双路径 | 离线拟合、量化一致性、等时直接对局 |
-| 实验 | 平衡数据集、教师可配置、训练早停、配对统计、图表自动生成 | JSON 原始记录与可重复脚本 |
-| 工程 | stdio 引擎协议、pygame、FastAPI/WebSocket、Pikafish 桥接 | 单元测试、端到端测试、部署后 HTTP 检查 |
+| 增量状态 | 棋盘、棋子表、将帅位置、占位、PST、Hash、NNUE 累加器同步更新 | 降低搜索树内高频走子与评价成本 |
+| 搜索 | 迭代加深、PVS、TT、QS/SEE、走法排序、LMR、Null Move、Futility | 在固定思考时间内完成更深的有效搜索 |
+| 评价 | PST 基线与量化 HalfKA NNUE 双路径 | 直接测量神经评价相对手工评价的棋力增益 |
+| 实验 | 平衡数据集、教师可配置、训练早停、配对统计、图表自动生成 | 保存从数据、模型到对局结论的完整链路 |
+| 工程 | stdio 引擎协议、pygame、FastAPI/WebSocket、Pikafish 桥接 | 同一搜索核心服务本地交互、网页与批量实验 |
 
 ## 2. 系统设计
 
@@ -42,13 +46,13 @@ flowchart LR
     SEARCH --> BEST[最佳着法]
 
     TEACHER[教师搜索] --> DATA[红黑平衡数据集]
-    DATA --> TRAIN[训练 / 量化 / 一致性校验]
+    DATA --> TRAIN[训练 / 量化]
     TRAIN --> NNUE
     NNUE --> MATCH[保留开局换先赛]
     MATCH --> TEACHER
 ```
 
-主搜索器保留 PST 与 NNUE 两条评价路径。教师搜索生成局面标签，训练结果量化后进入 C++ 推理器，通过一致性校验和等时比赛的模型再用于下一轮数据生成。搜索、训练和对局因此形成可重复的闭环。
+主搜索器保留 PST 与 NNUE 两条评价路径。教师搜索生成局面标签，训练结果量化后进入 C++ 推理器，经过等时比赛筛选的模型再用于下一轮数据生成。搜索、训练和对局因此形成可重复的闭环。
 
 ## 3. 增量状态与规则实现
 
@@ -125,33 +129,33 @@ XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头 → PST 残差
 
 ### 7.1 对局协议
 
-| 项目 | 设置 |
-|---|---|
-| 开局集 | 192 个独立保留开局 |
-| 颜色控制 | 每个开局逐一换先 |
-| 总盘数 | 384 盘 / 组 |
-| 资源 | 单 CPU 核 |
-| 时间控制 | 每步 0.10 秒 |
-| 得分率 | `(胜局 + 0.5 × 和局) / 总局数` |
-| 区间估计 | 按开局对聚类的配对 bootstrap 95% CI |
+| 项目 | 内部 PST / NNUE 对照 | 官方 Pikafish 外部参照 |
+|---|---|---|
+| 开局 | 192 个保留开局 | 12 个校准开局 + 180 个正式开局 |
+| 颜色控制 | 每个开局逐一换先 | 每个开局逐一换先 |
+| 正式盘数 | 384 盘 / 组 | 360 盘 / 档位 |
+| 资源 | 单 CPU 核 | 双方单线程、每盘固定同一逻辑核 |
+| 名义时限 | 双方每步 0.10 秒 | 自研 0.25 秒；Pikafish 0.10 秒 |
+| 实际平均用时 | 同一搜索器直接对照 | 1900档：76.2 / 101.3 ms；满强：86.9 / 91.4 ms |
+| 得分率 | `(胜局 + 0.5 × 和局) / 总局数` | 同左 |
+| 区间估计 | 按开局对 bootstrap 95% CI | 同左 |
 
-固定开局、逐局换先和成对统计共同控制先手、开局与样本相关性。离线指标用于检查模型拟合和量化误差，最终模型选择依据相同资源约束下的直接对局。
-
-### 7.2 一致性验证
-
-NNUE 推理链路覆盖以下检查：
-
-- Python 与 C++ 的 HalfKA 特征索引一致；
-- 增量累加器与全量重建逐元素一致；
-- `undo` 后棋盘、分数、Hash、将位、累加器与评价完整恢复；
-- 量化模型与整数参考实现逐局面对齐；
-- 模型文件的版本、维度与校验值经过加载检查。
-
-随机合法走子测试累计完成 **822,487 次** `make/undo/null/rebuild` 转换，增量结果与全量重算一致。
+自研引擎在完成一层后使用 `0.16` 经验阈值判断下一完整深度的成本，因此名义时限与实际搜索时间存在固定差异。前 12 个开局用于冻结时间倍率和 Pikafish 限强档位；其余 180 个开局构成正式外部测试集。正式赛中自研引擎的实际平均用时低于 Pikafish。`UCI_Elo=1900` 是 Pikafish `UCI_LimitStrength` 的内置刻度。
 
 ## 8. 实验结果
 
-### 8.1 代际结果
+### 8.1 官方 Pikafish 外部参照
+
+![自研NNUE对官方Pikafish外部参照](trainnnue/external_benchmark.svg)
+
+| 官方对手 | 自研胜 / 和 / 负 | 自研得分率 | 配对 95% CI | 实际平均用时（自研 / Pikafish） |
+|---|---:|---:|---:|---:|
+| **Pikafish `UCI_Elo=1900`** | **169 / 68 / 123** | **56.39%** | **51.94%–60.83%** | **76.2 / 101.3 ms** |
+| Pikafish 满强 | 6 / 44 / 310 | 7.78% | 5.69%–10.00% | 86.9 / 91.4 ms |
+
+第一行给出当前引擎的外部等强坐标：在 Pikafish 内置 1900 档之上。第二行给出与完整强度官方 NNUE 引擎的距离。两组比赛使用同一批 180 个正式开局、逐一换先和配对统计；官方二进制与网络文件的 SHA-256 写入结果 JSON。
+
+### 8.2 NNUE 代际结果
 
 ![PST 初代到迭代世代 4 的对 PST 得分率](trainnnue/iteration_vs_pst.svg)
 
@@ -165,7 +169,7 @@ NNUE 推理链路覆盖以下检查：
 
 第三世代取得最高实测得分率，配对 95% CI 为 **66.80%–73.44%**，当前网页与本地 NNUE 入口均使用该模型。第四世代与第三世代进入同一性能平台，代际实验由此完成。
 
-### 8.2 网络宽度与搜索成本
+### 8.3 网络宽度与搜索成本
 
 在相同条件下，D4-H16 对 D4-H8 得分率为 **54.17%**，平均完成深度为 **9.18 vs 9.24**。H16 的额外评价成本保持在很小的深度差内，同时获得直接对局优势，因此成为最终宽度。
 
@@ -194,14 +198,14 @@ python gui.py
 | 任务 | 命令 / 脚本 | 产物 |
 |---|---|---|
 | 引擎 A/B 回归 | `python ab_selfplay.py baseline.exe candidate.exe` | 分时间档日志与汇总 JSON |
-| 对战 Pikafish | `python cross_arena.py --pairs 10 --seconds 1` | 对局结果与汇总统计 |
+| 官方 Pikafish 外部赛 | `trainnnue/run_external_match.ps1` | 换先逐盘结果、实际耗时与配对 CI |
 | NNUE 换先赛 | `python trainnnue/engine_match.py ...` | 逐盘 JSON、得分率、配对 CI |
 | 多模型瑞士轮 | `python trainnnue/swiss_tournament.py` | 排名与交手记录 |
 | 教师迭代 | `trainnnue/run_teacher_iteration.ps1` | 数据、模型、校验与对局产物 |
 | 重建结果 | `python trainnnue/report_results.py` | Markdown 表格与 SVG 曲线 |
 | 自动测试 | `python -m pytest tests -q` | 规则与 WebSocket 测试结果 |
 
-保存的 JSON 结果可以一键生成 [实验汇总](trainnnue/RESULTS.generated.md)、[训练曲线](trainnnue/training_curve.svg)和[代际棋力曲线](trainnnue/iteration_vs_pst.svg)，使数字、表格与图片保持同源。具体 A/B 协议见 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) 和 [AB_SELFPLAY.md](AB_SELFPLAY.md)。
+保存的 JSON 结果可以一键生成 [实验汇总](trainnnue/RESULTS.generated.md)、[外部基准图](trainnnue/external_benchmark.svg)、[训练曲线](trainnnue/training_curve.svg)和[代际棋力曲线](trainnnue/iteration_vs_pst.svg)，使数字、表格与图片保持同源。具体 A/B 协议见 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) 和 [AB_SELFPLAY.md](AB_SELFPLAY.md)。
 
 ## 10. 工程接口
 
