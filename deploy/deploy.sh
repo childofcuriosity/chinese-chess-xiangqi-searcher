@@ -56,7 +56,7 @@ fi
 
 # ---- 自研 NNUE 引擎与最佳量化模型 ----
 NNUE_SOURCE="trainnnue/nnue_engine.cpp"
-NNUE_MODEL="trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue"
+NNUE_MODEL="trainnnue/iter2_nnued3_h16_fromiter1_gpu.nnue"
 LOCAL_NNUE_MD5=$(md5sum "$NNUE_SOURCE" | awk '{print $1}')
 REMOTE_NNUE_MD5=$(ssh "$SERVER" "md5sum $REMOTE_DIR/nnue_engine.cpp 2>/dev/null | awk '{print \$1}' || echo missing")
 if [ "$LOCAL_NNUE_MD5" != "$REMOTE_NNUE_MD5" ]; then

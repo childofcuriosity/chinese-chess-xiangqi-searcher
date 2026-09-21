@@ -34,6 +34,8 @@ python -m pip install -r trainnnue/requirements.txt
 
 GPU版 PyTorch 应按显卡驱动和官方 wheel 索引安装；`requirements.txt` 不固定 CUDA wheel。
 
+本机现有训练环境为项目内 `.venv-gpu\python.exe`：Python 3.12.14、PyTorch 2.6.0+cu124。它属于本地环境且不进Git；复现实验时应先用 `torch.cuda.is_available()` 检查CUDA，不能把默认CPU环境误当GPU环境。
+
 ## 2. 构建引擎
 
 ### 自研 PST 引擎
@@ -59,7 +61,7 @@ g++ -O3 -std=c++17 -march=native -DNDEBUG `
   -o trainnnue/nnue_engine.exe trainnnue/nnue_engine.cpp
 
 trainnnue/nnue_engine.exe `
-  --nnue trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue `
+  --nnue trainnnue/iter2_nnued3_h16_fromiter1_gpu.nnue `
   --nnue-blend 1
 ```
 
@@ -137,9 +139,15 @@ python webapp.py
 
 | Artifact | 版本/规模 | 是否随Git分发 | SHA-256 |
 |---|---|---:|---|
-| 最佳NNUE | v3, HalfKA, H16, 363,128 bytes | 是 | `E677DAA6…ED65990` |
+| 第一代D4 NNUE | v3, HalfKA, H16, 363,128 bytes | 是，历史基线 | `E677DAA6…ED65990` |
 | D3平衡数据 | 1,000,000 × 108-byte record | 否 | `918EA99E…0C0F9E` |
 | D4平衡数据 | 1,000,000 × 108-byte record | 否 | `079C403D…C492D2` |
+| 迭代1数据 | 1,000,000 × 108-byte record | 否 | `F61D6FF6…EDCF6` |
+| 迭代1 NNUE | H16, 363,128 bytes | 是，未部署 | `93969CDE…DC56` |
+| 迭代2数据 | 1,000,000 × 108-byte record | 否 | `60E70768…D16D2` |
+| 迭代2最佳NNUE | H16, 363,128 bytes | 是，当前网页部署 | `FCBBF451…85CB3` |
+| 迭代3数据 | 1,000,000 × 108-byte record | 否 | `BE054B40…1ED54` |
+| 迭代3平台探针 | H16, 363,128 bytes | 是，未选为最佳 | `3E71A79C…759FE` |
 
 数据集不进 Git：每份约108MB，可由 `generate_data.cpp` 与 `build_balanced_dataset.py` 重建。模型元数据文件记录训练参数、每轮损失、K、量化尺度和验证指标。
 

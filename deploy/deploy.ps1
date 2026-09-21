@@ -80,7 +80,7 @@ if ($LocalMd5 -ne $RemoteMd5) {
 
 # ---- 自研 NNUE：源码变化时重编译，最佳量化模型始终同步 ----
 $NnueSource = "trainnnue/nnue_engine.cpp"
-$NnueModel = "trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue"
+$NnueModel = "trainnnue/iter2_nnued3_h16_fromiter1_gpu.nnue"
 $LocalNnueMd5 = (Get-FileHash $NnueSource -Algorithm MD5).Hash.ToLower()
 $RemoteNnueMd5Output = ssh $SERVER "if test -f ${REMOTE_DIR}/nnue_engine.cpp; then md5sum ${REMOTE_DIR}/nnue_engine.cpp | cut -d' ' -f1; else echo missing; fi"
 $RemoteNnueMd5 = if ($null -eq $RemoteNnueMd5Output) { "missing" } else { "$RemoteNnueMd5Output".Trim() }

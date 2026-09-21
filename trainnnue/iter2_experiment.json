@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "experiment": "NNUE expert iteration round 2",
+  "teacher": {
+    "evaluation": "Iter1-NNUE-D3 quantized NNUE",
+    "model": "iter1_nnued3_h16_fromd4_gpu.nnue",
+    "search_depth": 3,
+    "risky_pruning": false,
+    "disabled_for_labels": [
+      "TT score cutoff",
+      "reverse futility",
+      "razoring",
+      "null move",
+      "LMP",
+      "futility",
+      "SEE pruning",
+      "LMR",
+      "qsearch SEE filtering"
+    ]
+  },
+  "dataset": {
+    "file": "train_iter2_nnue_d3_balanced_1m_v2.bin",
+    "distributed_in_git": false,
+    "raw_records": 1181556,
+    "valid_noncheck_records": 1058557,
+    "unique_board_stm": 1057865,
+    "discarded_conflicting_groups": 15,
+    "samples": 1000000,
+    "side_to_move": {"red": 500000, "black": 500000},
+    "split": {"train": 700000, "validation": 150000, "calibration": 150000},
+    "games": 26520,
+    "bytes": 108000016,
+    "sha256": "60E707687237F3DD8291917461B6CF13B54B45D1AE47830CAE443CE3604D16D2"
+  },
+  "student": {
+    "file": "iter2_nnued3_h16_fromiter1_gpu.nnue",
+    "initialization": "Iter1-NNUE-D3",
+    "width": 16,
+    "hidden": 0,
+    "best_epoch": 5,
+    "stopped_epoch": 25,
+    "k": 54.708417422530324,
+    "validation_probability_mse": 0.009011637692561933,
+    "validation_teacher_mae_cp": 21.78278650103971,
+    "validation_residual_correlation": 0.711485353305939,
+    "quantized_validation_mae_cp_30k": 21.6296,
+    "quantized_validation_correlation_30k": 0.725582,
+    "bytes": 363128,
+    "sha256": "FCBBF45199BEB344EA2698D60454D61E791D2A73FB4A190C47B7C9EEE7F85CB3"
+  },
+  "matches": [
+    {
+      "a": "Iter2-NNUE-D3",
+      "b": "Iter1-NNUE-D3",
+      "opening_pairs": 192,
+      "a_wins": 143,
+      "draws": 137,
+      "a_losses": 104,
+      "a_score_percent": 55.078125,
+      "paired_bootstrap_ci95_percent": [51.432291666666664, 58.723958333333336],
+      "a_mean_depth": 8.730565147814369,
+      "b_mean_depth": 8.673009725087358
+    },
+    {
+      "a": "Iter2-NNUE-D3",
+      "b": "PST baseline",
+      "opening_pairs": 192,
+      "a_wins": 218,
+      "draws": 103,
+      "a_losses": 63,
+      "a_score_percent": 70.18229166666667,
+      "paired_bootstrap_ci95_percent": [66.796875, 73.4375],
+      "a_mean_depth": 8.525996241507253,
+      "b_mean_depth": 8.975742146219618
+    }
+  ],
+  "previous_iteration_vs_pst_score_percent": 63.28125,
+  "pst_score_change_percentage_points": 6.901041666666671,
+  "bias_verdict": "No regression detected in round 2: Iter2 beat Iter1 directly and improved the score against PST on the same paired opening suite.",
+  "scope_note": "Two successful rounds do not establish an asymptotic ceiling or guarantee that further self-iteration will improve."
+}

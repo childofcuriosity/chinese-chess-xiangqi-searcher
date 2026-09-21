@@ -60,7 +60,7 @@ if sys.platform == "win32" and not _default_nnue_engine.with_suffix(".exe").exis
     if dev_engine.exists():
         _default_nnue_engine = dev_engine
 if not _default_nnue_model.exists():
-    dev_model = BASE_DIR / "trainnnue" / "d4_balanced1m_h16_fromd3_full100_gpu.nnue"
+    dev_model = BASE_DIR / "trainnnue" / "iter2_nnued3_h16_fromiter1_gpu.nnue"
     if dev_model.exists():
         _default_nnue_model = dev_model
 

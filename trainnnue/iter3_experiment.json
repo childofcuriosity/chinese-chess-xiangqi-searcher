@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "experiment": "NNUE expert iteration round 3 and stopping point",
+  "teacher": {
+    "evaluation": "Iter2-NNUE-D3 quantized NNUE",
+    "model": "iter2_nnued3_h16_fromiter1_gpu.nnue",
+    "search_depth": 3,
+    "risky_pruning": false
+  },
+  "dataset": {
+    "file": "train_iter3_nnue_d3_balanced_1m_v2.bin",
+    "distributed_in_git": false,
+    "raw_records": 1200622,
+    "valid_noncheck_records": 1091222,
+    "unique_board_stm": 1090445,
+    "discarded_conflicting_groups": 19,
+    "zero_history_groups_resolved": 2,
+    "samples": 1000000,
+    "side_to_move": {"red": 500000, "black": 500000},
+    "split": {"train": 700000, "validation": 150000, "calibration": 150000},
+    "games": 26926,
+    "bytes": 108000016,
+    "sha256": "BE054B40D43561C8AA5AD6DC64062B2C22338CBC2D058C5D102B70F7E4A1ED54"
+  },
+  "student": {
+    "file": "iter3_nnued3_h16_fromiter2_gpu.nnue",
+    "initialization": "Iter2-NNUE-D3",
+    "width": 16,
+    "hidden": 0,
+    "best_observed_epoch": 2,
+    "selected_checkpoint_epoch": 1,
+    "stopped_epoch": 25,
+    "k": 61.309584563535154,
+    "best_observed_validation_objective": 0.06485016459147136,
+    "selected_validation_objective": 0.06485875061035157,
+    "validation_probability_mse": 0.00820226866051866,
+    "validation_teacher_mae_cp": 22.639899491297733,
+    "validation_residual_correlation": 0.7500501681829597,
+    "quantized_validation_mae_cp_30k": 22.7817,
+    "quantized_validation_correlation_30k": 0.751302,
+    "bytes": 363128,
+    "sha256": "3E71A79C44FF4F7E4FB4961BB4706D066D7B8C5F7544F04F9C94A48B089759FE"
+  },
+  "matches": [
+    {
+      "a": "Iter3-NNUE-D3",
+      "b": "Iter2-NNUE-D3",
+      "opening_pairs": 192,
+      "a_wins": 132,
+      "draws": 142,
+      "a_losses": 110,
+      "a_score_percent": 52.864583333333336,
+      "paired_bootstrap_ci95_percent": [49.348958333333336, 56.380208333333336],
+      "a_mean_depth": 8.787587944063233,
+      "b_mean_depth": 8.749327081705305
+    },
+    {
+      "a": "Iter3-NNUE-D3",
+      "b": "PST baseline",
+      "opening_pairs": 192,
+      "a_wins": 224,
+      "draws": 90,
+      "a_losses": 70,
+      "a_score_percent": 70.05208333333333,
+      "paired_bootstrap_ci95_percent": [66.66666666666667, 73.4375],
+      "a_mean_depth": 8.72231884057971,
+      "b_mean_depth": 9.061326658322903
+    }
+  ],
+  "previous_iteration_vs_pst_score_percent": 70.18229166666667,
+  "pst_score_change_percentage_points": -0.1302083333333428,
+  "stopping_rule": "Stop at the first point-estimate regression: versus previous below 50%, or versus PST below the prior round.",
+  "stopping_verdict": "Stop after Iter3 because its PST score was 0.13 percentage points below Iter2. The change is not statistically significant and should be described as a plateau/slight observed regression, not proof of true degradation.",
+  "selected_best_model": "Iter2-NNUE-D3"
+}

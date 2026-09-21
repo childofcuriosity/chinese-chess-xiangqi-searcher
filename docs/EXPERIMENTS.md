@@ -53,10 +53,21 @@
 - [`../trainnnue/direct_match_summary.json`](../trainnnue/direct_match_summary.json)
 - [`../trainnnue/swiss_8models_5rounds.json`](../trainnnue/swiss_8models_5rounds.json)
 - [`../trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json`](../trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json)
+- [`../trainnnue/iter1_experiment.json`](../trainnnue/iter1_experiment.json)
+- [`../trainnnue/iter2_experiment.json`](../trainnnue/iter2_experiment.json)
+- [`../trainnnue/iter3_experiment.json`](../trainnnue/iter3_experiment.json)
 
 确定性生成的展示结果：[`../trainnnue/RESULTS.generated.md`](../trainnnue/RESULTS.generated.md)。
 
 正式直接测试中，D4-H16-D3init 对 PST 得分率59.77%，配对95% CI为56.38%–63.15%；对D4-H8-D3init为54.17%，CI为50.26%–58.07%。
+
+第一次教师迭代中，D4-H16-D3init加D3无风险搜索生成新的百万数据。量化学生对原D4-H16得分率60.94%，配对95% CI为57.16%–64.71%；对PST得分率63.28%，CI为59.51%–66.93%。原D4-H16对PST为59.77%，因此本轮没有观察到自举偏差导致的PST退化；该结论不能外推到后续无限迭代。
+
+第二次教师迭代中，教师和初始化都改用Iter1-NNUE-D3，并重新生成一百万条独立数据。Iter2对Iter1得分率55.08%，配对95% CI为51.43%–58.72%；对PST得分率70.18%，CI为66.80%–73.44%。相较Iter1对PST的63.28%继续提高6.90个百分点，因此第二轮仍未观察到自举回退；但两轮结果不能确定渐近上限，也不保证第三轮继续提升。
+
+第三次迭代继续用上一代同时作为教师与初始化。Iter3对Iter2得分率52.86%，CI为49.35%–56.38%；对PST为70.05%，CI为66.67%–73.44%。对PST点估计比Iter2低0.13个百分点，满足预先约定的“第一次点估计回落即停止”规则，因此当前选择Iter2。区间高度重叠，证据只支持“进入平台”，不支持“Iter3真实更弱”的强结论。
+
+单轮完整流水线已固化为 [`../trainnnue/run_teacher_iteration.ps1`](../trainnnue/run_teacher_iteration.ps1)，连续迭代与停止规则由 [`../trainnnue/run_until_regression.ps1`](../trainnnue/run_until_regression.ps1) 执行。每轮保留独立数据、K、checkpoint、量化验证和两组正式比赛。
 
 ## 5. 如何解释
 

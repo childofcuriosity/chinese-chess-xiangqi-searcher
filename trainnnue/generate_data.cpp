@@ -1,6 +1,6 @@
-#define NNUE_TEACHER
+#define XQ_LABEL_TEACHER
 #define XQ_NO_MAIN
-#include "teacher.cpp"
+#include "nnue_engine.cpp"
 
 #include <array>
 #include <limits>
@@ -99,25 +99,75 @@ int main(int argc, char** argv) {
     if (argc < 5) {
         std::cerr << "usage: generate_data OUTPUT GAMES DEPTH SEED [MAX_PLIES=120]"
                      " [SAMPLE_STRIDE=2] [RANDOM_PLIES=4]"
-                     " [BALANCE_SIDES=0] [GAME_ID_OFFSET=0]\n";
+                     " [BALANCE_SIDES=0] [GAME_ID_OFFSET=0]"
+                     " [--teacher pst|nnue] [--nnue MODEL]\n";
         return 2;
     }
     const std::string output = argv[1];
     const int games = std::max(1, std::atoi(argv[2]));
     const int depth = std::max(1, std::atoi(argv[3]));
     const uint64_t seed = static_cast<uint64_t>(std::strtoull(argv[4], nullptr, 10));
-    const int max_plies = argc > 5 ? std::max(10, std::atoi(argv[5])) : 120;
-    const int sample_stride = argc > 6 ? std::max(1, std::atoi(argv[6])) : 2;
-    const int random_plies = argc > 7 ? std::max(0, std::atoi(argv[7])) : 4;
-    const bool balance_sides = argc > 8 && std::atoi(argv[8]) != 0;
-    const uint32_t game_id_offset = argc > 9
-        ? static_cast<uint32_t>(std::strtoul(argv[9], nullptr, 10)) : 0u;
+    int max_plies = 120;
+    int sample_stride = 2;
+    int random_plies = 4;
+    bool balance_sides = false;
+    uint32_t game_id_offset = 0;
+    std::string teacher = "pst";
+    std::string nnue_path;
+    int positional = 0;
+    for (int i = 5; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--teacher" && i + 1 < argc) {
+            teacher = argv[++i];
+        } else if (arg == "--nnue" && i + 1 < argc) {
+            nnue_path = argv[++i];
+        } else if (arg.rfind("--", 0) == 0) {
+            std::cerr << "unknown or incomplete option: " << arg << "\n";
+            return 2;
+        } else {
+            switch (positional++) {
+            case 0: max_plies = std::max(10, std::atoi(argv[i])); break;
+            case 1: sample_stride = std::max(1, std::atoi(argv[i])); break;
+            case 2: random_plies = std::max(0, std::atoi(argv[i])); break;
+            case 3: balance_sides = std::atoi(argv[i]) != 0; break;
+            case 4:
+                game_id_offset = static_cast<uint32_t>(std::strtoul(argv[i], nullptr, 10));
+                break;
+            default:
+                std::cerr << "too many positional arguments\n";
+                return 2;
+            }
+        }
+    }
+    if (teacher != "pst" && teacher != "nnue") {
+        std::cerr << "--teacher must be pst or nnue\n";
+        return 2;
+    }
+    if (teacher == "nnue" && nnue_path.empty()) {
+        std::cerr << "--nnue MODEL is required when --teacher nnue\n";
+        return 2;
+    }
+    if (teacher == "pst" && !nnue_path.empty()) {
+        std::cerr << "--nnue is only valid with --teacher nnue\n";
+        return 2;
+    }
 
     init_piece_values();
     init_pst_raw();
     init_zobrist();
     init_lmr();
     init_attack_tables();
+    if (teacher == "nnue") {
+        if (!NNUE.load(nnue_path)) {
+            std::cerr << "NNUE load failed: " << NNUE.error << "\n";
+            return 2;
+        }
+        NNUE_BLEND = 1.0;
+    }
+    std::cerr << "teacher=" << teacher << " depth=" << depth;
+    if (teacher == "nnue")
+        std::cerr << " model=" << nnue_path << " width=" << NNUE.width;
+    std::cerr << "\n";
 
     std::ofstream out(output, std::ios::binary | std::ios::trunc);
     if (!out) {

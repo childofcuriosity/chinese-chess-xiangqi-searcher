@@ -21,6 +21,39 @@
       "side_to_move": {"red": 500000, "black": 500000},
       "split": {"train": 700000, "validation": 150000, "calibration": 150000},
       "sha256": "079C403DF1D26DBB59C886E3CD4230547C6CB24BB2941F8AEBF0A67ABAC492D2"
+    },
+    "iter1_nnue_d3_balanced_1m_v2": {
+      "file": "train_iter_nnue_d3_balanced_1m_v2.bin",
+      "distributed_in_git": false,
+      "samples": 1000000,
+      "bytes": 108000016,
+      "teacher_depth": 3,
+      "teacher": "D4-H16-D3init NNUE",
+      "side_to_move": {"red": 500000, "black": 500000},
+      "split": {"train": 700000, "validation": 150000, "calibration": 150000},
+      "sha256": "F61D6FF6BDAE8757001E8EB7CD48C51A1E1B1C814147DABE7AF3F389B42EDCF6"
+    },
+    "iter2_nnue_d3_balanced_1m_v2": {
+      "file": "train_iter2_nnue_d3_balanced_1m_v2.bin",
+      "distributed_in_git": false,
+      "samples": 1000000,
+      "bytes": 108000016,
+      "teacher_depth": 3,
+      "teacher": "Iter1-NNUE-D3",
+      "side_to_move": {"red": 500000, "black": 500000},
+      "split": {"train": 700000, "validation": 150000, "calibration": 150000},
+      "sha256": "60E707687237F3DD8291917461B6CF13B54B45D1AE47830CAE443CE3604D16D2"
+    },
+    "iter3_nnue_d3_balanced_1m_v2": {
+      "file": "train_iter3_nnue_d3_balanced_1m_v2.bin",
+      "distributed_in_git": false,
+      "samples": 1000000,
+      "bytes": 108000016,
+      "teacher_depth": 3,
+      "teacher": "Iter2-NNUE-D3",
+      "side_to_move": {"red": 500000, "black": 500000},
+      "split": {"train": 700000, "validation": 150000, "calibration": 150000},
+      "sha256": "BE054B40D43561C8AA5AD6DC64062B2C22338CBC2D058C5D102B70F7E4A1ED54"
     }
   },
   "model": {
@@ -38,6 +71,49 @@
     "initialization": "D3-H16",
     "quantization": {"feature_scale": 4096, "output_scale": 128}
   },
+  "iteration1_model": {
+    "name": "Iter1-NNUE-D3",
+    "file": "iter1_nnued3_h16_fromd4_gpu.nnue",
+    "metadata": "iter1_nnued3_h16_fromd4_gpu.nnue.json",
+    "distributed_in_git": true,
+    "bytes": 363128,
+    "sha256": "93969CDE35BF32C287A589378A9F6C570D8DEFBFAAC21C9E7D37F817E3B4DC56",
+    "format_version": 3,
+    "feature_schema": "XQ-HalfKA-9x14x90",
+    "width": 16,
+    "hidden": 0,
+    "teacher": "D4-H16-D3init NNUE + D3 search",
+    "initialization": "D4-H16-D3init"
+  },
+  "candidate_model": {
+    "name": "Iter2-NNUE-D3",
+    "file": "iter2_nnued3_h16_fromiter1_gpu.nnue",
+    "metadata": "iter2_nnued3_h16_fromiter1_gpu.nnue.json",
+    "distributed_in_git": true,
+    "bytes": 363128,
+    "sha256": "FCBBF45199BEB344EA2698D60454D61E791D2A73FB4A190C47B7C9EEE7F85CB3",
+    "format_version": 3,
+    "feature_schema": "XQ-HalfKA-9x14x90",
+    "width": 16,
+    "hidden": 0,
+    "teacher": "Iter1-NNUE-D3 + D3 search",
+    "initialization": "Iter1-NNUE-D3"
+  },
+  "iteration3_model": {
+    "name": "Iter3-NNUE-D3",
+    "file": "iter3_nnued3_h16_fromiter2_gpu.nnue",
+    "metadata": "iter3_nnued3_h16_fromiter2_gpu.nnue.json",
+    "distributed_in_git": true,
+    "bytes": 363128,
+    "sha256": "3E71A79C44FF4F7E4FB4961BB4706D066D7B8C5F7544F04F9C94A48B089759FE",
+    "format_version": 3,
+    "feature_schema": "XQ-HalfKA-9x14x90",
+    "width": 16,
+    "hidden": 0,
+    "teacher": "Iter2-NNUE-D3 + D3 search",
+    "initialization": "Iter2-NNUE-D3",
+    "selected_as_best": false
+  },
   "source": {
     "pst_engine": {
       "file": "../xiangqi_ai.cpp",
@@ -45,7 +121,11 @@
     },
     "nnue_engine": {
       "file": "nnue_engine.cpp",
-      "sha256": "026EEFE703839AE4EA2AF7C4130EDE96C00957DEA2729518669231FA21D1F400"
+      "sha256": "C7F13F69EFC0E89BE7816D7D1F7D5C6B279BD7D8BAB267812DFE87FDB0880C64"
+    },
+    "data_generator": {
+      "file": "generate_data.cpp",
+      "sha256": "F224CB20B93D45B1261BECC7ACB3107C1328B81011798A986F2C580C0CD03CA2"
     }
   }
 }

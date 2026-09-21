@@ -1532,7 +1532,11 @@ c . . A K A B R .
                 int vv = PIECE_VALUES[(unsigned char)victim];
                 int av = PIECE_VALUES[(unsigned char)atk];
                 if (vv >= av) moves[nm++] = m;
+#ifdef XQ_LABEL_TEACHER
+                else moves[nm++] = m;
+#else
                 else if (see(m) >= 0) moves[nm++] = m;
+#endif
             }
         }
 
@@ -1615,11 +1619,13 @@ c . . A K A B R .
             if (tt_score >  MATE_BOUND) tt_score -= ply;
             else if (tt_score < -MATE_BOUND) tt_score += ply;
 
+#ifndef XQ_LABEL_TEACHER
             if (!is_root && tte.depth >= depth) {
                 if (tte.flag == TT_EXACT) return {tt_score, tte.best_move};
                 if (tte.flag == TT_ALPHA && tt_score <= alpha) return {tt_score, tte.best_move};
                 if (tte.flag == TT_BETA  && tt_score >= beta)  return {tt_score, tte.best_move};
             }
+#endif
             tt_move = tte.best_move;
         }
 
@@ -1629,6 +1635,7 @@ c . . A K A B R .
         int eval = evaluate();
 
         // Reverse Futility Pruning
+#ifndef XQ_LABEL_TEACHER
         if (!is_root && depth <= 7 && !in_check
             && std::abs(beta) < MATE_BOUND && std::abs(alpha) < MATE_BOUND) {
             int margin = 80 * depth;
@@ -1638,8 +1645,10 @@ c . . A K A B R .
                 if (eval + margin <= alpha) return {eval + margin, NO_MOVE};
             }
         }
+#endif
 
         // Razoring
+#ifndef XQ_LABEL_TEACHER
         if (!is_root && depth <= 3 && !in_check
             && std::abs(alpha) < MATE_BOUND && std::abs(beta) < MATE_BOUND) {
             int margin = 200 * depth;
@@ -1651,8 +1660,10 @@ c . . A K A B R .
                 if (q >= beta) return {q, NO_MOVE};
             }
         }
+#endif
 
         // NMP
+#ifndef XQ_LABEL_TEACHER
         if (OPEN_NMP && !is_root && depth >= 3 && !in_check && allow_null
             && std::abs(beta) < MATE_BOUND && std::abs(alpha) < MATE_BOUND) {
             int R = 3 + depth / 6;
@@ -1691,6 +1702,7 @@ c . . A K A B R .
                 }
             }
         }
+#endif
 
         // IID
         if (!tt_move.is_valid() && depth >= 6) {
@@ -1769,7 +1781,12 @@ c . . A K A B R .
         bool attempted_first_pass[128] = {};
         bool searched_first_pass[128] = {};
 #endif
-        for (int pass = 0; pass < 2; ++pass) {
+#ifdef XQ_LABEL_TEACHER
+        const int pass_count = 1;
+#else
+        const int pass_count = 2;
+#endif
+        for (int pass = 0; pass < pass_count; ++pass) {
             bool allow_pruning = (pass == 0);
 
             // 即使第一步合法，也不能仅凭一个接近杀棋的异常分数跳过第二遍搜索。
@@ -1789,14 +1806,17 @@ c . . A K A B R .
             bool is_killer = (m == k1 || m == k2);
 
             // LMP
+#ifndef XQ_LABEL_TEACHER
             if (allow_pruning && !is_root && depth <= 8 && !in_check && !is_capture && !is_killer
                 && best_score > -MATE_BOUND
                 && moves_count > 3 + depth * depth) {
                 pruned_any = true;
                 continue;
             }
+#endif
 
             // Futility
+#ifndef XQ_LABEL_TEACHER
             if (allow_pruning && !is_root && depth <= 6 && !in_check && !is_capture
                 && moves_count > 1
                 && best_score > -MATE_BOUND && best_score < MATE_BOUND) {
@@ -1810,10 +1830,12 @@ c . . A K A B R .
                     continue;
                 }
             }
+#endif
 //			if (debugflag==2){
 //				cnt++;
 //			}
             // SEE pruning
+#ifndef XQ_LABEL_TEACHER
             if (allow_pruning && !is_root && depth <= 4 && is_capture && !in_check) {
                 int vv = PIECE_VALUES[(unsigned char)captured];
                 int av = PIECE_VALUES[(unsigned char)board[m.r1][m.c1]];
@@ -1822,6 +1844,7 @@ c . . A K A B R .
                     continue;
                 }
             }
+#endif
             char cap = make_move(m);
 #ifdef ENABLE_PROFILING
             if (pass == 0) {
@@ -1850,6 +1873,7 @@ c . . A K A B R .
             bool do_lmr = (depth >= 3 && moves_count > 3 && !is_capture && !in_check
                            && !is_killer && !gives_check);
             int reduction = 0;
+#ifndef XQ_LABEL_TEACHER
             if (do_lmr) {
                 int dd = std::min(depth, 63);
                 int mm = std::min(moves_count, 63);
@@ -1859,6 +1883,7 @@ c . . A K A B R .
                 if (h < -4096) reduction++;
                 reduction = std::max(0, std::min(reduction, depth - 2));
             }
+#endif
 
             int score;
             if (maximizing_player) {

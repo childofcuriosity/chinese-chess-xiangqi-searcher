@@ -1,0 +1,215 @@
+{
+  "data": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\train_iter3_nnue_d3_balanced_1m_v2.bin",
+  "teacher_depth": 3,
+  "width": 16,
+  "hidden": 0,
+  "epochs": 150,
+  "activation": "crelu",
+  "phase_heads": true,
+  "batch_size": 8192,
+  "learning_rate": 0.003,
+  "lambda": 0.95,
+  "seed": 121007,
+  "quiet_only": false,
+  "validation_mse": 0.06485875061035157,
+  "calibration_bce": 0.44694677388583753,
+  "elapsed_seconds": 119.43699999999808,
+  "cpu_threads": 1,
+  "device": "cuda",
+  "init_nnue": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\iter2_nnued3_h16_fromiter1_gpu.nnue",
+  "init_source_k": 54.70841598510742,
+  "epochs_completed": 25,
+  "history": [
+    {
+      "epoch": 1,
+      "train_objective": 0.06543571870071548,
+      "validation_objective": 0.06485875061035157,
+      "learning_rate": 0.0029996808944559
+    },
+    {
+      "epoch": 2,
+      "train_objective": 0.06339037024191448,
+      "validation_objective": 0.06485016459147136,
+      "learning_rate": 0.002998723717793839
+    },
+    {
+      "epoch": 3,
+      "train_objective": 0.06250219110522952,
+      "validation_objective": 0.06486600748697917,
+      "learning_rate": 0.0029971288898631354
+    },
+    {
+      "epoch": 4,
+      "train_objective": 0.061817953551837376,
+      "validation_objective": 0.06495977722167968,
+      "learning_rate": 0.002994897110208029
+    },
+    {
+      "epoch": 5,
+      "train_objective": 0.06139469430719103,
+      "validation_objective": 0.06514135091145834,
+      "learning_rate": 0.002992029357760838
+    },
+    {
+      "epoch": 6,
+      "train_objective": 0.06097796132019588,
+      "validation_objective": 0.06525605326334635,
+      "learning_rate": 0.0029885268904125658
+    },
+    {
+      "epoch": 7,
+      "train_objective": 0.06072011593103409,
+      "validation_objective": 0.06513989461263021,
+      "learning_rate": 0.0029843912444611482
+    },
+    {
+      "epoch": 8,
+      "train_objective": 0.06033992008192199,
+      "validation_objective": 0.06539206166585286,
+      "learning_rate": 0.0029796242339375847
+    },
+    {
+      "epoch": 9,
+      "train_objective": 0.060102413060154236,
+      "validation_objective": 0.06536598327636718,
+      "learning_rate": 0.002974227949810242
+    },
+    {
+      "epoch": 10,
+      "train_objective": 0.05989049152391297,
+      "validation_objective": 0.06568580261230468,
+      "learning_rate": 0.002968204759067687
+    },
+    {
+      "epoch": 11,
+      "train_objective": 0.059746536115578244,
+      "validation_objective": 0.06563604939778646,
+      "learning_rate": 0.002961557303680448
+    },
+    {
+      "epoch": 12,
+      "train_objective": 0.05948563982180187,
+      "validation_objective": 0.06577590301513672,
+      "learning_rate": 0.002954288499442158
+    },
+    {
+      "epoch": 13,
+      "train_objective": 0.05935602768744741,
+      "validation_objective": 0.06589512736002605,
+      "learning_rate": 0.0029464015346905926
+    },
+    {
+      "epoch": 14,
+      "train_objective": 0.059216249482801984,
+      "validation_objective": 0.06586303853352865,
+      "learning_rate": 0.0029378998689091576
+    },
+    {
+      "epoch": 15,
+      "train_objective": 0.0590973140336786,
+      "validation_objective": 0.06598800638834636,
+      "learning_rate": 0.0029287872312094487
+    },
+    {
+      "epoch": 16,
+      "train_objective": 0.05893574739967074,
+      "validation_objective": 0.06614794840494792,
+      "learning_rate": 0.0029190676186955354
+    },
+    {
+      "epoch": 17,
+      "train_objective": 0.05887204953483173,
+      "validation_objective": 0.06617867045084636,
+      "learning_rate": 0.0029087452947107024
+    },
+    {
+      "epoch": 18,
+      "train_objective": 0.05873239259890148,
+      "validation_objective": 0.0662498247273763,
+      "learning_rate": 0.002897824786967406
+    },
+    {
+      "epoch": 19,
+      "train_objective": 0.05864846829652786,
+      "validation_objective": 0.0661881229654948,
+      "learning_rate": 0.0028863108855612684
+    },
+    {
+      "epoch": 20,
+      "train_objective": 0.05855300386616162,
+      "validation_objective": 0.06643871856689453,
+      "learning_rate": 0.0028742086408699843
+    },
+    {
+      "epoch": 21,
+      "train_objective": 0.058439424777371546,
+      "validation_objective": 0.06652942576090495,
+      "learning_rate": 0.0028615233613380584
+    },
+    {
+      "epoch": 22,
+      "train_objective": 0.05831692667467254,
+      "validation_objective": 0.06634916707356771,
+      "learning_rate": 0.0028482606111483455
+    },
+    {
+      "epoch": 23,
+      "train_objective": 0.058238465043817245,
+      "validation_objective": 0.06654279917399089,
+      "learning_rate": 0.0028344262077814168
+    },
+    {
+      "epoch": 24,
+      "train_objective": 0.05816674929176058,
+      "validation_objective": 0.06644791035970052,
+      "learning_rate": 0.002820026219463821
+    },
+    {
+      "epoch": 25,
+      "train_objective": 0.058111303177901676,
+      "validation_objective": 0.06672669982910157,
+      "learning_rate": 0.0028050669625063578
+    }
+  ],
+  "training_diagnostics": {
+    "validation_positions": 700000,
+    "pst_only_probability_mse": 0.015672126784920692,
+    "model_probability_mse": 0.007886670557468405,
+    "pst_teacher_mae_cp": 40.94134428571429,
+    "model_teacher_mae_cp": 22.142063285962603,
+    "model_teacher_rmse_cp": 44.175799077657814,
+    "residual_correlation": 0.7623467423778219,
+    "residual_sign_accuracy_abs20": 0.9270721394512456,
+    "residual_pred_abs_p99_cp": 173.8660026550293,
+    "residual_pred_abs_max_cp": 394.6726989746094,
+    "validation_zero_intercept_slope": 1.1219382953968744
+  },
+  "residual": true,
+  "pretrain_data": null,
+  "pretrain_epochs": 0,
+  "pretrain_learning_rate": 0.003,
+  "pretrain_k": null,
+  "delta_weight": 0.25,
+  "delta_clip": 250.0,
+  "delta_beta": 25.0,
+  "validation_positions": 150000,
+  "pst_only_probability_mse": 0.015751823782920837,
+  "model_probability_mse": 0.00820226866051866,
+  "pst_teacher_mae_cp": 40.83794666666667,
+  "model_teacher_mae_cp": 22.639899491297733,
+  "model_teacher_rmse_cp": 44.95377534918838,
+  "residual_correlation": 0.7500501681829597,
+  "residual_sign_accuracy_abs20": 0.9249097110754414,
+  "residual_pred_abs_p99_cp": 174.30954498291015,
+  "residual_pred_abs_max_cp": 385.16522216796875,
+  "validation_zero_intercept_slope": 1.1093122431427311,
+  "model_file": "E:\\copyofxhy\\after2024\\2025-1\\xq\\trainnnue\\iter3_nnued3_h16_fromiter2_gpu.nnue",
+  "k": 61.309584563535154,
+  "embedding_scale": 4096.0,
+  "fc1_scale": 1.0,
+  "fc2_scale": 1.0,
+  "output_scale": 64.0,
+  "model_format_version": 3,
+  "integer_hot_path": true,
+  "phase_cutoff_pieces": 20
+}

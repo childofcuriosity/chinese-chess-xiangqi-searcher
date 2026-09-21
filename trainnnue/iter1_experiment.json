@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "experiment": "NNUE expert iteration round 1",
+  "teacher": {
+    "evaluation": "D4-H16-D3init quantized NNUE",
+    "model": "d4_balanced1m_h16_fromd3_full100_gpu.nnue",
+    "search_depth": 3,
+    "risky_pruning": false,
+    "disabled_for_labels": [
+      "TT score cutoff",
+      "reverse futility",
+      "razoring",
+      "null move",
+      "LMP",
+      "futility",
+      "SEE pruning",
+      "LMR",
+      "qsearch SEE filtering"
+    ]
+  },
+  "dataset": {
+    "file": "train_iter_nnue_d3_balanced_1m_v2.bin",
+    "distributed_in_git": false,
+    "raw_records": 1194941,
+    "valid_noncheck_records": 1102045,
+    "unique_board_stm": 1101430,
+    "discarded_conflicting_groups": 12,
+    "samples": 1000000,
+    "side_to_move": {"red": 500000, "black": 500000},
+    "split": {"train": 700000, "validation": 150000, "calibration": 150000},
+    "games": 26133,
+    "bytes": 108000016,
+    "sha256": "F61D6FF6BDAE8757001E8EB7CD48C51A1E1B1C814147DABE7AF3F389B42EDCF6"
+  },
+  "student": {
+    "file": "iter1_nnued3_h16_fromd4_gpu.nnue",
+    "initialization": "D4-H16-D3init",
+    "width": 16,
+    "hidden": 0,
+    "best_epoch": 4,
+    "stopped_epoch": 25,
+    "k": 60.667468359354764,
+    "validation_probability_mse": 0.0076886221920848905,
+    "validation_teacher_mae_cp": 20.599527139822474,
+    "validation_residual_correlation": 0.6431476436758837,
+    "quantized_validation_mae_cp_30k": 20.4493,
+    "quantized_validation_correlation_30k": 0.665521,
+    "bytes": 363128,
+    "sha256": "93969CDE35BF32C287A589378A9F6C570D8DEFBFAAC21C9E7D37F817E3B4DC56"
+  },
+  "matches": [
+    {
+      "a": "Iter1-NNUE-D3",
+      "b": "D4-H16-D3init",
+      "opening_pairs": 192,
+      "a_wins": 174,
+      "draws": 120,
+      "a_losses": 90,
+      "a_score_percent": 60.9375,
+      "paired_bootstrap_ci95_percent": [57.161458333333336, 64.71354166666667],
+      "a_mean_depth": 8.532643769614994,
+      "b_mean_depth": 8.5148720211827
+    },
+    {
+      "a": "Iter1-NNUE-D3",
+      "b": "PST baseline",
+      "opening_pairs": 192,
+      "a_wins": 188,
+      "draws": 110,
+      "a_losses": 86,
+      "a_score_percent": 63.28125,
+      "paired_bootstrap_ci95_percent": [59.505208333333336, 66.92708333333333],
+      "a_mean_depth": 8.684822273280172,
+      "b_mean_depth": 9.114843293313548
+    }
+  ],
+  "previous_best_vs_pst_score_percent": 59.765625,
+  "pst_score_change_percentage_points": 3.515625,
+  "bias_verdict": "No regression detected: the iterated model beat the previous NNUE directly and improved its score against PST on the same paired opening suite."
+}
