@@ -196,22 +196,27 @@ def curve_svg(model_file: str, title: str) -> str:
 </svg>'''
 
 
-def iteration_best_validation_svg() -> str:
-    models = [
-        (0, "NNUE1（PST教师）", load("d4_balanced1m_h16_fromd3_full100_gpu.nnue.json")),
-        (1, "教师迭代1", load("iter1_nnued3_h16_fromd4_gpu.nnue.json")),
-        (2, "教师迭代2", load("iter2_nnued3_h16_fromiter1_gpu.nnue.json")),
-        (3, "教师迭代3", load("iter3_nnued3_h16_fromiter2_gpu.nnue.json")),
+def iteration_vs_pst_svg() -> str:
+    direct = load("direct_match_summary.json")
+    iterations = [
+        load("iter1_experiment.json"),
+        load("iter2_experiment.json"),
+        load("iter3_experiment.json"),
     ]
-    points = []
-    for round_number, name, metadata in models:
-        best = min(metadata["history"], key=lambda row: row["validation_objective"])
-        points.append((round_number, name, best["validation_objective"], best["epoch"]))
+
+    def pst_score(matches):
+        return next(row["a_score_percent"] for row in matches if "PST" in row["b"])
+
+    points = [
+        (0, "NNUE1（PST教师）", pst_score(direct["matches"])),
+        (1, "教师迭代1", pst_score(iterations[0]["matches"])),
+        (2, "教师迭代2", pst_score(iterations[1]["matches"])),
+        (3, "教师迭代3", pst_score(iterations[2]["matches"])),
+    ]
     width, height = 900, 470
     left, right, top, bottom = 92, 35, 55, 100
     plot_width, plot_height = width - left - right, height - top - bottom
-    low = min(point[2] for point in points) - 0.002
-    high = max(point[2] for point in points) + 0.002
+    low, high = 50.0, 75.0
 
     def x(round_number: int) -> float:
         return left + round_number * plot_width / (len(points) - 1)
@@ -228,31 +233,32 @@ def iteration_best_validation_svg() -> str:
             f'y2="{yy:.1f}" class="grid"/>'
         )
         grid.append(
-            f'<text x="{left-10}" y="{yy+5:.1f}" text-anchor="end">{value:.3f}</text>'
+            f'<text x="{left-10}" y="{yy+5:.1f}" text-anchor="end">{value:.0f}%</text>'
         )
     polyline = " ".join(f"{x(point[0]):.1f},{y(point[2]):.1f}" for point in points)
     marks = []
-    for round_number, name, value, epoch in points:
+    for round_number, name, value in points:
         xx, yy = x(round_number), y(value)
         marks.append(f'<circle cx="{xx:.1f}" cy="{yy:.1f}" r="6" class="point"/>')
         marks.append(
             f'<text x="{xx:.1f}" y="{yy-13:.1f}" text-anchor="middle">'
-            f'{value:.5f}（e{epoch}）</text>'
+            f'{value:.2f}%</text>'
         )
         marks.append(
             f'<text x="{xx:.1f}" y="{height-bottom+28}" text-anchor="middle">'
             f'{name}</text>'
         )
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
-<style>text{{font:14px system-ui,sans-serif;fill:#263238}} .grid{{stroke:#dfe6e9;stroke-width:1}} .axis{{stroke:#607d8b;stroke-width:1.5}} .series{{fill:none;stroke:#6a1b9a;stroke-width:3}} .point{{fill:#8e24aa;stroke:white;stroke-width:2}}</style>
+<style>text{{font:14px system-ui,sans-serif;fill:#263238}} .grid{{stroke:#dfe6e9;stroke-width:1}} .axis{{stroke:#607d8b;stroke-width:1.5}} .series{{fill:none;stroke:#1565c0;stroke-width:3}} .point{{fill:#1976d2;stroke:white;stroke-width:2}} .baseline{{stroke:#78909c;stroke-width:1.5;stroke-dasharray:6 5}}</style>
 <rect width="100%" height="100%" fill="white"/>
-<text x="{left}" y="27" font-size="20" font-weight="600">从PST教师到三轮NNUE教师迭代：最佳验证损失</text>
+<text x="{left}" y="27" font-size="20" font-weight="600">从NNUE1到三轮教师迭代：对PST得分率</text>
 {''.join(grid)}
 <line x1="{left}" y1="{top}" x2="{left}" y2="{height-bottom}" class="axis"/><line x1="{left}" y1="{height-bottom}" x2="{width-right}" y2="{height-bottom}" class="axis"/>
+<line x1="{left}" y1="{y(50):.1f}" x2="{width-right}" y2="{y(50):.1f}" class="baseline"/>
 <polyline points="{polyline}" class="series"/>{''.join(marks)}
 <text x="{width/2}" y="{height-49}" text-anchor="middle">训练谱系</text>
-<text x="19" y="{height/2-20}" transform="rotate(-90 19 {height/2-20})" text-anchor="middle">最佳验证混合目标</text>
-<text x="{width/2}" y="{height-19}" text-anchor="middle" fill="#546e7a">各轮教师、数据分布和K不同；该图反映拟合难度，不直接代表棋力。</text>
+<text x="19" y="{height/2-20}" transform="rotate(-90 19 {height/2-20})" text-anchor="middle">对PST得分率</text>
+<text x="{width/2}" y="{height-19}" text-anchor="middle" fill="#546e7a">192个保留开局逐一换先，共384盘；每步0.10秒，胜=1、和=0.5。</text>
 </svg>'''
 
 
@@ -266,8 +272,9 @@ def main() -> None:
                         default=HERE / "iter2_training_curve.svg")
     parser.add_argument("--iter3-curve", type=Path,
                         default=HERE / "iter3_training_curve.svg")
-    parser.add_argument("--iteration-curve", type=Path,
-                        default=HERE / "iteration_best_validation.svg")
+    parser.add_argument("--iteration-pst-curve", "--iteration-curve",
+                        dest="iteration_pst_curve", type=Path,
+                        default=HERE / "iteration_vs_pst.svg")
     parser.add_argument("--check-artifacts", action="store_true")
     args = parser.parse_args()
     if args.check_artifacts:
@@ -285,9 +292,9 @@ def main() -> None:
     args.iter3_curve.write_text(curve_svg(
         "iter3_nnued3_h16_fromiter2_gpu.nnue.json",
         "Iter3-NNUE-D3 训练曲线"), encoding="utf-8")
-    args.iteration_curve.write_text(iteration_best_validation_svg(), encoding="utf-8")
+    args.iteration_pst_curve.write_text(iteration_vs_pst_svg(), encoding="utf-8")
     for path in (args.output, args.curve, args.iter1_curve, args.iter2_curve,
-                 args.iter3_curve, args.iteration_curve):
+                 args.iter3_curve, args.iteration_pst_curve):
         print(f"wrote {path}")
 
 

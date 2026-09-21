@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="470" viewBox="0 0 900 470">
+<style>text{font:14px system-ui,sans-serif;fill:#263238} .grid{stroke:#dfe6e9;stroke-width:1} .axis{stroke:#607d8b;stroke-width:1.5} .series{fill:none;stroke:#1565c0;stroke-width:3} .point{fill:#1976d2;stroke:white;stroke-width:2} .baseline{stroke:#78909c;stroke-width:1.5;stroke-dasharray:6 5}</style>
+<rect width="100%" height="100%" fill="white"/>
+<text x="92" y="27" font-size="20" font-weight="600">从NNUE1到三轮教师迭代：对PST得分率</text>
+<line x1="92" y1="370.0" x2="865" y2="370.0" class="grid"/><text x="82" y="375.0" text-anchor="end">50%</text><line x1="92" y1="307.0" x2="865" y2="307.0" class="grid"/><text x="82" y="312.0" text-anchor="end">55%</text><line x1="92" y1="244.0" x2="865" y2="244.0" class="grid"/><text x="82" y="249.0" text-anchor="end">60%</text><line x1="92" y1="181.0" x2="865" y2="181.0" class="grid"/><text x="82" y="186.0" text-anchor="end">65%</text><line x1="92" y1="118.0" x2="865" y2="118.0" class="grid"/><text x="82" y="123.0" text-anchor="end">70%</text><line x1="92" y1="55.0" x2="865" y2="55.0" class="grid"/><text x="82" y="60.0" text-anchor="end">75%</text>
+<line x1="92" y1="55" x2="92" y2="370" class="axis"/><line x1="92" y1="370" x2="865" y2="370" class="axis"/>
+<line x1="92" y1="370.0" x2="865" y2="370.0" class="baseline"/>
+<polyline points="92.0,247.0 349.7,202.7 607.3,115.7 865.0,117.3" class="series"/><circle cx="92.0" cy="247.0" r="6" class="point"/><text x="92.0" y="234.0" text-anchor="middle">59.77%</text><text x="92.0" y="398" text-anchor="middle">NNUE1（PST教师）</text><circle cx="349.7" cy="202.7" r="6" class="point"/><text x="349.7" y="189.7" text-anchor="middle">63.28%</text><text x="349.7" y="398" text-anchor="middle">教师迭代1</text><circle cx="607.3" cy="115.7" r="6" class="point"/><text x="607.3" y="102.7" text-anchor="middle">70.18%</text><text x="607.3" y="398" text-anchor="middle">教师迭代2</text><circle cx="865.0" cy="117.3" r="6" class="point"/><text x="865.0" y="104.3" text-anchor="middle">70.05%</text><text x="865.0" y="398" text-anchor="middle">教师迭代3</text>
+<text x="450.0" y="421" text-anchor="middle">训练谱系</text>
+<text x="19" y="215.0" transform="rotate(-90 19 215.0)" text-anchor="middle">对PST得分率</text>
+<text x="450.0" y="451" text-anchor="middle" fill="#546e7a">192个保留开局逐一换先，共384盘；每步0.10秒，胜=1、和=0.5。</text>
+</svg>

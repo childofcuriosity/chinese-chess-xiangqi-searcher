@@ -477,7 +477,7 @@
         ],
         steps: ['三轮都重新生成独立百万数据，并用上一代同时作教师和初始化。', '每轮K独立统计、验证早停、量化后验证，再打两组384盘。', '验证损失跨轮不可直接比较；教师、数据分布与K都在变化。'],
         notes: '用户希望不要把统计不显著直接当成上限，所以第三轮仍完整执行。Iter3对Iter2的得分率是百分之五十二点八六，说明点估计没有直接输给上一代；但区间跨过百分之五十。\n\n[按键] 决定停止的是统一PST基准。Iter3对PST是百分之七十点零五，而Iter2是百分之七十点一八，第一次出现零点一三个百分点的点估计回落。按照开始前约定，这里停止，不继续用正式结果反复试运气。\n\n[按键] 这个差距极小，而且置信区间高度重叠，所以正确表述是进入平台，不能说已经证明Iter3更弱。当前实测峰值仍是Iter2。\n\n[按键] 每轮最优验证损失也被画成曲线，但它不单调：D4、Iter1、Iter2、Iter3分别使用不同教师、数据分布和独立K。损失反映本轮标签有多难拟合，不是跨轮棋力刻度；最终选择仍来自量化后等时直接对局。',
-        sources: ['trainnnue/iter3_experiment.json', 'trainnnue/iteration_best_validation.svg', 'trainnnue/run_teacher_iteration.ps1'],
+        sources: ['trainnnue/iter3_experiment.json', 'trainnnue/iteration_vs_pst.svg', 'trainnnue/run_teacher_iteration.ps1'],
         takeaway: '连续迭代在第三轮进入平台：按点估计回落规则停止，保留Iter2的70.18%为当前实测峰值。'
       },
       {

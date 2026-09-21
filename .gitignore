@@ -74,7 +74,7 @@ trainnnue/*
 !trainnnue/iter2_nnued3_h16_fromiter1_gpu.nnue
 !trainnnue/iter2_nnued3_h16_fromiter1_gpu.nnue.json
 !trainnnue/iter3_training_curve.svg
-!trainnnue/iteration_best_validation.svg
+!trainnnue/iteration_vs_pst.svg
 !trainnnue/iter3_experiment.json
 !trainnnue/iter3_nnued3_h16_fromiter2_gpu.nnue
 !trainnnue/iter3_nnued3_h16_fromiter2_gpu.nnue.json

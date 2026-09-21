@@ -27,9 +27,9 @@
 
 ![Iter3-NNUE-D3训练曲线](iter3_training_curve.svg)
 
-![NNUE1与三轮教师迭代的最佳验证损失](iteration_best_validation.svg)
+![NNUE1与三轮教师迭代对PST得分率](iteration_vs_pst.svg)
 
-各轮教师、数据分布与独立校准的K不同，因此上图只描述拟合难度，不应把损失高低直接解释为棋力排名；棋力仍以量化后等时比赛为准。
+四个点均来自同一组192个保留开局、逐开局换先、每步0.10秒的384盘比赛。对PST得分率从NNUE1的59.77%提高到教师迭代2的70.18%，教师迭代3为70.05%，因此当前实测峰值停在第二轮。
 
 ## 2. 网络结构
 
@@ -237,7 +237,7 @@ python trainnnue/report_results.py
 git diff --exit-code -- trainnnue/RESULTS.generated.md `
   trainnnue/training_curve.svg trainnnue/iter1_training_curve.svg `
   trainnnue/iter2_training_curve.svg trainnnue/iter3_training_curve.svg `
-  trainnnue/iteration_best_validation.svg
+  trainnnue/iteration_vs_pst.svg
 ```
 
 脚本只依赖Python标准库；若结果JSON发生变化，生成文件也必须随之更新。
