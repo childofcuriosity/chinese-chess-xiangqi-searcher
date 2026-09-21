@@ -1,6 +1,6 @@
 # Xiangqi NNUE：设计、训练与验证
 
-本目录记录从 PST 教师到可部署 NNUE 的完整闭环。最终交付是 `D4-H16（D3 初始化）`：363KB 的量化残差网络，已接入与 PST 相同的搜索和网页协议。
+本目录只记录完整象棋 AI 系统中的 **NNUE 评价专题**；规则、搜索、客户端、实验框架和教程的总览见仓库根 [`README.md`](../README.md)。最终 NNUE 交付是 `D4-H16（D3 初始化）`：363KB 的量化残差网络，已接入与 PST 相同的搜索和网页协议。
 
 ## 1. 最终结果
 
@@ -11,7 +11,9 @@
 | **D4-H16-D3init vs PST** | **172 / 115 / 97** | **59.77%** | **56.38%–63.15%** |
 | **D4-H16-D3init vs D4-H8-D3init** | **149 / 118 / 117** | **54.17%** | **50.26%–58.07%** |
 
-逐项摘要见 [`direct_match_summary.json`](direct_match_summary.json)。8模型、5轮瑞士制的完整排名见 [`swiss_8models_5rounds.json`](swiss_8models_5rounds.json)。
+逐项摘要见 [`direct_match_summary.json`](direct_match_summary.json)。8模型、5轮瑞士制的完整排名见 [`swiss_8models_5rounds.json`](swiss_8models_5rounds.json)。由这些JSON自动生成的汇总见 [`RESULTS.generated.md`](RESULTS.generated.md)。
+
+![D4-H16-D3init训练曲线](training_curve.svg)
 
 ## 2. 网络结构
 
@@ -81,7 +83,7 @@ Sigmoid 温度 `K` 只在 calibration 集上做一维统计拟合，随后冻结
 | seed | 79808 |
 | initialization | D3-H16 最佳 checkpoint，按 K 比例重标输出层 |
 
-主要验证集结果：
+主要验证集结果（机器可读来源为 [`model_comparison.json`](model_comparison.json)）：
 
 | 模型 | 概率MSE | teacher MAE(cp) | 残差相关系数 |
 |---|---:|---:|---:|
@@ -131,6 +133,8 @@ Sigmoid 温度 `K` 只在 calibration 集上做一维统计拟合，随后冻结
 | [`swiss_tournament.py`](swiss_tournament.py) | 8模型并行瑞士轮 |
 | [`openings_final2_192.fen`](openings_final2_192.fen) | 最终统一保留开局 |
 | [`d4_balanced1m_h16_fromd3_full100_gpu.nnue`](d4_balanced1m_h16_fromd3_full100_gpu.nnue) | 最佳量化权重 |
+| [`artifacts.json`](artifacts.json) | 模型、数据、源码的版本与SHA-256清单 |
+| [`report_results.py`](report_results.py) | 从JSON重建结果表和SVG训练曲线 |
 
 ## 8. 构建与使用
 
@@ -163,6 +167,15 @@ python trainnnue/train.py trainnnue/train_depth4_balanced_1m_v2.bin `
   --delta-clip 250 --delta-beta 25 --seed 79808 `
   --init-nnue trainnnue/d3_balanced1m_h16_full100_gpu.nnue
 ```
+
+重新生成已提交的关键表格和图：
+
+```powershell
+python trainnnue/report_results.py
+git diff --exit-code -- trainnnue/RESULTS.generated.md trainnnue/training_curve.svg
+```
+
+脚本只依赖Python标准库；若结果JSON发生变化，生成文件也必须随之更新。
 
 ## 9. 适用边界
 

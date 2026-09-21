@@ -56,6 +56,12 @@ slides-formal-web-lite.tar.gz
 .conda-pkgs/
 trainnnue/*
 !trainnnue/README.md
+!trainnnue/requirements.txt
+!trainnnue/artifacts.json
+!trainnnue/model_comparison.json
+!trainnnue/report_results.py
+!trainnnue/RESULTS.generated.md
+!trainnnue/training_curve.svg
 !trainnnue/nnue_engine.cpp
 !trainnnue/teacher.cpp
 !trainnnue/pst_baseline.cpp

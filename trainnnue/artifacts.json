@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "record_format_bytes": 108,
+  "data": {
+    "d3_balanced_1m_v2": {
+      "file": "train_depth3_balanced_1m_v2.bin",
+      "distributed_in_git": false,
+      "samples": 1000000,
+      "bytes": 108000016,
+      "teacher_depth": 3,
+      "side_to_move": {"red": 500000, "black": 500000},
+      "split": {"train": 700000, "validation": 150000, "calibration": 150000},
+      "sha256": "918EA99EFF9B19FACDEF3515918F4BCB65563DF7B3BDB4E44E0D7DA07A0C0F9E"
+    },
+    "d4_balanced_1m_v2": {
+      "file": "train_depth4_balanced_1m_v2.bin",
+      "distributed_in_git": false,
+      "samples": 1000000,
+      "bytes": 108000016,
+      "teacher_depth": 4,
+      "side_to_move": {"red": 500000, "black": 500000},
+      "split": {"train": 700000, "validation": 150000, "calibration": 150000},
+      "sha256": "079C403DF1D26DBB59C886E3CD4230547C6CB24BB2941F8AEBF0A67ABAC492D2"
+    }
+  },
+  "model": {
+    "name": "D4-H16-D3init",
+    "file": "d4_balanced1m_h16_fromd3_full100_gpu.nnue",
+    "metadata": "d4_balanced1m_h16_fromd3_full100_gpu.nnue.json",
+    "distributed_in_git": true,
+    "bytes": 363128,
+    "sha256": "E677DAA6AC59468246CDA135473F4614E8184EA28E3C8DFF8057B3CF7ED65990",
+    "format_version": 3,
+    "feature_schema": "XQ-HalfKA-9x14x90",
+    "width": 16,
+    "hidden": 0,
+    "teacher_depth": 4,
+    "initialization": "D3-H16",
+    "quantization": {"feature_scale": 4096, "output_scale": 128}
+  },
+  "source": {
+    "pst_engine": {
+      "file": "../xiangqi_ai.cpp",
+      "sha256": "93015FA0D2727DD470342F9A4E154325059654FA6952D40BCEC6DF8C30B410CB"
+    },
+    "nnue_engine": {
+      "file": "nnue_engine.cpp",
+      "sha256": "026EEFE703839AE4EA2AF7C4130EDE96C00957DEA2729518669231FA21D1F400"
+    }
+  }
+}

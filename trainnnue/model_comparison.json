@@ -1,0 +1,14 @@
+{
+  "metric_scope": "held-out validation split for each teacher depth",
+  "models": [
+    {"name": "D3-H8", "teacher_depth": 3, "width": 8, "initialization": "random", "probability_mse": 0.00784343, "teacher_mae_cp": 18.6664, "residual_correlation": 0.34454},
+    {"name": "D3-H16", "teacher_depth": 3, "width": 16, "initialization": "random", "probability_mse": 0.00770662, "teacher_mae_cp": 18.6019, "residual_correlation": 0.36559},
+    {"name": "D4-H8-random", "teacher_depth": 4, "width": 8, "initialization": "random", "probability_mse": 0.01037180, "teacher_mae_cp": 22.1592, "residual_correlation": 0.44557},
+    {"name": "D4-H8-D3init", "teacher_depth": 4, "width": 8, "initialization": "D3-H8", "probability_mse": 0.01062972, "teacher_mae_cp": 22.11935, "residual_correlation": 0.41076},
+    {"name": "D4-H16-random", "teacher_depth": 4, "width": 16, "initialization": "random", "probability_mse": 0.01004237, "teacher_mae_cp": 22.17364, "residual_correlation": 0.46710},
+    {"name": "D4-H16-D3init", "teacher_depth": 4, "width": 16, "initialization": "D3-H16", "probability_mse": 0.00990604, "teacher_mae_cp": 22.08393, "residual_correlation": 0.47332}
+  ],
+  "baselines": [
+    {"name": "D4-PST-only", "teacher_depth": 4, "probability_mse": 0.01292632, "teacher_mae_cp": 24.73301}
+  ]
+}
