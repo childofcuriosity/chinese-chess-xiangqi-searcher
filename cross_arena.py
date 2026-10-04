@@ -96,7 +96,7 @@ class BaseEngine:
                 bufsize=1
             )
         except Exception as e:
-            print(f"无法启动引擎 {self.cmd}: {e}")
+            print(f"Cannot start engine {self.cmd}: {e}")
             sys.exit(1)
 
     def send(self, msg):
@@ -197,10 +197,10 @@ def play_game(my_ai_is_red, my_exe=MY_EXE, pika_exe=PIKAFISH_EXEC,
 
     # 简单的检查
     if not os.path.exists(my_exe):
-        print(f"错误: 找不到 {my_exe}")
+        print(f"Error: not found {my_exe}")
         return 'error'
     if not os.path.exists(pika_exe):
-        print(f"错误: 找不到 {pika_exe}")
+        print(f"Error: not found {pika_exe}")
         return 'error'
 
     my_ai = XqEngine(my_exe, seconds_per_move)
@@ -210,10 +210,10 @@ def play_game(my_ai_is_red, my_exe=MY_EXE, pika_exe=PIKAFISH_EXEC,
         my_ai.start()
         pika.start()
         if not pika.initialize():
-            print("皮卡鱼初始化失败")
+            print("Pikafish initialization failed")
             return 'error'
         if not my_ai.initialize():
-            print("xiangqi_ai 初始化失败")
+            print("xiangqi_ai initialization failed")
             return 'error'
 
         # side 语义: 给"人类方", 引擎执反色
@@ -303,7 +303,7 @@ def play_game(my_ai_is_red, my_exe=MY_EXE, pika_exe=PIKAFISH_EXEC,
         if not winner: winner = 'draw'
 
     except KeyboardInterrupt:
-        print("\n用户中断")
+        print("\nInterrupted by user")
         sys.exit(0)
     except Exception as e:
         print(f"\nGame Error: {e}")
@@ -315,17 +315,17 @@ def play_game(my_ai_is_red, my_exe=MY_EXE, pika_exe=PIKAFISH_EXEC,
     return winner
 
 def main():
-    parser = argparse.ArgumentParser(description="xiangqi_ai.exe vs 皮卡鱼对战测试")
-    parser.add_argument('--my-engine', default=MY_EXE, help='自研引擎可执行文件')
-    parser.add_argument('--pika-engine', default=PIKAFISH_EXEC, help='Pikafish 可执行文件')
-    parser.add_argument('--eval-file', default=None, help='Pikafish EvalFile 路径')
-    parser.add_argument('--seconds', type=float, default=1.0, help='双方每步思考秒数')
+    parser = argparse.ArgumentParser(description="xiangqi_ai.exe vs Pikafish match runner")
+    parser.add_argument('--my-engine', default=MY_EXE, help='Project engine executable')
+    parser.add_argument('--pika-engine', default=PIKAFISH_EXEC, help='Pikafish executable')
+    parser.add_argument('--eval-file', default=None, help='Pikafish EvalFile path')
+    parser.add_argument('--seconds', type=float, default=1.0, help='Seconds per move for both engines')
     parser.add_argument('--times', default=None,
-                        help='逗号分隔的每步秒数，例如 0.25,0.5,1,2；设置后覆盖 --seconds')
-    parser.add_argument('--pairs', type=int, default=1, help='换先对局组数，每组两局')
-    parser.add_argument('--max-plies', type=int, default=MAX_MOVES, help='每局最大半回合数')
-    parser.add_argument('--summary', default='cross_arena_summary.json', help='JSON 汇总输出路径')
-    parser.add_argument('--visualize', action='store_true', help='单局模式: 动态打印棋盘')
+                        help='Comma-separated seconds per move, e.g. 0.25,0.5,1,2; overrides --seconds')
+    parser.add_argument('--pairs', type=int, default=1, help='Number of color-swapped pairs (two games each)')
+    parser.add_argument('--max-plies', type=int, default=MAX_MOVES, help='Maximum plies per game')
+    parser.add_argument('--summary', default='cross_arena_summary.json', help='JSON summary output path')
+    parser.add_argument('--visualize', action='store_true', help='Print the board during a game')
     args = parser.parse_args()
 
     try:
@@ -359,10 +359,10 @@ def main():
                     'result': result,
                     'my_ai_points': points,
                 })
-            print(f"Pair {pair + 1}: 自研红={res_red}, 自研黑={res_black}", flush=True)
+            print(f"Pair {pair + 1}: ours as Red={res_red}, ours as Black={res_black}", flush=True)
 
         time_games = args.pairs * 2
-        print(f"{seconds:g}s 得分: {time_score:g}/{time_games} "
+        print(f"{seconds:g}s Score: {time_score:g}/{time_games} "
               f"({time_score / time_games * 100:.1f}%)", flush=True)
 
     games = len(all_results)
@@ -379,8 +379,8 @@ def main():
     }
     with open(args.summary, 'w', encoding='utf-8') as output:
         json.dump(summary, output, ensure_ascii=False, indent=2)
-    print(f"总得分: {total_score:g}/{games} ({summary['my_ai_score_percent']:.1f}%)")
-    print(f"汇总: {os.path.abspath(args.summary)}")
+    print(f"Total score: {total_score:g}/{games} ({summary['my_ai_score_percent']:.1f}%)")
+    print(f"Summary: {os.path.abspath(args.summary)}")
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="510" viewBox="0 0 1000 510">
+<style>text{font:14px system-ui,sans-serif;fill:#263238} .grid{stroke:#dfe6e9;stroke-width:1} .axis{stroke:#607d8b;stroke-width:1.5} .series{fill:none;stroke:#1565c0;stroke-width:3} .point{fill:#1976d2;stroke:white;stroke-width:2} .baseline{stroke:#78909c;stroke-width:1.5;stroke-dasharray:6 5}</style>
+<rect width="100%" height="100%" fill="white"/>
+<text x="92" y="27" font-size="20" font-weight="600">PST初代到迭代世代4：对PST得分率</text>
+<line x1="92" y1="370.0" x2="945" y2="370.0" class="grid"/><text x="82" y="375.0" text-anchor="end">50%</text><line x1="92" y1="307.0" x2="945" y2="307.0" class="grid"/><text x="82" y="312.0" text-anchor="end">55%</text><line x1="92" y1="244.0" x2="945" y2="244.0" class="grid"/><text x="82" y="249.0" text-anchor="end">60%</text><line x1="92" y1="181.0" x2="945" y2="181.0" class="grid"/><text x="82" y="186.0" text-anchor="end">65%</text><line x1="92" y1="118.0" x2="945" y2="118.0" class="grid"/><text x="82" y="123.0" text-anchor="end">70%</text><line x1="92" y1="55.0" x2="945" y2="55.0" class="grid"/><text x="82" y="60.0" text-anchor="end">75%</text>
+<line x1="92" y1="55" x2="92" y2="370" class="axis"/><line x1="92" y1="370" x2="945" y2="370" class="axis"/>
+<line x1="92" y1="370.0" x2="945" y2="370.0" class="baseline"/>
+<polyline points="92.0,370.0 305.2,247.0 518.5,202.7 731.8,115.7 945.0,117.3" class="series"/><circle cx="92.0" cy="370.0" r="6" class="point"/><text x="92.0" y="357.0" text-anchor="middle">50.00%</text><text x="92.0" y="398" text-anchor="middle">PST初代</text><circle cx="305.2" cy="247.0" r="6" class="point"/><text x="305.2" y="234.0" text-anchor="middle">59.77%</text><text x="305.2" y="398" text-anchor="middle">迭代世代1</text><circle cx="518.5" cy="202.7" r="6" class="point"/><text x="518.5" y="189.7" text-anchor="middle">63.28%</text><text x="518.5" y="398" text-anchor="middle">迭代世代2</text><circle cx="731.8" cy="115.7" r="6" class="point"/><text x="731.8" y="102.7" text-anchor="middle">70.18%</text><text x="731.8" y="398" text-anchor="middle">迭代世代3</text><circle cx="945.0" cy="117.3" r="6" class="point"/><text x="945.0" y="104.3" text-anchor="middle">70.05%</text><text x="945.0" y="398" text-anchor="middle">迭代世代4</text>
+<text x="500.0" y="430" text-anchor="middle">迭代世代</text>
+<text x="19" y="235.0" transform="rotate(-90 19 235.0)" text-anchor="middle">对PST得分率</text>
+<text x="500.0" y="458" text-anchor="middle" fill="#455a64">世代1：PST教师，D3与D4先后各100万条；世代2–4：上一代NNUE教师，D3各100万条。</text>
+<text x="500.0" y="485" text-anchor="middle" fill="#546e7a">PST自身为50%基准；世代1–4均用192个保留开局逐一换先，共384盘，每步0.10秒。</text>
+</svg>

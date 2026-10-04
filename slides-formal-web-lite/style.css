@@ -27,3 +27,44 @@ html,body{width:100%;height:100%;margin:0;background:var(--paper)}*{box-sizing:b
 #s14a .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
 #a15 h2{font-size:1.3em;margin-bottom:.25em}#a15 .lead{font-size:.61em;line-height:1.38}#a15 .card{padding:14px}#a15 .card p{line-height:1.38}#a15 .reveal code,#a15 code{line-height:1.4}#a15 .steps{gap:6px}#a15 .step{padding:7px 12px}#a15 .takeaway{margin-top:7px!important}
 #a18 h2{font-size:1.3em;margin-bottom:.24em}#a18 .lead{font-size:.61em;line-height:1.38}#a18 .card{padding:14px}#a18 .steps{gap:7px}#a18 .step{padding:8px 12px}#a18 .takeaway{margin-top:7px!important}
+/* English prose needs more horizontal room than the original Chinese labels. */
+.reveal{font-family:Arial,"Microsoft YaHei",sans-serif}
+.reveal h1,.reveal h2{font-family:Georgia,"Microsoft YaHei",serif}
+.reveal h2{font-size:1.18em;line-height:1.12;margin-bottom:.24em}
+.lead{font-size:.58em;line-height:1.38}
+.content-grid{grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);gap:24px}
+.card h3{overflow-wrap:anywhere}.card p{font-size:.40em}
+.step{font-size:.43em;padding:9px 12px}
+.data-table{font-size:.36em}.data-table th,.data-table td{padding:8px 9px;overflow-wrap:anywhere}
+.tree-stage{min-height:9em}.tree-root{max-width:320px}
+.tree-children{flex-wrap:wrap}.tree-leaf{max-width:180px;overflow-wrap:anywhere}
+.reveal code{font-family:Consolas,monospace;max-height:none;overflow:visible;padding:16px!important}
+.xq-board{max-height:11em}.supplement-stack .xq-board,.wide-layout .xq-board{max-height:8em}
+.annotation text{font-family:Arial,sans-serif;font-size:12px}
+.figure-credit{overflow-wrap:anywhere}.teaching-figure img{max-height:10em}
+.source-tag{position:static;margin-top:8px;font-size:.27em}
+.language-links{position:fixed;top:10px;right:18px;z-index:20;font:13px Arial,sans-serif}
+.language-links a{color:#315f50;margin-left:12px}
+/* Export keeps all content visible on one 16:9 page per teaching slide. */
+html.pdf-export,html.pdf-export body{height:auto;overflow:visible!important}
+.pdf-export .reveal{height:auto!important;overflow:visible!important}
+.pdf-export .reveal .slides{position:static!important;transform:none!important;perspective:none!important;width:1280px!important;height:auto!important;margin:0!important;inset:auto!important;text-align:left}
+.pdf-export .reveal .slides>section{display:block!important;position:relative!important;transform:none!important;opacity:1!important;visibility:visible!important;width:1280px!important;height:720px!important;min-height:720px!important;top:auto!important;left:auto!important;margin:0!important;padding:28px 44px!important;page-break-after:always;break-after:page;overflow:hidden}
+.pdf-export .fragment{opacity:1!important;visibility:visible!important;transform:none!important}
+.pdf-export .controls,.pdf-export .progress,.pdf-export #slideMeta,.pdf-export #chapterNav,.pdf-export .language-links,.pdf-export aside.notes{display:none!important}
+.pdf-page-number{display:none}
+.pdf-export .pdf-page-number{display:block;position:absolute;right:30px;bottom:16px;color:#746f65;font:13px Arial,sans-serif}
+@page{size:1280px 720px;margin:0}
+@media print{html,body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+.pdf-export .reveal .slides>section:last-child{page-break-after:auto;break-after:auto}
+.pdf-export .backgrounds,.pdf-export .pause-overlay,.pdf-export .aria-status,.pdf-export .speaker-notes{display:none!important}
+/* Reference slides place cards above side-by-side tables and code. */
+:is(#s21a,#s21b,#a18c) .content-grid{grid-template-columns:1fr 1fr;gap:12px 24px}
+:is(#s21a,#s21b,#a18c) .content-grid>div{display:contents}
+:is(#s21a,#s21b,#a18c) .cards{grid-column:1 / -1;grid-row:1;gap:12px}
+:is(#s21a,#s21b,#a18c) .card{padding:10px 14px}
+:is(#s21a,#s21b,#a18c) .data-table{grid-column:1;grid-row:2}
+:is(#s21a,#s21b,#a18c) .supplement-stack>div:has(pre){grid-column:2;grid-row:2}
+:is(#s21a,#s21b,#a18c) .steps{grid-column:1 / -1;grid-row:3;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+:is(#s21a,#s21b,#a18c) .step{padding:7px 10px}
+#s21a .data-table th:first-child,#s21a .data-table td:first-child{min-width:85px;overflow-wrap:normal;white-space:nowrap}

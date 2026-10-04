@@ -1,14 +1,12 @@
-# 引擎修改 A/B 自对弈测试
+# A/B Engine Self-Play
 
-这套工具用于比较只相差一项修改的两个引擎：`baseline`（修改前）与
-`candidate`（修改后）。测试会在多个每步时间档分别换先，并并行运行。
+[English](AB_SELFPLAY.md) · [简体中文](AB_SELFPLAY_zh.md)
 
-## 1. 构建两个版本
+Compare two engines differing by one change: `baseline` (before) and `candidate` (after). Games run in parallel across multiple per-move time controls, with colors swapped.
 
-必须保证两个二进制使用完全相同的编译器和参数，唯一差异是待测试修改。
-正式测试不要启用 `ENABLE_PROFILING`。
+## 1. Build both versions
 
-示例编译参数：
+Use exactly the same compiler and flags. The tested change must be the only difference. Disable `ENABLE_PROFILING` for formal matches.
 
 ```powershell
 g++ -O3 -std=c++17 -march=native -mtune=native -funroll-loops `
@@ -22,23 +20,22 @@ g++ -O3 -std=c++17 -march=native -mtune=native -funroll-loops `
   -o candidate.exe xiangqi_ai.cpp
 ```
 
-建议在开始修改前先编译并保留 `baseline.exe`，然后修改源码并编译
-`candidate.exe`。不要拿不同优化参数、不同网络或包含其他改动的版本比较。
+Build and retain `baseline.exe` before editing, then build `candidate.exe`. Keep optimization flags, networks, and unrelated changes identical.
 
-## 2. 运行并行换先赛
+## 2. Run paired matches
 
 ```powershell
 python ab_selfplay.py baseline.exe candidate.exe
 ```
 
-默认设置：
+Defaults:
 
-- 每步时间：0.5、0.75、1.0、1.5、2.0 秒；
-- 每个时间档两局，候选版与基线版各执红一次；
-- 每局最多 160 ply；
-- 并行数为逻辑处理器数量减 2。
+- 0.5, 0.75, 1.0, 1.5, and 2.0 seconds per move.
+- Two games per time control, each engine playing Red once.
+- At most 160 plies per game.
+- Parallel jobs equal to the logical processor count minus two.
 
-自定义示例：
+Custom example:
 
 ```powershell
 python ab_selfplay.py baseline.exe candidate.exe `
@@ -49,55 +46,34 @@ python ab_selfplay.py baseline.exe candidate.exe `
   --output ab_results/my_change
 ```
 
-一局内双方轮流搜索，因此单线程引擎的一局通常只占用一个逻辑处理器。
-不要把 `--jobs` 设置得明显高于逻辑处理器数量；墙钟时间控制下，严重超卖
-CPU 会增加调度噪声。
+The engines take turns searching, so a game between single-threaded engines generally occupies one logical processor. Keep `--jobs` within available CPU capacity: oversubscription adds scheduling noise under wall-clock limits.
 
-## 3. 输出
+## 3. Output
 
-工具会实时打印每局结果，并在输出目录生成：
-
-- 每局完整对局日志；
-- `summary.json`，包含胜和负、候选版得分率、时间档、先后手和日志路径。
-
-候选版得分按以下方式计算：
+The tool prints completed results and writes full game logs plus `summary.json`, including W/D/L, candidate score rate, time controls, colors, and log paths.
 
 ```text
-胜 = 1 分，和 = 0.5 分，负 = 0 分
+Win = 1 point; draw = 0.5 points; loss = 0 points
 ```
 
-必须同时检查：
+Inspect total W/D/L, performance with each color, consistency across time controls, crashes/timeouts/unexpected resignations, and whether draws simply reached `max_plies`.
 
-- 总胜/和/负；
-- 候选执红与执黑的表现；
-- 不同时间档是否方向一致；
-- 是否有崩溃、超时或异常认输；
-- 和棋是否只是达到 `max_plies`。
+## 4. Interpretation
 
-## 4. 如何解释结果
+Engines starting from a fixed position are often highly deterministic. Different time controls can stop iterative deepening at different depths and produce different games, but these samples remain correlated.
 
-固定初始局面的引擎通常具有较强确定性。改变时间档可以让迭代加深停在不同
-深度，从而产生不同对局，但这些对局仍不是严格独立样本。
+- Small matches support regression screening and rejection of obvious losses.
+- Zero wins, several draws, and several losses warn against merging directly.
+- A result near 50% does not establish equal strength.
+- Elo estimation requires varied legal openings, many color-swapped games, and confidence intervals.
+- A move-limit draw is distinct from adjudication under complete competition rules.
 
-因此：
+For equivalent performance optimizations, also compare nodes, scores, and best moves on fixed positions. Such optimizations should generally preserve node counts. Strength changes may alter the tree, but their benefits require match evidence.
 
-- 少量对局只能用于回归检查和淘汰明显退步；
-- `0 胜、若干和、数负` 足以警告该修改不应直接合入；
-- 接近 50% 的结果不能证明两者等强；
-- 若要估算 Elo，需要随机合法开局、大量换先对局和置信区间；
-- 达到最大步数的“和棋”不等同于完整规则裁定的和棋。
-
-性能优化还应额外核对固定局面的节点数、分数和最佳走法。纯等价优化原则上
-不应改变节点数；棋力修改则允许改变搜索树，但必须通过对局验证收益。
-
-## 5. 单局工具
-
-`selfplay.py` 仍可单独使用：
+## 5. Single-game tool
 
 ```powershell
 python selfplay.py red.exe black.exe 160 1.0
 ```
 
-参数依次为红方引擎、黑方引擎、最大 ply、每步秒数。省略每步秒数时，引擎
-使用自身默认时间配置。
-
+Arguments are Red engine, Black engine, maximum plies, and seconds per move. Omit the last argument to use each engine's default time configuration.

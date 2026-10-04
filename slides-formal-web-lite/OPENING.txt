@@ -1,0 +1,2 @@
+Open index.html in a browser, or open xiangqi-engine-tutorial.pdf.
+See README.md for controls and PDF export instructions.

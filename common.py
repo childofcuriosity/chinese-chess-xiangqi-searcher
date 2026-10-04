@@ -187,7 +187,7 @@ class CloudOpeningBook:
                 data = response.read().decode('utf-8', errors='replace')
             moves = self._parse_response(data)
         except Exception as exc:
-            _logger.warning("云开局库查询失败: %s", exc)
+            _logger.warning("Cloud opening book query failed: %s", exc)
 
         with self._cache_lock:
             if (moves is not None and self.cache_ttl > 0
@@ -506,9 +506,9 @@ class EngineClient:
                 text=True, encoding='utf-8', errors='replace', bufsize=1
             )
         except FileNotFoundError:
-            raise RuntimeError(f"找不到引擎可执行文件: {self.engine_cmd}") from None
+            raise RuntimeError(f"Engine executable not found: {self.engine_cmd}") from None
         except OSError as e:
-            raise RuntimeError(f"启动引擎失败: {e}") from None
+            raise RuntimeError(f"Failed to start engine: {e}") from None
 
         self.running = True
         self.t = threading.Thread(target=self._reader_thread, daemon=True)

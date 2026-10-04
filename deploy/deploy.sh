@@ -9,7 +9,7 @@
 #   - 服务器信息在 deploy/secrets.env (已 gitignore, 不提交):
 #       先 cp deploy/secrets.env.example deploy/secrets.env 并填真实值
 #   - 走 ssh (别名见 secrets.env 的 SERVER), 不走 git
-#   - 上传 python/前端文件到服务器 REMOTE_DIR/
+#   - Upload python/前端文件到服务器 REMOTE_DIR/
 #   - xiangqi_ai.cpp 用 md5 对比, 有变化才上传并 g++ 重编译
 #   - 更新 systemd 服务 (SERVICE) 并重启, 验证 HTTP 200
 #
@@ -28,15 +28,15 @@ cd "$PROJECT_ROOT"
 if [ -f deploy/secrets.env ]; then
   . deploy/secrets.env
 else
-  echo "缺少 deploy/secrets.env (含服务器信息, 已 gitignore)。"
-  echo "请复制 deploy/secrets.env.example 为 deploy/secrets.env 并填好真实值。"
+  echo "Missing deploy/secrets.env (server configuration; gitignored)."
+  echo "Copy deploy/secrets.env.example to deploy/secrets.env and fill in your values."
   exit 1
 fi
 
 # ---- 要上传的 python 文件 (加新文件往这里加一行) ----
 FILES="common.py webapp.py"
 
-echo "[1/4] 上传代码到 $SERVER:$REMOTE_DIR ..."
+echo "[1/4] Uploading code to $SERVER:$REMOTE_DIR ..."
 for f in $FILES; do
   scp "$f" "$SERVER:$REMOTE_DIR/"
 done
@@ -47,11 +47,11 @@ scp deploy/xiangqi-web.service "$SERVER:/tmp/"
 LOCAL_MD5=$(md5sum xiangqi_ai.cpp | awk '{print $1}')
 REMOTE_MD5=$(ssh "$SERVER" "md5sum $REMOTE_DIR/xiangqi_ai.cpp 2>/dev/null | awk '{print \$1}' || echo missing")
 if [ "$LOCAL_MD5" != "$REMOTE_MD5" ]; then
-  echo "[2/4] 引擎源码有变化, 上传并重新编译 ..."
+  echo "[2/4] Engine source changed; uploading and rebuilding ..."
   scp xiangqi_ai.cpp "$SERVER:$REMOTE_DIR/"
   ssh "$SERVER" "cd $REMOTE_DIR && g++ -O2 -std=c++17 -o xiangqi_ai xiangqi_ai.cpp"
 else
-  echo "[2/4] 引擎源码无变化, 跳过编译"
+  echo "[2/4] Engine source unchanged; skipping build"
 fi
 
 # ---- 自研 NNUE 引擎与最佳量化模型 ----
@@ -60,22 +60,22 @@ NNUE_MODEL="trainnnue/iter2_nnued3_h16_fromiter1_gpu.nnue"
 LOCAL_NNUE_MD5=$(md5sum "$NNUE_SOURCE" | awk '{print $1}')
 REMOTE_NNUE_MD5=$(ssh "$SERVER" "md5sum $REMOTE_DIR/nnue_engine.cpp 2>/dev/null | awk '{print \$1}' || echo missing")
 if [ "$LOCAL_NNUE_MD5" != "$REMOTE_NNUE_MD5" ]; then
-  echo "[2b/4] NNUE 引擎源码有变化, 上传并重新编译 ..."
+  echo "[2b/4] NNUE source changed; uploading and rebuilding ..."
   scp "$NNUE_SOURCE" "$SERVER:$REMOTE_DIR/nnue_engine.cpp"
   ssh "$SERVER" "cd $REMOTE_DIR && g++ -O3 -std=c++17 -march=native -DNDEBUG -o xiangqi_nnue nnue_engine.cpp && chmod +x xiangqi_nnue"
 else
-  echo "[2b/4] NNUE 引擎源码无变化, 跳过编译"
+  echo "[2b/4] NNUE source unchanged; skipping build"
 fi
 scp "$NNUE_MODEL" "$SERVER:$REMOTE_DIR/xiangqi_nnue_best.nnue"
 
-echo "[3/4] 更新 systemd 服务并重启 ..."
+echo "[3/4] Updating and restarting systemd service ..."
 ssh "$SERVER" "sudo cp /tmp/xiangqi-web.service /etc/systemd/system/$SERVICE.service \
   && sudo systemctl daemon-reload \
   && sudo systemctl restart $SERVICE \
   && sleep 1 \
   && systemctl is-active $SERVICE"
 
-echo "[4/4] 验证服务 ..."
+echo "[4/4] Checking service ..."
 ssh "$SERVER" "curl -s -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:$PORT/"
 
-echo "完成! 朋友访问: ${PUBLIC_URL:-http://<服务器IP>:$PORT}"
+echo "Done! Play at: ${PUBLIC_URL:-http://<SERVER_IP>:$PORT}"

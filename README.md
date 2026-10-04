@@ -1,243 +1,210 @@
-# 中国象棋 AI：增量搜索与量化 NNUE 技术报告
+# Xiangqi AI: Incremental Search and Quantized NNUE
 
-[在线对弈](http://47.102.137.220:8100) · [交互式教程](slides-formal-web-lite/index.html) · [运行说明](docs/RUNNING.md) · [实验设计](docs/EXPERIMENTS.md) · [NNUE 专题](trainnnue/README.md)
+[English](README.md) · [简体中文](README_zh.md)
 
-## 摘要
+[Play online](http://47.102.137.220:8100) · [Interactive tutorial](slides-formal-web-lite/index.html) · [Tutorial PDF](slides-formal-web-lite/xiangqi-engine-tutorial.pdf) · [Running the project](docs/RUNNING.md) · [Experiments](docs/EXPERIMENTS.md) · [NNUE details](trainnnue/README.md)
 
-本项目从零实现了一套中国象棋搜索引擎，研究重点是普通 CPU、固定思考时间下的决策质量。系统以可逆增量状态为基础，将规则判断、PST/NNUE 评价、Zobrist 哈希与搜索路径统一到 `make_move()` / `undo_move()`；搜索端组合迭代加深、PVS、置换表、静态搜索、走法排序和选择性剪枝；评价端实现 HalfKA 特征、增量累加器与量化整数推理。
+## Overview
 
-当前最佳模型采用 `XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头`，大小 363 KB。内部等时测试中，NNUE 对自研 PST 基线取得 **70.18%** 得分率；外部测试覆盖象眼、天启、旋风与官方 Pikafish。三个相邻历史引擎的实战结果独立换算为 **2369–2452 Elo**，共同把当前引擎定位在**约 2400 Elo、人类大师水平**。欢迎[在线试玩 Demo](http://47.102.137.220:8100)。
+A Chinese chess engine built from scratch, focused on decision quality on ordinary CPUs under fixed thinking times. Reversible incremental state connects move legality, PST/NNUE evaluation, Zobrist hashing, and search history through `make_move()` / `undo_move()`. The search combines iterative deepening, PVS, transposition tables, quiescence search, move ordering, and selective pruning. Neural evaluation uses HalfKA features, incremental accumulators, and quantized integer inference.
 
-| 公开引擎 | 自研胜/和/负（得分率） | 换算 Elo |
+The selected **363 KB** model uses **XQ-HalfKA-9x14x90 → H16 → CReLU → phase-specific output heads**. It scored **70.18%** against the project's PST baseline in internal equal-time matches. Results against three historical engines imply **2369–2452 Elo**, placing it around **2400 Elo, at human-master level on the cited reference scale**.
+
+| Opponent | Our wins / draws / losses (score rate) | Implied Elo |
 |---|---:|---:|
-| [巫师象眼 3.1](trainnnue/iter2_vs_eleeye31_180pairs.json) | 290/31/39（84.86%） | ≈2430 |
-| [象棋天启 V1.1.8](trainnnue/iter2_vs_tianqi118_180pairs.compact.json) | 109/79/172（41.25%） | ≈2369 |
-| [象棋旋风 2007C](trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json) | 60/95/205（29.86%） | ≈2452 |
-| [Pikafish 2026-01-31 · UCI_Elo=1900](trainnnue/iter2_vs_pikafish_elo1900_180pairs.json) | 169/68/123（56.39%） | ≈1945（限强刻度） |
-| [Pikafish 2026-01-31 · 满强](trainnnue/iter2_vs_pikafish_official_180pairs.json) | 6/44/310（7.78%） | ≈3573（跨代边界） |
+| [ElephantEye 3.1](trainnnue/iter2_vs_eleeye31_180pairs.json) | 290 / 31 / 39 (84.86%) | ≈2430 |
+| [Tianqi V1.1.8](trainnnue/iter2_vs_tianqi118_180pairs.compact.json) | 109 / 79 / 172 (41.25%) | ≈2369 |
+| [Cyclone 2007C](trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json) | 60 / 95 / 205 (29.86%) | ≈2452 |
+| [Pikafish 2026-01-31 · UCI_Elo=1900](trainnnue/iter2_vs_pikafish_elo1900_180pairs.json) | 169 / 68 / 123 (56.39%) | ≈1945 (limited-strength scale) |
+| [Pikafish 2026-01-31 · full strength](trainnnue/iter2_vs_pikafish_official_180pairs.json) | 6 / 44 / 310 (7.78%) | ≈3573 (cross-generation comparison) |
 
-换算锚点来自[公开象棋引擎等级分榜](https://zhuanlan.zhihu.com/p/2072972857840350627)；逐盘证据、实际耗时、可执行文件 SHA-256 和复现命令见[实验结果](trainnnue/RESULTS.generated.md)。
+Reference ratings come from a [public Xiangqi engine rating list](https://zhuanlan.zhihu.com/p/2072972857840350627). The conversion is `opponent reference Elo + 400 × log10(score / (1 − score))`, with reference ratings 2130.4, 2430, 2600, and 4002.7 for ElephantEye, Tianqi, Cyclone, and full-strength Pikafish. Pikafish 1900 uses its built-in strength-limiting scale. See the [results report](trainnnue/RESULTS.generated.md) for game records, measured times, executable hashes, and reproduction commands.
 
-## 1. 问题定义与技术贡献
+## 1. Questions and implementation
 
-项目围绕三个相互制约的问题展开：
+1. How can board state and derived values be updated and restored accurately and cheaply across millions of trial moves?
+2. How can ordering, caching, and selective search produce deeper useful analysis within a fixed time budget?
+3. How can neural evaluation balance expressive power and inference cost to improve equal-time strength?
 
-1. 如何让棋盘及其派生状态在数百万次试走中精确、低成本地往返？
-2. 如何利用走法排序、缓存和选择性搜索，在固定时间内完成更深的有效搜索？
-3. 如何设计一个表达能力足够、推理成本足够低的神经评价器，使等时棋力获得提升？
-
-对应的核心实现如下。
-
-| 模块 | 实现 | 工程作用 |
+| Component | Implementation | Purpose |
 |---|---|---|
-| 增量状态 | 棋盘、棋子表、将帅位置、占位、PST、Hash、NNUE 累加器同步更新 | 降低搜索树内高频走子与评价成本 |
-| 搜索 | 迭代加深、PVS、TT、QS/SEE、走法排序、LMR、Null Move、Futility | 在固定思考时间内完成更深的有效搜索 |
-| 评价 | PST 基线与量化 HalfKA NNUE 双路径 | 直接测量神经评价相对手工评价的棋力增益 |
-| 实验 | 平衡数据集、教师可配置、训练早停、配对统计、图表自动生成 | 保存从数据、模型到对局结论的完整链路 |
-| 工程 | stdio 引擎协议、pygame、FastAPI/WebSocket、Pikafish 桥接 | 同一搜索核心服务本地交互、网页与批量实验 |
+| Incremental state | Board, piece lists, kings, occupancy, PST, hash, NNUE accumulators | Reduce move and evaluation cost |
+| Search | Iterative deepening, PVS, TT, QS/SEE, ordering, LMR, null move, futility | Search useful lines more deeply |
+| Evaluation | PST baseline and quantized HalfKA NNUE | Measure gains from neural evaluation |
+| Experiments | Balanced data, configurable teachers, early stopping, paired statistics, generated figures | Trace conclusions to data, models, and games |
+| Integration | stdio, pygame, FastAPI/WebSocket, Pikafish bridge | Share one search core across clients and experiments |
 
-## 2. 系统设计
+## 2. System design
 
 ```mermaid
 flowchart LR
-    POS[局面] --> STATE[增量状态]
-    STATE --> MOVE[着法生成与合法性]
-    MOVE --> SEARCH[迭代加深 PVS]
-    SEARCH --> ORDER[TT / 历史 / 杀手着排序]
-    SEARCH --> PRUNE[LMR / Null / Futility]
+    POS[Position] --> STATE[Incremental state]
+    STATE --> MOVE[Move generation and legality]
+    MOVE --> SEARCH[Iterative deepening PVS]
+    SEARCH --> ORDER[TT / history / killer ordering]
+    SEARCH --> PRUNE[LMR / null / futility]
     SEARCH --> QS[QS / SEE]
-    SEARCH --> EVAL{静态评价}
-    EVAL --> PST[PST 增量分数]
-    EVAL --> NNUE[HalfKA NNUE 累加器]
-    SEARCH --> BEST[最佳着法]
-
-    TEACHER[教师搜索] --> DATA[红黑平衡数据集]
-    DATA --> TRAIN[训练 / 量化]
+    SEARCH --> EVAL{Static evaluation}
+    EVAL --> PST[Incremental PST score]
+    EVAL --> NNUE[HalfKA NNUE accumulators]
+    SEARCH --> BEST[Best move]
+    TEACHER[Teacher search] --> DATA[Red/black balanced dataset]
+    DATA --> TRAIN[Training and quantization]
     TRAIN --> NNUE
-    NNUE --> MATCH[保留开局换先赛]
+    NNUE --> MATCH[Color-swapped held-out openings]
     MATCH --> TEACHER
 ```
 
-主搜索器保留 PST 与 NNUE 两条评价路径。教师搜索生成局面标签，训练结果量化后进入 C++ 推理器，经过等时比赛筛选的模型再用于下一轮数据生成。搜索、训练和对局因此形成可重复的闭环。
+Teacher search labels positions; trained models are quantized for C++ inference; models selected through equal-time matches become teachers for subsequent data generation. Search, training, and matches form a reproducible cycle.
 
-## 3. 增量状态与规则实现
+## 3. Incremental state and rules
 
-局面由 `board[10][9] + turn` 表示，大写棋子属于红方，小写棋子属于黑方。七类棋子分别生成伪合法着，再通过试走、查将和撤销得到合法着法。
+Positions use `board[10][9] + turn`, with uppercase pieces for Red and lowercase pieces for Black. Seven piece types generate pseudo-legal moves, filtered by making each move, checking king safety, and undoing it.
 
-一次走子同时维护：
+Each move updates the board and piece lists, king coordinates, row/column occupancy and attack state, material/PST scores, Zobrist hash and repetition history, and both NNUE accumulators. Captures keep piece lists contiguous through swap removal. Undo restores every derived value, allowing sibling branches to reuse one state object. Both browser and server validate human moves.
 
-- 棋盘与双方棋子列表；
-- 将帅坐标、行列占位和攻击查询所需状态；
-- 材料与 PST 增量分数；
-- Zobrist hash、重复局面与搜索路径；
-- NNUE 双视角第一层累加器。
+## 4. Static evaluation
 
-吃子时使用交换补洞保持棋子表连续。撤销操作恢复棋盘、索引、分数、哈希和累加器的原值，使搜索树中的兄弟分支共享同一套状态对象。浏览器与服务端共同校验人类着法，规则检查保持一致。
+### Material and piece-square tables
 
-## 4. 静态评价
+PST evaluation adds material value and a square bonus, positive for Red and negative for Black. `current_score` is updated by removing the source contribution, adding the destination contribution, and removing any captured piece. `evaluate()` returns the cached score in constant time.
 
-### 4.1 材料价值与 PST
+PST also serves as the residual baseline for NNUE. Both evaluation paths share position, move, and search code, concentrating comparisons on evaluation.
 
-PST 路线把每枚棋子的基础价值与所在格位置分相加，红方记正、黑方记负。`current_score` 在走子时完成增量更新：移除起点贡献、加入终点贡献，吃子时再移除目标棋子贡献，因此 `evaluate()` 可以直接返回缓存分数。
-
-PST 为搜索提供常数时间评价，也构成神经评价器的残差基线。两条评价路线使用相同的局面、走法与搜索代码，直接比较集中在评价模块本身。
-
-### 4.2 NNUE 网络结构
+### NNUE architecture
 
 ```text
-XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头 → PST 残差
+XQ-HalfKA-9x14x90 → H16 → CReLU → phase-specific output head → PST residual
 ```
 
-- **输入特征**：以本方将帅为锚点，组合 9 个将位桶、14 个相对阵营/棋子通道和 90 个格点。
-- **双视角**：红黑双方分别定向，同一组特征权重共享使用。
-- **隐藏层**：宽度 `H=16`，采用截断 ReLU。
-- **输出**：预测相对 PST 的修正量，并按局面阶段选择输出参数。
-- **推理**：模型量化后由 C++ 整数路径执行，文件大小 363,128 bytes。
+- **Features:** 9 king-position buckets × 14 relative side/piece channels × 90 squares.
+- **Perspectives:** separately oriented Red and Black views share one weight table.
+- **Width:** `H=16`, with clipped ReLU.
+- **Output:** a correction to PST, with parameters selected by game phase.
+- **Inference:** C++ integer arithmetic; the quantized model occupies 363,128 bytes.
 
-### 4.3 增量累加器
+### Incremental accumulators
 
-第一层计算结果缓存在引擎对象的双视角累加器中。普通走子只减去源格特征、加入目标格特征，并在吃子时减去被吃棋子特征；将帅移动触发对应锚点视角重建。`undo_move()` 执行严格逆更新，`null move` 只改变待走方。
+The first layer is cached in two perspective accumulators. Ordinary moves subtract the source feature and add the destination feature; captures also subtract the captured piece. King moves rebuild the affected anchored perspective. `undo_move()` reverses updates exactly; null moves change only the side to move. Updating changed features makes NNUE practical in the high-frequency quiescence path.
 
-该设计把高维稀疏层的计算从“每次评价扫描全部棋子”改为“每次走子更新发生变化的特征”，使 NNUE 能够进入静态搜索的高频评价路径。
+### Training and teacher iteration
 
-### 4.4 训练与教师迭代
+Initial data comes from PST teacher search with heuristic forward pruning disabled, balanced by side to move. Later iterations use the previous quantized NNUE with depth-3 search, generating one million new positions per iteration. Sigmoid temperature `K` is calibrated separately and frozen. Training, quantization, and C++ validation share one pipeline.
 
-初代训练数据由无风险剪枝的 PST 教师搜索生成，并对红黑待走局面进行平衡。后续迭代把教师配置切换为上一代量化 NNUE 加 D3 搜索，每代重新生成 100 万条局面。Sigmoid 温度 `K` 由数据独立统计后冻结；模型训练、量化导出和 C++ 校验由同一流水线完成。
+## 5. Search
 
-## 5. 完整搜索
+Minimax maximizes for Red and minimizes for Black, evaluating leaf positions statically. Timed iterative deepening increases depth while retaining the best move and score from the latest completed iteration.
 
-搜索器从 Minimax 递归出发：红方选择最高分支，黑方选择最低分支，叶节点调用静态评价。工程实现以限时迭代加深为外层框架，从浅到深重复搜索，并始终保存最近一次完整深度的最佳着与分数。
-
-| 机制 | 保存或计算的内容 | 搜索收益 |
+| Mechanism | Information | Benefit |
 |---|---|---|
-| Alpha-Beta / PVS | 当前分数窗口 | 截断无法改变上层选择的分支 |
-| Aspiration Window | 围绕上一深度分数的窄窗口 | 提高常见稳定局面的截断效率 |
-| Zobrist Hash / TT | 深度、分数、边界类型、最佳着 | 复用置换局面并提供首选着法 |
-| Quiescence Search | 吃子、将军等强制变化 | 把叶节点推进到更稳定的局面 |
-| SEE | 目标格连续交换的静态收益 | 改善吃子排序与静态搜索效率 |
+| Alpha-beta / PVS | Current score window | Cut branches that cannot affect the parent choice |
+| Aspiration window | Narrow window around the previous score | Improve cutoff efficiency in stable positions |
+| Zobrist hash / TT | Depth, score, bound type, best move | Reuse transpositions and prioritize promising moves |
+| Quiescence search | Captures, checks, forcing continuations | Reach more stable leaf positions |
+| SEE | Static gain from exchanges on a square | Improve capture ordering and quiescence efficiency |
 
-置换表中的分数已经包含对应叶节点的 PST 或 NNUE 评价；命中时按保存深度和边界类型参与当前搜索。迭代加深产生的主变化与 TT move 又为下一深度提供排序信息。
+TT scores include the chosen leaf evaluator and are reused according to saved depth and bound type. Principal variations and TT moves improve ordering for the next iteration.
 
-## 6. 选择性搜索与时间管理
+## 6. Selective search and time management
 
-完整宽度随深度指数增长，选择性搜索依据局面类型和走法次序分配节点预算。
-
-| 类别 | 方法 | 决策依据 |
+| Category | Methods | Basis |
 |---|---|---|
-| 走法排序 | TT Move、MVV-LVA、Killer、Counter Move、History | 历史搜索与战术价值 |
-| 深度缩减 | LMR、LMP | 排名靠后、深度和局面安静程度 |
-| 前向剪枝 | Null Move、Futility、Reverse Futility、Razoring | 静态分数与 Alpha-Beta 窗口距离 |
-| 恢复机制 | 窄窗口失败后重搜、关键着完整深度 | 搜索结果越过当前界限 |
+| Ordering | TT move, MVV-LVA, killer, counter move, history | Previous searches and tactical value |
+| Reduction | LMR, LMP | Late move order, depth, quietness |
+| Forward pruning | Null move, futility, reverse futility, razoring | Static score relative to the search window |
+| Recovery | Re-search after failed narrow windows; full depth for critical moves | Results crossing current bounds |
 
-时间管理在节点循环中检查截止时间，迭代边界负责提交完整结果。训练教师使用相同规则、评价和静态搜索，同时关闭依赖经验假设的前向剪枝，为固定深度监督标签提供稳定计算路径。
+Deadline checks occur in the node loop; completed results are committed at iteration boundaries. The teacher shares rules, evaluation, and quiescence but disables heuristic forward pruning to produce consistent fixed-depth labels.
 
-## 7. 实验设计
+## 7. Experimental design
 
-### 7.1 对局协议
-
-| 项目 | 内部 PST / NNUE 对照 | 官方 Pikafish 外部参照 |
+| Setting | Internal PST / NNUE | Official Pikafish reference |
 |---|---|---|
-| 开局 | 192 个保留开局 | 12 个校准开局 + 180 个正式开局 |
-| 颜色控制 | 每个开局逐一换先 | 每个开局逐一换先 |
-| 正式盘数 | 384 盘 / 组 | 360 盘 / 档位 |
-| 资源 | 单 CPU 核 | 双方单线程、每盘固定同一逻辑核 |
-| 名义时限 | 双方每步 0.10 秒 | 自研 0.25 秒；Pikafish 0.10 秒 |
-| 实际平均用时 | 同一搜索器直接对照 | 1900档：76.2 / 101.3 ms；满强：86.9 / 91.4 ms |
-| 得分率 | `(胜局 + 0.5 × 和局) / 总局数` | 同左 |
-| 区间估计 | 按开局对 bootstrap 95% CI | 同左 |
+| Openings | 192 held-out openings | 12 calibration + 180 formal openings |
+| Color control | Swap colors for every opening | Same |
+| Games | 384 per comparison | 360 per strength setting |
+| Resources | One CPU core | One thread each, same logical core per game |
+| Nominal time per move | 0.10 s each | Our engine 0.25 s; Pikafish 0.10 s |
+| Mean measured time | Shared searcher for direct comparison | Limited: 76.2 / 101.3 ms; full: 86.9 / 91.4 ms |
+| Score rate | `(wins + 0.5 × draws) / games` | Same |
+| Uncertainty | Opening-pair bootstrap 95% CI | Same |
 
-自研引擎在完成一层后使用 `0.16` 经验阈值判断下一完整深度的成本，因此名义时限与实际搜索时间存在固定差异。前 12 个开局用于冻结时间倍率和 Pikafish 限强档位；其余 180 个开局构成正式外部测试集。正式赛中自研引擎的实际平均用时低于 Pikafish。`UCI_Elo=1900` 是 Pikafish `UCI_LimitStrength` 的内置刻度。
+Our engine uses a `0.16` heuristic threshold after each completed depth to estimate the next iteration's cost. This creates a systematic difference between nominal and actual time. The first 12 openings freeze the time multiplier and Pikafish strength setting; the other 180 form the formal test set. Our measured mean time is lower in the formal Pikafish matches. `UCI_Elo=1900` is Pikafish's built-in `UCI_LimitStrength` scale.
 
-## 8. 实验结果
+## 8. Results
 
-### 8.1 公开引擎实战坐标
+### External matches
 
-![自研NNUE对官方Pikafish外部参照](trainnnue/external_benchmark.svg)
+![Official Pikafish reference](trainnnue/external_benchmark.svg)
 
-| 公开引擎 | 自研胜/和/负（得分率） | 换算 Elo |
-|---|---:|---:|
-| [巫师象眼 3.1](trainnnue/iter2_vs_eleeye31_180pairs.json) | 290/31/39（84.86%） | ≈2430 |
-| [象棋天启 V1.1.8](trainnnue/iter2_vs_tianqi118_180pairs.compact.json) | 109/79/172（41.25%） | ≈2369 |
-| [象棋旋风 2007C](trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json) | 60/95/205（29.86%） | ≈2452 |
-| [Pikafish 2026-01-31 · UCI_Elo=1900](trainnnue/iter2_vs_pikafish_elo1900_180pairs.json) | 169/68/123（56.39%） | ≈1945（限强刻度） |
-| [Pikafish 2026-01-31 · 满强](trainnnue/iter2_vs_pikafish_official_180pairs.json) | 6/44/310（7.78%） | ≈3573（跨代边界） |
+The table above reports all external results. Each match uses 180 color-swapped opening pairs (360 games) with fixed CPU affinity. Mean measured times (our engine / opponent) are 104.0 / 119.4 ms for ElephantEye, 155.0 / 159.6 ms for Tianqi, 112.4 / 89.9 ms for Cyclone, 76.2 / 101.3 ms for limited Pikafish, and 86.9 / 91.4 ms for full-strength Pikafish. Our engine used about 25% more time against Cyclone; the table retains that original condition.
 
-换算公式为 `对手参考 Elo + 400 × log10(得分率 / (1 − 得分率))`。参考榜给出的象眼、天启、旋风和满强 Pikafish 分别为 2130.4、2430、2600 和 4002.7；Pikafish 1900 是引擎内置限强刻度。三个相邻历史引擎给出 **2369–2452 Elo**，中心落在**约 2400 Elo、人类大师水平**；Pikafish 两行展示现代引擎的限强坐标与满强上界。
+### Model generations
 
-全部比赛使用 180 个开局逐一换先，共 360 盘，并固定单核。实际平均用时（自研 / 对手）为：象眼 104.0 / 119.4 ms，天启 155.0 / 159.6 ms，旋风 112.4 / 89.9 ms，Pikafish 1900 档 76.2 / 101.3 ms，满强 86.9 / 91.4 ms。旋风一组中自研实际用时多约 25%，表中按原始成绩保留该条件。
+![Score against PST across generations](trainnnue/iteration_vs_pst.svg)
 
-### 8.2 NNUE 代际结果
-
-![PST 初代到迭代世代 4 的对 PST 得分率](trainnnue/iteration_vs_pst.svg)
-
-| 迭代世代 | 教师与数据 | 对 PST 得分率 | 胜 / 和 / 负 |
+| Generation | Teacher and data | Score vs PST | Wins / draws / losses |
 |---:|---|---:|---:|
-| PST 初代 | PST 基线 | 50.00% | 基准 |
-| 1 | PST D3、D4 各 100 万条 | 59.77% | 172 / 115 / 97 |
-| 2 | 上一代 NNUE + D3，100 万条 | 63.28% | 188 / 110 / 86 |
-| **3** | **上一代 NNUE + D3，100 万条** | **70.18%** | **218 / 103 / 63** |
-| 4 | 上一代 NNUE + D3，100 万条 | 70.05% | 224 / 90 / 70 |
+| PST baseline | PST | 50.00% | Reference |
+| 1 | PST D3 and D4, one million positions each | 59.77% | 172 / 115 / 97 |
+| 2 | Previous NNUE + D3, one million positions | 63.28% | 188 / 110 / 86 |
+| **3** | **Previous NNUE + D3, one million positions** | **70.18%** | **218 / 103 / 63** |
+| 4 | Previous NNUE + D3, one million positions | 70.05% | 224 / 90 / 70 |
 
-第三世代取得最高实测得分率，配对 95% CI 为 **66.80%–73.44%**，当前网页与本地 NNUE 入口均使用该模型。第四世代与第三世代进入同一性能平台，代际实验由此完成。
+Generation 3 (`Iter2-NNUE-D3`) has the highest observed score, with paired 95% CI **66.80%–73.44%**, and is selected for the web and local NNUE entry points. Generation 4 reaches the same performance plateau, ending this iteration experiment.
 
-### 8.3 网络宽度与搜索成本
+### Width and search cost
 
-在相同条件下，D4-H16 对 D4-H8 得分率为 **54.17%**，平均完成深度为 **9.18 vs 9.24**。H16 的额外评价成本保持在很小的深度差内，同时获得直接对局优势，因此成为最终宽度。
+D4-H16 scored **54.17%** against D4-H8, with mean completed depths of **9.18 vs 9.24**. H16 adds little depth cost while improving direct-match performance, so it is the selected width. Offline metrics, curves, Swiss standings, matches, and checkpoints are in the [NNUE guide](trainnnue/README.md) and [generated report](trainnnue/RESULTS.generated.md).
 
-完整离线指标、训练曲线、瑞士轮排名、逐代对局和 checkpoint 信息集中在 [trainnnue/README.md](trainnnue/README.md) 与自动生成的 [RESULTS.generated.md](trainnnue/RESULTS.generated.md)。
+## 9. Reproduction
 
-## 9. 可复现性
-
-### 9.1 运行引擎
-
-完整环境、模型版本、编译参数与环境变量见 [docs/RUNNING.md](docs/RUNNING.md)。网页端最短运行路径：
+See [docs/RUNNING.md](docs/RUNNING.md) for environments, compilation, model versions, and configuration.
 
 ```powershell
 python -m pip install -r requirements.txt
 python webapp.py
-# http://localhost:8000
+# Open http://localhost:8000
 ```
 
-桌面端运行：
+Desktop client:
 
 ```powershell
 python gui.py
 ```
 
-### 9.2 实验入口
-
-| 任务 | 命令 / 脚本 | 产物 |
+| Task | Command / script | Output |
 |---|---|---|
-| 引擎 A/B 回归 | `python ab_selfplay.py baseline.exe candidate.exe` | 分时间档日志与汇总 JSON |
-| 官方 Pikafish 外部赛 | `trainnnue/run_external_match.ps1` | 换先逐盘结果、实际耗时与配对 CI |
-| 巫师象眼 3.1 外部赛 | `trainnnue/run_eleeye_match.ps1` | UCCI 桥接、单核换先逐盘结果 |
-| 象棋旋风 2007C 外部赛 | `trainnnue/run_cyclone_match.ps1` | Cyclone UCI 桥接、合法性审计与逐盘结果 |
-| 象棋天启 V1.1.8 外部赛 | `trainnnue/run_tianqi_match.ps1` | UCI 桥接、合法性审计与逐盘结果 |
-| NNUE 换先赛 | `python trainnnue/engine_match.py ...` | 逐盘 JSON、得分率、配对 CI |
-| 多模型瑞士轮 | `python trainnnue/swiss_tournament.py` | 排名与交手记录 |
-| 教师迭代 | `trainnnue/run_teacher_iteration.ps1` | 数据、模型、校验与对局产物 |
-| 重建结果 | `python trainnnue/report_results.py` | Markdown 表格与 SVG 曲线 |
-| 自动测试 | `python -m pytest tests -q` | 规则与 WebSocket 测试结果 |
+| A/B regression | `python ab_selfplay.py baseline.exe candidate.exe` | Logs by time control and summary JSON |
+| Official Pikafish | `trainnnue/run_external_match.ps1` | Paired games, measured times, CI |
+| ElephantEye 3.1 | `trainnnue/run_eleeye_match.ps1` | UCCI bridge and single-core paired games |
+| Cyclone 2007C | `trainnnue/run_cyclone_match.ps1` | Cyclone UCI bridge and legality audits |
+| Tianqi V1.1.8 | `trainnnue/run_tianqi_match.ps1` | UCI bridge and legality audits |
+| NNUE matches | `python trainnnue/engine_match.py ...` | Game JSON, score rates, paired CI |
+| Swiss tournament | `python trainnnue/swiss_tournament.py` | Standings and pairings |
+| Teacher iteration | `trainnnue/run_teacher_iteration.ps1` | Data, models, validation, matches |
+| Rebuild reports | `python trainnnue/report_results.py` | Markdown tables and SVG plots |
+| Tests | `python -m pytest tests -q` | Rules and WebSocket checks |
 
-保存的 JSON 结果可以一键生成 [实验汇总](trainnnue/RESULTS.generated.md)、[外部基准图](trainnnue/external_benchmark.svg)、[训练曲线](trainnnue/training_curve.svg)和[代际棋力曲线](trainnnue/iteration_vs_pst.svg)，使数字、表格与图片保持同源。具体 A/B 协议见 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) 和 [AB_SELFPLAY.md](AB_SELFPLAY.md)。
+Saved JSON regenerates the results and figures from one source. See [experiment design](docs/EXPERIMENTS.md) and the [A/B guide](AB_SELFPLAY.md) for protocols.
 
-## 10. 工程接口
+## 10. Interfaces
 
-搜索核心通过简洁的 stdio 协议与外围程序通信，同一引擎可用于本地界面、网页会话和批量实验。网页端通过 FastAPI/WebSocket 管理独立对局，可切换自研 NNUE、自研 PST 与 Pikafish PST；`pikafish_bridge.py` 负责 UCI 协议转换；[`deploy/deploy.ps1`](deploy/deploy.ps1) 负责远程同步、编译、模型上传、服务重启和 HTTP 检查。
+A compact stdio protocol connects the search core to clients and batch experiments. FastAPI/WebSocket manages independent games and offers the project's NNUE and PST engines plus Pikafish PST. `pikafish_bridge.py` translates UCI. [`deploy/deploy.ps1`](deploy/deploy.ps1) handles synchronization, compilation, model upload, service restart, and HTTP checks.
 
-| pygame 棋盘 | 搜索深度、分数、节点与主变化日志 |
+| Desktop board | Web application |
 |:---:|:---:|
-| ![桌面端棋盘](开局界面.png) | ![引擎计算日志](计算日志界面.png) |
+| ![Desktop board](screenshots/desktop-board.png) | ![Web application](screenshots/web-game.png) |
 
-## 11. 仓库结构
+## 11. Repository layout
 
-| 路径 | 内容 |
+| Path | Contents |
 |---|---|
-| [`xiangqi_ai.cpp`](xiangqi_ai.cpp) | PST 评价、增量状态与主搜索器 |
-| [`trainnnue/`](trainnnue/) | 数据生成、训练、量化、校验、比赛与模型 |
-| [`common.py`](common.py) | 共享规则、云开局库与引擎进程通信 |
-| [`gui.py`](gui.py) | pygame 交互界面 |
-| [`webapp.py`](webapp.py), [`static/`](static/) | FastAPI/WebSocket 交互接口 |
-| [`tests/`](tests/) | 规则、云库、会话与网页测试 |
-| [`deploy/`](deploy/) | Linux 服务配置与部署脚本 |
-| [`slides-formal-web-lite/`](slides-formal-web-lite/) | 从规则、评价到搜索和 NNUE 的交互式教程 |
+| [`xiangqi_ai.cpp`](xiangqi_ai.cpp) | PST evaluation, incremental state, main searcher |
+| [`trainnnue/`](trainnnue/) | Data generation, training, quantization, validation, matches, models |
+| [`common.py`](common.py) | Shared rules, cloud opening book, engine communication |
+| [`gui.py`](gui.py) | pygame desktop interface |
+| [`webapp.py`](webapp.py), [`static/`](static/) | FastAPI/WebSocket web interface |
+| [`tests/`](tests/) | Rules, cloud book, sessions, web tests |
+| [`deploy/`](deploy/) | Linux service configuration and deployment |
+| [`slides-formal-web-lite/`](slides-formal-web-lite/) | Interactive tutorial and downloadable PDF |

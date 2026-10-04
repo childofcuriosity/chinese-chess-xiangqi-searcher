@@ -58,13 +58,13 @@ class XiangqiGUI:
     def __init__(self):
         pygame.init()
         font_path = r"simhei.ttf"
-        self.font = pygame.font.Font(font_path, 28)
-        self.small_font = pygame.font.Font(font_path, 20)
+        self.font = pygame.font.Font(font_path, 24)
+        self.small_font = pygame.font.Font(font_path, 18)
         self.title_font = pygame.font.Font(font_path, 36)
         self.title_font.set_bold(True)
 
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Python 象棋 (GUI)")
+        pygame.display.set_caption("Xiangqi (Desktop)")
 
         self.board = LocalBoard()
         self.ai = None
@@ -80,7 +80,7 @@ class XiangqiGUI:
         # 代替AI 调试开关
         self.replace_ai_mode = False
         self.replace_ai_pending = False
-        self.btn_replace_ai = Button((SCREEN_WIDTH - 170, 60, 150, 36), "代替AI: 关", self.small_font)
+        self.btn_replace_ai = Button((SCREEN_WIDTH - 170, 60, 150, 36), "Manual AI: off", self.small_font)
         # self.btn_print_engine = Button((SCREEN_WIDTH - 170, 100, 150, 36), "每步打印: 关", self.small_font)
         # self.auto_print_engine = False
 
@@ -88,12 +88,12 @@ class XiangqiGUI:
         self.forbid_text = "1 1 1 1"
         self.forbid_focused = False
         self.forbid_rect = pygame.Rect(20, SCREEN_HEIGHT - 50, 200, 36)
-        self.btn_pick_forbid = Button((230, SCREEN_HEIGHT - 50, 110, 36), "选禁招", self.small_font)
-        self.btn_clear_forbid = Button((348, SCREEN_HEIGHT - 50, 70, 36), "清除", self.small_font)
+        self.btn_pick_forbid = Button((230, SCREEN_HEIGHT - 50, 110, 36), "Pick move", self.small_font)
+        self.btn_clear_forbid = Button((348, SCREEN_HEIGHT - 50, 70, 36), "Clear", self.small_font)
         self.cloud_book_enabled = CLOUD_BOOK_ENABLED
         self.btn_cloud_book = Button(
             (440, SCREEN_HEIGHT - 50, 180, 36),
-            "云库: 开" if self.cloud_book_enabled else "云库: 关",
+            "Book: on" if self.cloud_book_enabled else "Book: off",
             self.small_font,
         )
         self.forbid_picking = None   # None | 'from' | 'to'  点击选招模式
@@ -107,9 +107,9 @@ class XiangqiGUI:
     def build_start_ui(self):
         w = 220; h = 48
         cx = SCREEN_WIDTH // 2
-        self.btn_play_red = Button((cx - w - 10, 260, w, h), "Play as Red (move first)", self.font)
-        self.btn_play_black = Button((cx + 10, 260, w, h), "Play as Black (move second)", self.font)
-        self.btn_toggle_orient = Button((cx - w//2, 340, w, h), "Red at bottom (toggle)", self.font)
+        self.btn_play_red = Button((cx - w - 10, 260, w, h), "Red (first)", self.font)
+        self.btn_play_black = Button((cx + 10, 260, w, h), "Black (second)", self.font)
+        self.btn_toggle_orient = Button((cx - 155, 340, 310, h), "Red at bottom (toggle)", self.font)
         self.btn_start = Button((cx - 110, 420, 220, 56), "Start Game", self.title_font)
 
     def trans_coord(self, r, c):
@@ -149,12 +149,12 @@ class XiangqiGUI:
     def toggle_cloud_book(self):
         self.cloud_book_enabled = not self.cloud_book_enabled
         self.btn_cloud_book.text = (
-            "云库: 开" if self.cloud_book_enabled else "云库: 关"
+            "Book: on" if self.cloud_book_enabled else "Book: off"
         )
 
     def draw_board(self):
         self.screen.fill(COLOR_BG)
-        title = self.title_font.render("中国象棋 (GUI)", True, COLOR_UI)
+        title = self.title_font.render("Xiangqi", True, COLOR_UI)
         self.screen.blit(title, (20, 18))
 
         for r in range(ROWS):
@@ -208,37 +208,37 @@ class XiangqiGUI:
                     self.screen.blit(text, rect)
 
         if self.ai_thinking:
-            txt = self.font.render("AI 思考中...", True, (0,0,255))
+            txt = self.font.render("AI thinking...", True, (0,0,255))
             self.screen.blit(txt, (20, 80))
 
         if self.replace_ai_pending:
-            txt = self.font.render("请代替AI落子...", True, (255, 0, 0))
+            txt = self.font.render("Play the AI move...", True, (255, 0, 0))
             self.screen.blit(txt, (20, 80))
 
         # 代替AI 按钮
         self.btn_replace_ai.draw(self.screen, pygame.mouse.get_pos())
         # self.btn_print_engine.draw(self.screen, pygame.mouse.get_pos())
 
-        turn_txt = f"当前回合: {'红' if self.board.turn=='red' else '黑'}"
+        turn_txt = f"Turn: {'Red' if self.board.turn=='red' else 'Black'}"
         ttxt = self.font.render(turn_txt, True, COLOR_UI)
         self.screen.blit(ttxt, (SCREEN_WIDTH - 220, 18))
 
         # 禁招行: 标签 + 状态提示
-        label = self.small_font.render("禁招:", True, COLOR_UI)
+        label = self.small_font.render("Block:", True, COLOR_UI)
         self.screen.blit(label, (20, SCREEN_HEIGHT - 78))
         if self.forbid_picking:
             if self.forbid_picking == 'from':
-                tip = self.small_font.render("点起点格子", True, (138, 92, 224))
+                tip = self.small_font.render("Select source", True, (138, 92, 224))
             else:
-                tip = self.small_font.render("点终点格子 (同一格=清除)", True, (138, 92, 224))
+                tip = self.small_font.render("Select target (same square clears)", True, (138, 92, 224))
         else:
             fb = self.parse_forbid()
             if fb:
                 (r1, c1), (r2, c2) = fb
-                tip = self.small_font.render(f"已禁: ({r1},{c1})->({r2},{c2})", True, (160, 0, 0))
+                tip = self.small_font.render(f"Blocked: ({r1},{c1})->({r2},{c2})", True, (160, 0, 0))
             else:
-                tip = self.small_font.render("无禁招", True, (80, 80, 80))
-        self.screen.blit(tip, (60, SCREEN_HEIGHT - 78))
+                tip = self.small_font.render("None", True, (80, 80, 80))
+        self.screen.blit(tip, (90, SCREEN_HEIGHT - 78))
 
         # 输入槽 (仍可直接键盘输入) + 选招按钮
         bg_color = COLOR_INPUT_FOCUS if self.forbid_focused else COLOR_INPUT
@@ -252,25 +252,25 @@ class XiangqiGUI:
 
     def draw_start_menu(self):
         self.screen.fill(COLOR_BG)
-        title = self.title_font.render("开始 - 请选择执子与摆放", True, COLOR_UI)
+        title = self.title_font.render("Choose your side", True, COLOR_UI)
         self.screen.blit(title, (SCREEN_WIDTH//2 - title.get_width()//2, 40))
 
         mouse_pos = pygame.mouse.get_pos()
         self.btn_play_red.draw(self.screen, mouse_pos)
         self.btn_play_black.draw(self.screen, mouse_pos)
 
-        choice_text = self.font.render(f"当前选择: Play as {'Red' if self.choice_side=='red' else 'Black'}", True, COLOR_UI)
+        choice_text = self.font.render(f"Play as {'Red' if self.choice_side=='red' else 'Black'}", True, COLOR_UI)
         self.screen.blit(choice_text, (SCREEN_WIDTH//2 - choice_text.get_width()//2, 220))
 
         orient_label = "Red at bottom" if self.choice_red_bottom else "Red at top"
-        self.btn_toggle_orient.text = orient_label + " (click to toggle)"
+        self.btn_toggle_orient.text = orient_label + " (toggle)"
         self.btn_toggle_orient.draw(self.screen, mouse_pos)
 
         self.btn_start.draw(self.screen, mouse_pos)
 
         self.btn_replace_ai.draw(self.screen, mouse_pos)
 
-        hint = self.font.render("点击格子选择棋子，再点击目的地下子。", True, COLOR_UI)
+        hint = self.font.render("Select a piece, then its destination.", True, COLOR_UI)
         self.screen.blit(hint, (SCREEN_WIDTH//2 - hint.get_width()//2, SCREEN_HEIGHT - 80))
 
     def _maybe_print_engine(self, label=""):
@@ -296,13 +296,13 @@ class XiangqiGUI:
         if cloud is not None:
             (r1, c1), (r2, c2), sc = cloud
             if self.board.is_legal_move(r1, c1, r2, c2):
-                print(f"[云库] 命中: ({r1},{c1})->({r2},{c2})  score={sc}")
+                print(f"[Book] Hit: ({r1},{c1})->({r2},{c2})  score={sc}")
                 self.board.move(r1, c1, r2, c2)
                 self.ai.send(f"move {r1} {c1} {r2} {c2}")
                 # self._maybe_print_engine(f"云库: {r1},{c1}->{r2},{c2}")
                 self.ai_thinking = False
                 return
-            print(f"[云库] 忽略非法着法: ({r1},{c1})->({r2},{c2})")
+            print(f"[Book] Ignoring illegal move: ({r1},{c1})->({r2},{c2})")
 
         if forbid:
             (fr, fc), (tr, tc) = forbid
@@ -329,11 +329,11 @@ class XiangqiGUI:
     # ---- 点击选招模式 ----
     def update_forbid_btn_text(self):
         if self.forbid_picking == 'from':
-            self.btn_pick_forbid.text = "点起点..."
+            self.btn_pick_forbid.text = "Source..."
         elif self.forbid_picking == 'to':
-            self.btn_pick_forbid.text = "点终点..."
+            self.btn_pick_forbid.text = "Target..."
         else:
-            self.btn_pick_forbid.text = "选禁招"
+            self.btn_pick_forbid.text = "Pick move"
 
     def toggle_forbid_pick(self):
         if self.forbid_picking:
@@ -352,7 +352,7 @@ class XiangqiGUI:
         else:
             fr, fc = self.forbid_from
             if (r, c) == (fr, fc):
-                self.forbid_text = "1 1 1 1"    # 起止相同 = 清除禁招
+                self.forbid_text = "1 1 1 1"    # 起止相同 = Clear禁招
             else:
                 self.forbid_text = f"{fr} {fc} {r} {c}"
             self.forbid_picking = None
@@ -417,7 +417,7 @@ class XiangqiGUI:
                             self.choice_red_bottom = not self.choice_red_bottom
                         elif self.btn_replace_ai.clicked(pos):
                             self.replace_ai_mode = not self.replace_ai_mode
-                            self.btn_replace_ai.text = "代替AI: 开" if self.replace_ai_mode else "代替AI: 关"
+                            self.btn_replace_ai.text = "Manual AI: on" if self.replace_ai_mode else "Manual AI: off"
                         elif self.btn_start.clicked(pos):
                             self.player_side = self.choice_side
                             self.flip_view = not self.choice_red_bottom
@@ -446,7 +446,7 @@ class XiangqiGUI:
                             self.toggle_cloud_book()
                         elif self.btn_replace_ai.clicked(event.pos):
                             self.replace_ai_mode = not self.replace_ai_mode
-                            self.btn_replace_ai.text = "代替AI: 开" if self.replace_ai_mode else "代替AI: 关"
+                            self.btn_replace_ai.text = "Manual AI: on" if self.replace_ai_mode else "Manual AI: off"
                             self.replace_ai_pending = False
                         # elif self.btn_print_engine.clicked(event.pos):
                         #     self.auto_print_engine = not self.auto_print_engine
@@ -464,7 +464,7 @@ class XiangqiGUI:
                         self.update_forbid_btn_text()
                         continue
 
-                    # 选禁招模式: 棋盘点击优先
+                    # Pick move模式: 棋盘点击优先
                     if event.type == pygame.MOUSEBUTTONDOWN and self.forbid_picking:
                         coord = self.get_click_coord(event.pos)
                         if coord:
@@ -484,7 +484,7 @@ class XiangqiGUI:
                 while True:
                     msg = self.ai.get_message()
                     if not msg: break
-                    print("收到 AI:", msg)
+                    print("AI message:", msg)
                     parts = msg.split()
                     if parts[0] == "move":
                         try:
@@ -492,10 +492,10 @@ class XiangqiGUI:
                             self.board.move(r1, c1, r2, c2)
                             # self._maybe_print_engine(f"引擎走: {r1},{c1}->{r2},{c2}")
                         except Exception as e:
-                            print("解析 bestmove 错误:", e)
+                            print("Error parsing bestmove:", e)
                         self.ai_thinking = False
                     elif parts[0] == "resign":
-                        print("AI 认输")
+                        print("AI resigned")
                         self.game_over = True
                         self.ai_thinking = False
 

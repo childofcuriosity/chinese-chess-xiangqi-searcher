@@ -1,303 +1,693 @@
-(function () {
-  window.XQ_CHAPTERS = window.XQ_CHAPTERS || [];
-  window.XQ_CHAPTERS.push({
-    id: '01',
-    title: '让棋走起来',
-    slides: [
-      {
-        id: 'f01',
-        title: '如何让电脑帮我下棋？',
-        eyebrow: '从一个很个人的问题开始',
-        layout: 'cards',
-        lead: '我下棋时脑子转得慢，感觉也不够准。但电脑算得快。',
-        cards: [
-          { title: '我', text: '天天象棋学 1–3，经常算不清。' },
-          { title: '电脑', text: '不会下棋，但可以很快地重复计算。' },
-          { title: '今天的任务', text: '把人下棋的能力拆开，一件件交给电脑。' }
-        ],
-        steps: ['人会算不清，电脑却擅长快速重复计算。', '把人下棋的能力拆开，就能一件件交给电脑。', '今天，我们从零开始造一个象棋搭子。'],
-        notes: '“这个项目的起因其实很朴素。我下棋很菜，遇到复杂局面，脑子转得太慢，感觉还经常不准。但电脑的长处恰好是算得快。那能不能告诉电脑怎么下棋？”【停顿】“把它当成一个什么都不会的新手。人下棋需要什么，我们就给电脑补什么。今天的任务，是从零开始造一个象棋搭子。”',
-        sources: ['用户原稿 PDF P2'],
-        takeaway: '从“下棋需要哪些能力”开始搭建引擎。'
-      },
-      {
-        id: 'f02',
-        title: '人怎么下棋，电脑就怎么学',
-        eyebrow: '冒险地图',
-        layout: 'map',
-        currentChapter: 0,
-        lead: '先让它会走，再教它评价局面，最后让它向前搜索。',
-        steps: ['会走：认识棋盘、生成候选并判断合法性。', '会评价：把当前盘面变成可比较的分数。', '会搜索：考虑对手，并在搜索中记住算过的局面。'],
-        notes: '“你们自己下棋时，脑子里在做什么？”【停顿，接住现场回答】“我们把搭建过程收成三个阶段。第一，先让电脑理解棋盘和合法走法；第二，让它能比较两个局面哪个好；第三，让它向前搜索双方应对，并在搜索里逐步获得排序、缓存和剪枝这些能力。现在电脑连一步棋都不会走，我们先进入第一阶段。”',
-        sources: ['用户原稿 PDF P3'],
-        takeaway: '主线分三步：走法、评价、搜索。'
-      },
-      {
-        id: 'f03',
-        title: '第一个问题：棋盘在电脑里长什么样？',
-        eyebrow: '会走 · 盘面',
-        layout: 'compare',
-        lead: '人看到棋盘；电脑先需要一份可读写的局面。',
-        boards: [{
-          fen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w',
-          caption: '完整开局，红方走（0 在顶，9 在底）',
-          highlights: [{ square: 'e0', kind: 'focus' }, { square: 'e9', kind: 'focus' }], arrows: [],
-          annotations: []
-        }],
-        cards: [
-          { title: 'board[10][9]', text: '每格一个字符；大写表示红方，小写表示黑方，点表示空格。' },
-          { title: 'turn', text: '同一张棋盘，轮到谁走也是局面的一部分。' }
-        ],
-        code: "board[9][4] = 'K';  // 图中 (9,4) 的红帅\nboard[0][4] = 'k';  // 图中 (0,4) 的黑将\nturn = RED;          // 现在轮到红方",
-        steps: ['用 10×9 字符数组保存每一格的内容。', '轮到谁走，也是局面不可缺少的一部分。'],
-        notes: "“我们一眼就能看出这是开局。电脑需要一份可以逐格读取和修改的数据，最直观的表示就是 10 行 9 列的数组，每格存一个字符。例如图中 (9,4) 的红帅就是 `board[9][4]='K'`。”【指向图中高亮的将帅和对应代码】“棋子位置相同时，红方先走与黑方先走会产生不同的后续，因此局面还要记录 `turn`。”【停顿】“坐标统一写成 `(行,列)`：行 0–9 从上向下，列 0–8 从左向右；讲棋时继续使用中文记谱。”",
-        sources: ['用户原稿 PDF P5', 'xiangqi_ai.cpp:291', 'xiangqi_ai.cpp:390'],
-        takeaway: '局面 = 10×9 棋盘 + 轮到谁。'
-      },
-      {
-        id: 'f04',
-        title: '一步棋，只需要起点和终点',
-        eyebrow: '会走 · 操作',
-        layout: 'board',
-        lead: '从哪里来，到哪里去。',
-        boards: [{
-          fen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w',
-          caption: '红方走：炮二平五（内部坐标 (7,7)→(7,4)）',
-          highlights: [{ square: 'h7', kind: 'from' }, { square: 'e7', kind: 'to' }],
-          arrows: [{ from: 'h7', to: 'e7', kind: 'primary' }],
-          annotations: []
-        }],
-        code: 'Move m = {7, 7, 7, 4};\n// (r1,c1) = (7,7)  起点\n// (r2,c2) = (7,4)  终点',
-        steps: ['起点告诉我们要移动哪个棋子。', '终点告诉我们它要到哪里。', '两个格子各用行列表示，一步棋共需四个数。'],
-        notes: '“上一页把局面放进了电脑，现在来表示动作。这步炮二平五，有哪些信息必须记录？”【停顿，指向高亮起点和终点】“起点确定哪枚棋子行动，终点确定它想去哪里；两个格子各用行列表示，一共四个数。内部坐标从 `(7,7)` 到 `(7,4)`，所以这一步就是 `Move{7,7,7,4}`。”这四个数先描述走棋意图。接下来，我们让程序按棋规列出允许的起点和终点。',
-        sources: ['用户原稿 PDF P5', 'xiangqi_ai.cpp:48'],
-        takeaway: '一步棋是一个从起点到终点的操作。'
-      },
-      {
-        id: 'f05',
-        title: '现在，这匹马能去哪里？',
-        eyebrow: '会走 · 候选着',
-        layout: 'board',
-        lead: '先按单个棋子的规则，列出“看起来能走”的地方。',
-        boards: [{
-          fen: '4k4/9/9/9/4P4/4N4/9/9/9/4K4 w',
-          caption: '红方走：红马在 (5,4)，(4,4) 的红兵挡住上方马腿',
-          highlights: [
-            { square: 'e5', kind: 'from' }, { square: 'e4', kind: 'blocked' },
-            { square: 'c4', kind: 'candidate' }, { square: 'c6', kind: 'candidate' },
-            { square: 'd7', kind: 'candidate' }, { square: 'f7', kind: 'candidate' },
-            { square: 'g4', kind: 'candidate' }, { square: 'g6', kind: 'candidate' }
-          ],
-          arrows: [
-            { from: 'e5', to: 'd3', kind: 'blocked' }, { from: 'e5', to: 'f3', kind: 'blocked' }
-          ],
-          annotations: [{ square: 'e4', text: '马腿' }]
-        }],
-        steps: ['马的八个日字方向只是理论候选。', '(4,4) 的红兵挡住上方马腿，(3,3) 和 (3,5) 必须排除。', '其余候选还要继续检查边界和敌我。'],
-        notes: '“假设现在轮到红方，这匹马在 (5,4)，它有八个日字方向。大家帮我找一找，哪些真的可以去？”【停顿，让观众指候选格】“马走日之前还要检查马腿。(4,4) 被红兵占了，所以往上的 (3,3) 和 (3,5) 都要划掉，剩下 (4,2)、(6,2)、(7,3)、(7,5)、(4,6)、(6,6) 六格。其他棋子也一样：相要看象眼和河界，士将要看九宫，兵要看是否过河，车炮要看直线上的阻挡。把这些规则逐子翻译，就能列出候选着。”',
-        sources: ['用户原稿 PDF P6', 'xiangqi_ai.cpp:669'],
-        takeaway: '候选着来自“棋子走法 + 棋盘边界 + 阻挡 + 敌我”。'
-      },
-      {
-        id: 'f06',
-        title: '七种棋子，七组局部规则',
-        eyebrow: '会走 · 规则翻译',
-        layout: 'table',
-        lead: '这一层回答“单个棋子按自身规则能到哪里”。',
-        table: {
-          headers: ['棋子', '需要检查的关键条件'],
-          rows: [
-            ['车', '沿行列直走，到第一个阻挡为止'],
-            ['炮', '不吃子时直走；吃子时中间恰好一个炮架'],
-            ['马', '走日字，相邻的马腿格必须为空'],
-            ['相', '走田字，象眼必须为空，且不能过河'],
-            ['士', '只在九宫内沿斜线走一步'],
-            ['将', '只在九宫内横直走一步，还要避免将帅照面'],
-            ['兵', '只前进；过河后可左右']
-          ]
+window.XQ_CHAPTERS = window.XQ_CHAPTERS || [];
+window.XQ_CHAPTERS.push({
+  "id": "01",
+  "title": "Making legal moves",
+  "slides": [
+    {
+      "id": "f01",
+      "title": "Can a computer help me play?",
+      "eyebrow": "A personal starting point",
+      "layout": "cards",
+      "lead": "I calculate slowly and my intuition is unreliable. Computers calculate quickly.",
+      "cards": [
+        {
+          "title": "Me",
+          "text": "Beginner levels 1–3 on Tiantian Xiangqi; I often miss variations."
         },
-        steps: ['每种棋子都有自己的局部可达条件。', '满足单个棋子的条件，仍不代表整个局面允许这么走。'],
-        notes: '“把象棋直觉翻译成程序条件，关键都很具体：车看直线阻挡；炮吃子要恰好一个炮架；马看马腿；相看象眼和河界；士在九宫内斜走一步；将在九宫内横直走一步；兵过河后才可左右。”【指向表格，留出阅读时间】“这些都是单个棋子的局部可达条件。按这些规则能走，就一定是一步合法棋吗？”【停顿，暂不回答】',
-        sources: ['用户原稿 PDF P6', 'xiangqi_ai.cpp:677'],
-        takeaway: '棋子规则能生成候选，但还不足以保证整局合法。'
-      },
-      {
-        id: 'f07',
-        title: '只遍历真正存在的棋子',
-        eyebrow: '会走 · 记子',
-        layout: 'compare',
-        lead: '棋盘负责存棋子；双向索引负责快速找到棋子及其列表槽位。',
-        cards: [
-          { title: 'piece_sq[阵营][槽位]', text: '列表槽位→棋子坐标；npieces 表示当前有效长度。' },
-          { title: 'piece_idx[行][列]', text: '棋盘坐标→列表槽位，走子和吃子时可直接找到应更新的项。' },
-          { title: '棋子类型', text: '列表只存坐标；需要类型时读 board[行][列]，两枚同字炮也由位置区分。' }
-        ],
-        steps: ['初始化扫一次棋盘，把每枚子的坐标追加到所属阵营列表。', '生成候选时，只遍历 piece_sq 前 npieces 项。', '普通移动只修改走子方原槽位的坐标，并同步起点、终点的反查。'],
-        notes: '“生成当前一方的候选着，需要遍历本方所有棋子。每次扫完 90 格会重复查看大量空位，所以初始化时多记一份双向账本。”【按键】“`piece_sq` 从列表槽位找坐标，`piece_idx` 从坐标找回槽位，`npieces` 划出列表的有效部分。源码把位置存成 `行×9+列` 的格号，图中用 `(行,列)` 写出来方便对照。”列表中不需要再复制棋子字符；遍历到某个坐标时，从 board 读出它是车、马还是炮。因此两枚同为“炮”的棋子也不会混淆：各自的坐标就是定位依据。普通走子时，用起点反查到原槽位，把该项改成终点，再同步两格的反查即可。吃子需要收紧列表，下一页看具体操作。',
-        sources: ['用户原稿 PDF P5–6', 'xiangqi_ai.cpp:308-311', 'xiangqi_ai.cpp:450-469', 'xiangqi_ai.cpp:507-530', 'xiangqi_ai.cpp:771'],
-        takeaway: '双向索引让引擎既能快速遍历棋子，也能从坐标直接找到待更新槽位。'
-      },
-      {
-        id: 'f07a',
-        title: '吃掉一枚子，怎样不留列表空洞？',
-        eyebrow: '会走 · 交换补洞',
-        layout: 'table',
-        lead: '用最后一项填补被吃子的槽位，列表仍然紧凑；悔棋时再按原槽位恢复。',
-        table: {
-          headers: ['时刻', 'npieces', '位置列表：槽位 0 / 1 / 2 / 3（棋种仅助读）', '关键反查'],
-          rows: [
-            ['吃子前', '4', '(0,4)将 / (2,1)炮 / (2,7)炮 / (3,0)卒', '(2,1)→1；(3,0)→3'],
-            ['吃掉槽 1 的炮', '3', '(0,4)将 / (3,0)卒 / (2,7)炮 / 无效', '(3,0)→1；记住原槽 1'],
-            ['悔棋：送回补位项', '4', '(0,4)将 / (3,0)卒 / (2,7)炮 / (3,0)卒', '(3,0)→3'],
-            ['悔棋：恢复被吃炮', '4', '(0,4)将 / (2,1)炮 / (2,7)炮 / (3,0)卒', '(2,1)→1；(3,0)→3']
-          ]
+        {
+          "title": "The computer",
+          "text": "It knows no chess, but repeats calculations very quickly."
         },
-        cards: [
-          { title: '内存项换槽', text: '(3,0) 的卒只是列表记录从槽 3 搬到槽 1；棋盘上的卒没有移动。' },
-          { title: '边界', text: '若被吃的本来就是末项，缩短有效长度即可，无需搬动。' }
+        {
+          "title": "Our task",
+          "text": "Break playing chess into skills and teach them one by one."
+        }
+      ],
+      "steps": [
+        "Humans lose track; computers excel at repeated calculations.",
+        "Separate the skills of playing chess so we can implement each one.",
+        "Today we build a Xiangqi partner from scratch."
+      ],
+      "notes": "I calculate slowly and my intuition is unreliable. Computers calculate quickly.\n\nHumans lose track; computers excel at repeated calculations.\n\nSeparate the skills of playing chess so we can implement each one.\n\nToday we build a Xiangqi partner from scratch.\n\nMe: Beginner levels 1–3 on Tiantian Xiangqi; I often miss variations.\n\nThe computer: It knows no chess, but repeats calculations very quickly.\n\nOur task: Break playing chess into skills and teach them one by one.\n\nStart by asking which skills a chess engine needs.",
+      "sources": [
+        "Original presentation PDF P2"
+      ],
+      "takeaway": "Start by asking which skills a chess engine needs."
+    },
+    {
+      "id": "f02",
+      "title": "Teach the computer the skills we use",
+      "eyebrow": "The roadmap",
+      "layout": "map",
+      "currentChapter": 0,
+      "lead": "First legal moves, then position evaluation, then forward search.",
+      "steps": [
+        "Move: represent the board, generate candidates, and check legality.",
+        "Evaluate: turn a position into a comparable score.",
+        "Search: consider replies and remember previously searched positions."
+      ],
+      "notes": "First legal moves, then position evaluation, then forward search.\n\nMove: represent the board, generate candidates, and check legality.\n\nEvaluate: turn a position into a comparable score.\n\nSearch: consider replies and remember previously searched positions.\n\nThree stages: moves, evaluation, search.",
+      "sources": [
+        "Original presentation PDF P3"
+      ],
+      "takeaway": "Three stages: moves, evaluation, search."
+    },
+    {
+      "id": "f03",
+      "title": "How does a computer represent the board?",
+      "eyebrow": "Moves · Board state",
+      "layout": "compare",
+      "lead": "We see a board; the computer needs a readable, writable position.",
+      "boards": [
+        {
+          "fen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w",
+          "caption": "Initial position, Red to move (row 0 at top, row 9 at bottom)",
+          "highlights": [
+            {
+              "square": "e0",
+              "kind": "focus"
+            },
+            {
+              "square": "e9",
+              "kind": "focus"
+            }
+          ],
+          "arrows": [],
+          "annotations": []
+        }
+      ],
+      "cards": [
+        {
+          "title": "board[10][9]",
+          "text": "One character per square: uppercase Red, lowercase Black, dot for empty."
+        },
+        {
+          "title": "turn",
+          "text": "The side to move is part of the position, even when the board is identical."
+        }
+      ],
+      "code": "board[9][4] = 'K';  // Red king at (9,4)\nboard[0][4] = 'k';  // Black king at (0,4)\nturn = RED;          // Red to move",
+      "steps": [
+        "Store every square in a 10×9 character array.",
+        "The side to move is an essential part of a position."
+      ],
+      "notes": "We see a board; the computer needs a readable, writable position.\n\nStore every square in a 10×9 character array.\n\nThe side to move is an essential part of a position.\n\nboard[10][9]: One character per square: uppercase Red, lowercase Black, dot for empty.\n\nturn: The side to move is part of the position, even when the board is identical.\n\nPosition = 10×9 board + side to move.",
+      "sources": [
+        "Original presentation PDF P5",
+        "xiangqi_ai.cpp:291",
+        "xiangqi_ai.cpp:390"
+      ],
+      "takeaway": "Position = 10×9 board + side to move."
+    },
+    {
+      "id": "f04",
+      "title": "A move needs a source and a destination",
+      "eyebrow": "Moves · Actions",
+      "layout": "board",
+      "lead": "Where does the piece start, and where does it finish?",
+      "boards": [
+        {
+          "fen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w",
+          "caption": "Red to move: central cannon, (7,7) → (7,4)",
+          "highlights": [
+            {
+              "square": "h7",
+              "kind": "from"
+            },
+            {
+              "square": "e7",
+              "kind": "to"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "h7",
+              "to": "e7",
+              "kind": "primary"
+            }
+          ],
+          "annotations": []
+        }
+      ],
+      "code": "Move m = {7, 7, 7, 4};\n// (r1,c1) = (7,7)  source\n// (r2,c2) = (7,4)  destination",
+      "steps": [
+        "The source identifies the moving piece.",
+        "The destination identifies its target square.",
+        "Two row/column pairs give four numbers per move."
+      ],
+      "notes": "Where does the piece start, and where does it finish?\n\nThe source identifies the moving piece.\n\nThe destination identifies its target square.\n\nTwo row/column pairs give four numbers per move.\n\nA move is an operation from one square to another.",
+      "sources": [
+        "Original presentation PDF P5",
+        "xiangqi_ai.cpp:48"
+      ],
+      "takeaway": "A move is an operation from one square to another."
+    },
+    {
+      "id": "f05",
+      "title": "Where can this horse move?",
+      "eyebrow": "Moves · Candidates",
+      "layout": "board",
+      "lead": "Apply the piece's own rules to list possible destinations.",
+      "boards": [
+        {
+          "fen": "4k4/9/9/9/4P4/4N4/9/9/9/4K4 w",
+          "caption": "Red horse at (5,4); the pawn at (4,4) blocks its upward leg",
+          "highlights": [
+            {
+              "square": "e5",
+              "kind": "from"
+            },
+            {
+              "square": "e4",
+              "kind": "blocked"
+            },
+            {
+              "square": "c4",
+              "kind": "candidate"
+            },
+            {
+              "square": "c6",
+              "kind": "candidate"
+            },
+            {
+              "square": "d7",
+              "kind": "candidate"
+            },
+            {
+              "square": "f7",
+              "kind": "candidate"
+            },
+            {
+              "square": "g4",
+              "kind": "candidate"
+            },
+            {
+              "square": "g6",
+              "kind": "candidate"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "e5",
+              "to": "d3",
+              "kind": "blocked"
+            },
+            {
+              "from": "e5",
+              "to": "f3",
+              "kind": "blocked"
+            }
+          ],
+          "annotations": [
+            {
+              "square": "e4",
+              "text": "Blocked leg"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        "The eight L-shaped destinations are only initial candidates.",
+        "The pawn at (4,4) rules out (3,3) and (3,5).",
+        "Check the remaining targets for board boundaries and friendly pieces."
+      ],
+      "notes": "Apply the piece's own rules to list possible destinations.\n\nThe eight L-shaped destinations are only initial candidates.\n\nThe pawn at (4,4) rules out (3,3) and (3,5).\n\nCheck the remaining targets for board boundaries and friendly pieces.\n\nCandidates depend on movement, boundaries, blockers, and ownership.",
+      "sources": [
+        "Original presentation PDF P6",
+        "xiangqi_ai.cpp:669"
+      ],
+      "takeaway": "Candidates depend on movement, boundaries, blockers, and ownership."
+    },
+    {
+      "id": "f06",
+      "title": "Seven pieces, seven sets of local rules",
+      "eyebrow": "Moves · Translating rules",
+      "layout": "table",
+      "lead": "This layer asks where each piece can move under its own rules.",
+      "table": {
+        "headers": [
+          "Piece",
+          "Key conditions"
         ],
-        steps: ['先记住被吃子原来的槽位 1。', '把末项槽 3 的坐标 (3,0) 复制到槽 1，并把反查改为 (3,0)→1。', 'npieces 从 4 变 3，遍历仍是一段连续数组。', '悔棋时先把补位项送回槽 3，再把被吃炮恢复到槽 1。'],
-        notes: '“如果直接清空被吃子的槽位，列表中间会留洞，以后遍历就要额外判断空项。这里用交换补洞：记住被吃炮在槽 1，再把末项槽 3 的 (3,0) 卒记录复制到槽 1，有效长度减一。表里实际存的只是坐标，‘将、炮、卒’只是帮助我们读表。”【指表格】“这是内存列表换槽，(3,0) 的卒在真实棋盘上完全没动；这条位置记录在 `piece_sq` 中的槽位变了，因此 `piece_idx[3][0] = 1`。”悔棋时，根据之前记住的原槽 1，先把补位卒的记录送回槽 3，再把 (2,1) 炮恢复到槽 1。如果被吃子本来就在末项，只缩短列表即可。',
-        sources: ['xiangqi_ai.cpp:507-530', 'xiangqi_ai.cpp:575-600'],
-        takeaway: '末项填洞保持列表紧凑；原槽位让悔棋能精确复原。'
+        "rows": [
+          [
+            "Rook",
+            "Along a rank or file up to the first blocker"
+          ],
+          [
+            "Cannon",
+            "Straight quiet moves; exactly one screen for a capture"
+          ],
+          [
+            "Horse",
+            "L-shaped move; the adjacent leg square must be empty"
+          ],
+          [
+            "Elephant",
+            "Two diagonal steps; clear eye; cannot cross the river"
+          ],
+          [
+            "Advisor",
+            "One diagonal step inside the palace"
+          ],
+          [
+            "King",
+            "One orthogonal step inside the palace; kings must not face"
+          ],
+          [
+            "Pawn",
+            "Forward only; sideways allowed after crossing the river"
+          ]
+        ]
       },
-      {
-        id: 'f08',
-        title: '试着走一步',
-        eyebrow: '会走 · make_move',
-        layout: 'compare',
-        lead: '电脑脑中的“走”是一次假设：改变局面，并记住被吃的棋子。',
-        boards: [
-          {
-            fen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w',
-            caption: '走子前：红方走，红右炮在 (7,7)',
-            highlights: [{ square: 'h7', kind: 'from' }, { square: 'h0', kind: 'capture' }],
-            arrows: [{ from: 'h7', to: 'h0', kind: 'capture' }], annotations: []
-          },
-          {
-            fen: 'rnbakabCr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C7/9/RNBAKABNR b',
-            caption: '走子后：红炮越过 (2,7) 的黑炮作炮架，吃掉 (0,7) 的黑马；轮到黑方',
-            highlights: [{ square: 'h7', kind: 'from' }, { square: 'h0', kind: 'to' }],
-            arrows: [], annotations: [{ square: 'h2', text: '炮架' }]
-          }
+      "steps": [
+        "Each piece has its own local reachability conditions.",
+        "A locally valid move may still be illegal for the position."
+      ],
+      "notes": "This layer asks where each piece can move under its own rules.\n\nEach piece has its own local reachability conditions.\n\nA locally valid move may still be illegal for the position.\n\nPiece rules generate candidates; king safety determines legality.",
+      "sources": [
+        "Original presentation PDF P6",
+        "xiangqi_ai.cpp:677"
+      ],
+      "takeaway": "Piece rules generate candidates; king safety determines legality."
+    },
+    {
+      "id": "f07",
+      "title": "Iterate only over pieces that exist",
+      "eyebrow": "Moves · Piece lists",
+      "layout": "compare",
+      "lead": "The board stores pieces; two-way indices locate pieces and list slots.",
+      "cards": [
+        {
+          "title": "piece_sq[side][slot]",
+          "text": "List slot → square; npieces is the active list length."
+        },
+        {
+          "title": "piece_idx[row][column]",
+          "text": "Square → list slot, for direct updates during moves and captures."
+        },
+        {
+          "title": "Piece type",
+          "text": "Read the type from board[row][column]; coordinates distinguish identical pieces."
+        }
+      ],
+      "steps": [
+        "Scan the board once at initialization and populate each side's list.",
+        "Generate moves by visiting only the first npieces entries.",
+        "An ordinary move updates its slot and both square-to-slot references."
+      ],
+      "notes": "The board stores pieces; two-way indices locate pieces and list slots.\n\nScan the board once at initialization and populate each side's list.\n\nGenerate moves by visiting only the first npieces entries.\n\nAn ordinary move updates its slot and both square-to-slot references.\n\npiece_sq[side][slot]: List slot → square; npieces is the active list length.\n\npiece_idx[row][column]: Square → list slot, for direct updates during moves and captures.\n\nPiece type: Read the type from board[row][column]; coordinates distinguish identical pieces.\n\nTwo-way indices support fast iteration and direct updates.",
+      "sources": [
+        "Original presentation PDF P5–6",
+        "xiangqi_ai.cpp:308-311",
+        "xiangqi_ai.cpp:450-469",
+        "xiangqi_ai.cpp:507-530",
+        "xiangqi_ai.cpp:771"
+      ],
+      "takeaway": "Two-way indices support fast iteration and direct updates."
+    },
+    {
+      "id": "f07a",
+      "title": "How do captures avoid holes in the list?",
+      "eyebrow": "Moves · Swap removal",
+      "layout": "table",
+      "lead": "Fill the captured piece's slot with the last entry; undo restores the original slot.",
+      "table": {
+        "headers": [
+          "Stage",
+          "npieces",
+          "Slots 0 / 1 / 2 / 3 (piece names for readability)",
+          "Reverse index"
         ],
-        steps: ['红炮从 (7,7) 出发，以 (2,7) 的黑炮为炮架，目标是 (0,7) 的黑马。', '走子后 (7,7) 变空，(0,7) 变成红炮，并轮到黑方。', 'make_move 返回被吃的黑马，为之后的撤销保留信息。'],
-        notes: '“现在是红方走。(7,7) 的红炮想吃 (0,7) 的黑马，中间恰好有 (2,7) 的一个黑炮作炮架。这步合法；我们借它观察吃子时的状态更新。”【对照两张静态棋盘】“真正变化的棋盘字符只有两个：(7,7) 变空，(0,7) 变成红炮，turn 切到黑方。黑马消失了，如果等一下还要回到这一步之前，去哪里找它？”【停顿】“`make_move` 把被吃子返回给调用者，同时更新将帅位置、棋子列表等辅助状态。走一步时改动的每项状态，撤销时都要完整恢复。”',
-        sources: ['用户原稿 PDF P7', 'xiangqi_ai.cpp:485'],
-        takeaway: 'make_move 更新局面，并保留撤销所需的信息。'
+        "rows": [
+          [
+            "Before capture",
+            "4",
+            "(0,4) K / (2,1) C / (2,7) C / (3,0) P",
+            "(2,1)→1；(3,0)→3"
+          ],
+          [
+            "Capture cannon in slot 1",
+            "3",
+            "(0,4) K / (3,0) P / (2,7) C / inactive",
+            "(3,0)→1; save original slot 1"
+          ],
+          [
+            "Undo: restore last entry",
+            "4",
+            "(0,4) K / (3,0) P / (2,7) C / (3,0) P",
+            "(3,0)→3"
+          ],
+          [
+            "Undo: restore cannon",
+            "4",
+            "(0,4) K / (2,1) C / (2,7) C / (3,0) P",
+            "(2,1)→1；(3,0)→3"
+          ]
+        ]
       },
-      {
-        id: 'f09',
-        title: '为什么刚走完，又要悔棋？',
-        eyebrow: '会走 · undo_move',
-        layout: 'cards',
-        lead: '引擎会在脑中反复假设不同走法。',
-        cards: [
-          { title: '1. make', text: '试走一个候选，得到新局面，并记住被吃子。' },
-          { title: '2. inspect', text: '检查这一步的合法性，以后还会在新局面继续推演。' },
-          { title: '3. undo', text: '把起点、终点、被吃子、轮次和所有增量状态恢复。' },
-          { title: '4. next', text: '棋盘完全回到原样，才能公平地试下一个候选。' }
-        ],
-        steps: ['试走让棋盘进入一个假设的未来。', '检查用这个未来回答合法性或后续推演问题。', '悔棋把所有状态完整恢复，才能公平地试下一个候选。'],
-        notes: '“人思考时会说，假如我走这一步……想完以后，脑中的棋盘必须回到原来，才能想另一步。电脑也一样。”【指向 make、inspect、undo、next 四张卡】“undo 必须逐位恢复到完全相同的状态，否则之后每个候选都会在被前一个候选污染的棋盘上开始。”本页的基础循环是：试走—检查—回退—试下一步。',
-        sources: ['用户原稿 PDF P7', 'xiangqi_ai.cpp:552'],
-        takeaway: '推演的基本动作是“试走—检查—悔棋”。'
-      },
-      {
-        id: 'f10',
-        title: '棋子自己能走，就一定可以走吗？',
-        eyebrow: '会走 · 伪合法与合法',
-        layout: 'board',
-        lead: '过河兵横走一步符合兵的走法，却可能让己方帅直接面对对方的将。',
-        boards: [{
-          fen: '4k4/9/9/9/4P4/9/9/9/9/4K4 w',
-          caption: '红方走：红兵 (4,4)→(4,3) 按过河兵的规则能走，但会露出将帅照面',
-          highlights: [{ square: 'e4', kind: 'from' }, { square: 'd4', kind: 'candidate' }, { square: 'e3', kind: 'candidate' }, { square: 'e0', kind: 'danger' }, { square: 'e9', kind: 'danger' }],
-          arrows: [{ from: 'e4', to: 'd4', kind: 'blocked' }, { from: 'e4', to: 'e3', kind: 'primary' }, { from: 'e0', to: 'e9', kind: 'danger', fragmentIndex: 1 }],
-          annotations: [{ square: 'e4', text: '唯一遮挡' }]
-        }],
-        steps: ['过河红兵 (4,4)→(4,3) 符合兵的局部走法。', '兵横走后，将帅之间没有任何遮挡。', '(4,4)→(4,3) 是伪合法但最终非法；(4,4)→(3,4) 继续挡住中线，最终合法。'],
-        notes: '“现在轮到红方。红兵在 (4,4)，它已经过河，可以往左横走一格到 (4,3)。那这步棋合法吗？”【停顿，指向从黑将到红帅的中线】“兵一横走，同一条线上没有任何棋子隔着，将和帅直接照面。所以 (4,4)→(4,3) 符合过河兵的走法，却不是一步合法棋。对比另一个候选 (4,4)→(3,4)：兵仍留在中线上遮挡将帅，因此最终合法。”这里给两个概念命名：逐子规则生成的是伪合法着；排除走完后己方仍被将的着，才是合法着。',
-        sources: ['用户原稿 PDF P8', 'xiangqi_ai.cpp:735', 'xiangqi_ai.cpp:793'],
-        takeaway: '“这个子能走”不等于“这一局允许走”。'
-      },
-      {
-        id: 'f11',
-        title: '最简单可靠的合法性检查',
-        eyebrow: '会走 · 试走后查将',
-        layout: 'code',
-        lead: '统一流程是：先让候选局面真正出现，再检查己方将帅是否安全。',
-        code: 'const bool red_mover = (turn == 0);  // 记住试走前的行棋方\nstd::vector<Move> legal_moves;\nfor (Move m : pseudo_moves) {\n  char captured = make_move(m);\n  bool legal = !is_in_check(red_mover);\n  undo_move(m, captured);\n  if (legal) legal_moves.push_back(m);\n}',
-        cards: [
-          { title: '试走', text: '使棋盘真的进入候选局面。' },
-          { title: '查将', text: '查敌方的车、炮、马、兵与将是否攻到己方将帅。' },
-          { title: '必定撤销', text: '无论合法与否，检查后都回到同一起点。' }
-        ],
-        steps: ['先 make，让候选局面真正出现。', '再检查己方将帅是否处在攻击下。', '无论合法与否都 undo；只保留没有送将的候选。'],
-        notes: '“`pseudo_moves` 是前面按单个棋子规则生成的候选。make 会切换行棋方，所以循环前先用 `red_mover` 记住真正走子的这一方；试走后，`legal` 保存‘这一方的将帅是否安全’这个检查结果。”【沿伪代码逐行指向】“随后先 undo 回到原局面；如果刚才的结果为真，就用 `legal_moves.push_back(m)` 把这步棋加入合法着结果表。`is_in_check` 从己方将帅的位置反向查攻击者：直线上的车、炮和将帅照面，日字位置上的马及马腿，还有附近的兵。”',
-        sources: ['用户原稿 PDF P8', 'xiangqi_ai.cpp:793', 'xiangqi_ai.cpp:1381'],
-        takeaway: '伪合法着经过“make—查将—undo”才成为合法着。'
-      },
-      {
-        id: 'f12',
-        title: '为什么要单独记住将帅的位置？',
-        eyebrow: '会走 · 频繁查询',
-        layout: 'compare',
-        lead: '每试一步都要查将，先扫棋盘找将帅会反复付出同样的成本。',
-        cards: [
-          { title: '每次重找', text: '从 90 格中找到己方将帅，再检查攻击。' },
-          { title: '始终记住', text: 'king_pos[2] 保存红帅和黑将坐标；只在将帅移动、被吃或撤销时更新。' },
-          { title: '同一个模式', text: '棋子列表也一样：把频繁问题的答案保留在状态中。' }
-        ],
-        steps: ['每次查将前重扫 90 格找将帅，会反复付出同样的成本。', 'king_pos 记住双方将帅位置，只在真正变化时更新。', '棋子列表与将帅位置都是为频繁查询维护的索引。'],
-        notes: '“我们刚才定了一个简单规则：每试一步都要检查己方是否被将。那么第一步是找到己方将帅。真的每次都重新扫吗？”【停顿，指向 `king_pos[2]`】“将帅的位置几乎一直不变，只有它自己走、被吃或悔棋时才变。那就平时记住，改变时更新。”棋盘是真相，棋子列表和将帅坐标是为了快速回答频繁问题而维护的索引，它们在 make/undo 中保持一致。',
-        sources: ['用户原稿 PDF P5–8', 'xiangqi_ai.cpp:299', 'xiangqi_ai.cpp:490'],
-        takeaway: '频繁询问的答案，可以通过 make/undo 做增量维护。'
-      },
-      {
-        id: 'f13',
-        title: '没有合法着，对局就结束了',
-        eyebrow: '会走 · 终止条件',
-        layout: 'cards',
-        lead: '将死和困毙的外观不同，对引擎却有一个共同问题：轮到的一方还有没有合法着？',
-        cards: [
-          { title: '被将 + 无合法着', text: '将死：当前一方败。' },
-          { title: '未被将 + 无合法着', text: '困毙：中国象棋中当前一方同样败。' },
-          { title: '引擎的统一接口', text: '生成候选，逐一试走过滤；合法着数量为 0 则判负。' }
-        ],
-        steps: ['被将且无合法着，是将死。', '未被将但无合法着，是困毙。', '两种情况在中国象棋中都由当前行棋方负。'],
-        notes: '“如果轮到一方，我们把所有伪合法着都试了一遍，每一步都会让自己仍处在被将状态，发生了什么？”【停顿】“这就是将死。还有一种情况，它此刻没有被将，但也一步合法棋都没有。象棋里这也是负，叫困毙。”程序可以用同一个条件处理两种终局：过滤后的合法着数量为零，当前行棋方判负。',
-        sources: ['xiangqi_ai.cpp:1250', 'xiangqi_ai.cpp:1516', 'webapp.py:115'],
-        takeaway: '合法着为零，对局结束；将死和困毙都判当前行棋方负。'
-      },
-      {
-        id: 'f14',
-        title: '我们已经造出一个“规则世界”',
-        eyebrow: '第一阶段结算',
-        layout: 'map',
-        currentChapter: 0,
-        lead: '规则层已经能稳定试走每个合法选择；下一阶段要判断这些选择谁更好。',
-        steps: ['它已经能表示局面，并提出符合棋子规则的候选。', '它能通过试走、查将与悔棋筛出合法着。', '它还不知道哪步好，但第一个能力“会走”已经解锁。'],
-        notes: '“我们先给了电脑一张棋盘；用棋子规则提出伪合法候选；用 make/undo 在脑中试走；用将军检查排除危险候选；最后，没有合法着就结束对局。”【指向地图】“现在，‘会走’这个阶段已经完成。它能列出并检验当前局面的所有合法选择。可面对几手都合法的棋，它还不知道该选哪一手。下一阶段，我们给局面建立一把可以比较的尺子。”',
-        sources: ['用户原稿 PDF P4–8'],
-        takeaway: '第一个能力解锁：它会合法地走了。'
-      },
-      {
-        id: 'f15',
-        title: '都能走，哪一步更好？',
-        eyebrow: '通往第二阶段 · 局面评价',
-        layout: 'compare',
-        lead: '合法性只能排除不能走的棋；剩下的候选还需要比较好坏。',
-        cards: [
-          { title: '候选 A', text: '合法，但可能丢子或让位置变差。' },
-          { title: '候选 B', text: '同样合法，却可能得到更多子力或更好位置。' },
-          { title: '新问题', text: '怎样把局面的好坏变成可比较的分数？' }
-        ],
-        steps: ['规则层先留下所有合法候选。', '合法候选之间仍可能有明显好坏差别。', '下一步建立评价函数，让程序能比较局面。'],
-        notes: '“现在程序已经能回答‘这步能不能走’，可轮到它真正落子时，往往有很多步都合法。只靠规则，车白送给对手和安全保住车都在候选表里。”【指向两个候选】“我们需要一把尺子，把试走后的局面变成可比较的分数。它先会看子力，再把棋子所处的位置也放进判断。等它能评价当前局面，我们再让搜索把这把尺子带到未来。”',
-        sources: ['用户原稿 PDF P9–10', 'xiangqi_ai.cpp:91-106'],
-        takeaway: '会走解决合法性；评价函数开始区分候选的好坏。'
-      }
-    ]
-  });
-})();
+      "cards": [
+        {
+          "title": "A memory operation",
+          "text": "The pawn's record moves from slot 3 to slot 1; the pawn stays at (3,0)."
+        },
+        {
+          "title": "Boundary case",
+          "text": "If the captured piece is last, simply shorten the active list."
+        }
+      ],
+      "steps": [
+        "Save the captured piece's original slot: 1.",
+        "Copy (3,0) from slot 3 into slot 1; update its reverse index to 1.",
+        "npieces decreases from 4 to 3, keeping iteration contiguous.",
+        "Undo moves the replacement back to slot 3 and restores the cannon in slot 1."
+      ],
+      "notes": "Fill the captured piece's slot with the last entry; undo restores the original slot.\n\nSave the captured piece's original slot: 1.\n\nCopy (3,0) from slot 3 into slot 1; update its reverse index to 1.\n\nnpieces decreases from 4 to 3, keeping iteration contiguous.\n\nUndo moves the replacement back to slot 3 and restores the cannon in slot 1.\n\nA memory operation: The pawn's record moves from slot 3 to slot 1; the pawn stays at (3,0).\n\nBoundary case: If the captured piece is last, simply shorten the active list.\n\nSwap removal keeps lists compact; saved slots make undo exact.",
+      "sources": [
+        "xiangqi_ai.cpp:507-530",
+        "xiangqi_ai.cpp:575-600"
+      ],
+      "takeaway": "Swap removal keeps lists compact; saved slots make undo exact."
+    },
+    {
+      "id": "f08",
+      "title": "Try making a move",
+      "eyebrow": "Moves · make_move",
+      "layout": "compare",
+      "lead": "A trial move changes the position and remembers the captured piece.",
+      "boards": [
+        {
+          "fen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w",
+          "caption": "Before: Red to move, right cannon at (7,7)",
+          "highlights": [
+            {
+              "square": "h7",
+              "kind": "from"
+            },
+            {
+              "square": "h0",
+              "kind": "capture"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "h7",
+              "to": "h0",
+              "kind": "capture"
+            }
+          ],
+          "annotations": []
+        },
+        {
+          "fen": "rnbakabCr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C7/9/RNBAKABNR b",
+          "caption": "After: Red cannon captures the horse at (0,7), using (2,7) as a screen; Black to move",
+          "highlights": [
+            {
+              "square": "h7",
+              "kind": "from"
+            },
+            {
+              "square": "h0",
+              "kind": "to"
+            }
+          ],
+          "arrows": [],
+          "annotations": [
+            {
+              "square": "h2",
+              "text": "Screen"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        "The cannon moves from (7,7), over the screen at (2,7), to the horse at (0,7).",
+        "The source becomes empty, the target holds the red cannon, and Black moves next.",
+        "make_move returns the captured horse so the move can be undone."
+      ],
+      "notes": "A trial move changes the position and remembers the captured piece.\n\nThe cannon moves from (7,7), over the screen at (2,7), to the horse at (0,7).\n\nThe source becomes empty, the target holds the red cannon, and Black moves next.\n\nmake_move returns the captured horse so the move can be undone.\n\nmake_move updates the position and retains the information needed for undo.",
+      "sources": [
+        "Original presentation PDF P7",
+        "xiangqi_ai.cpp:485"
+      ],
+      "takeaway": "make_move updates the position and retains the information needed for undo."
+    },
+    {
+      "id": "f09",
+      "title": "Why undo a move immediately?",
+      "eyebrow": "Moves · undo_move",
+      "layout": "cards",
+      "lead": "The engine repeatedly explores hypothetical moves.",
+      "cards": [
+        {
+          "title": "1. make",
+          "text": "Try a candidate, obtain a new position, and remember any capture."
+        },
+        {
+          "title": "2. inspect",
+          "text": "Check legality; later, search further from this position."
+        },
+        {
+          "title": "3. undo",
+          "text": "Restore source, target, capture, turn, and all incremental state."
+        },
+        {
+          "title": "4. next",
+          "text": "Return to exactly the original state before trying another candidate."
+        }
+      ],
+      "steps": [
+        "Making a move enters a hypothetical future.",
+        "Inspect that future for legality or further variations.",
+        "Undo restores every state component before the next candidate."
+      ],
+      "notes": "The engine repeatedly explores hypothetical moves.\n\nMaking a move enters a hypothetical future.\n\nInspect that future for legality or further variations.\n\nUndo restores every state component before the next candidate.\n\n1. make: Try a candidate, obtain a new position, and remember any capture.\n\n2. inspect: Check legality; later, search further from this position.\n\n3. undo: Restore source, target, capture, turn, and all incremental state.\n\n4. next: Return to exactly the original state before trying another candidate.\n\nThe basic exploration loop is make → inspect → undo.",
+      "sources": [
+        "Original presentation PDF P7",
+        "xiangqi_ai.cpp:552"
+      ],
+      "takeaway": "The basic exploration loop is make → inspect → undo."
+    },
+    {
+      "id": "f10",
+      "title": "A piece can move there. Is the move legal?",
+      "eyebrow": "Moves · Pseudo-legal vs legal",
+      "layout": "board",
+      "lead": "A sideways pawn move may obey its local rule but expose the two kings.",
+      "boards": [
+        {
+          "fen": "4k4/9/9/9/4P4/9/9/9/9/4K4 w",
+          "caption": "Red to move: (4,4)→(4,3) exposes the facing kings",
+          "highlights": [
+            {
+              "square": "e4",
+              "kind": "from"
+            },
+            {
+              "square": "d4",
+              "kind": "candidate"
+            },
+            {
+              "square": "e3",
+              "kind": "candidate"
+            },
+            {
+              "square": "e0",
+              "kind": "danger"
+            },
+            {
+              "square": "e9",
+              "kind": "danger"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "e4",
+              "to": "d4",
+              "kind": "blocked"
+            },
+            {
+              "from": "e4",
+              "to": "e3",
+              "kind": "primary"
+            },
+            {
+              "from": "e0",
+              "to": "e9",
+              "kind": "danger",
+              "fragmentIndex": 1
+            }
+          ],
+          "annotations": [
+            {
+              "square": "e4",
+              "text": "Only blocker"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        "After crossing the river, the pawn may locally move (4,4)→(4,3).",
+        "Moving sideways leaves no piece between the kings.",
+        "(4,4)→(4,3) is pseudo-legal but illegal; (4,4)→(3,4) keeps the file blocked and is legal."
+      ],
+      "notes": "A sideways pawn move may obey its local rule but expose the two kings.\n\nAfter crossing the river, the pawn may locally move (4,4)→(4,3).\n\nMoving sideways leaves no piece between the kings.\n\n(4,4)→(4,3) is pseudo-legal but illegal; (4,4)→(3,4) keeps the file blocked and is legal.\n\nLocal piece movement alone does not establish position legality.",
+      "sources": [
+        "Original presentation PDF P8",
+        "xiangqi_ai.cpp:735",
+        "xiangqi_ai.cpp:793"
+      ],
+      "takeaway": "Local piece movement alone does not establish position legality."
+    },
+    {
+      "id": "f11",
+      "title": "A simple, reliable legality check",
+      "eyebrow": "Moves · Make, check, undo",
+      "layout": "code",
+      "lead": "Create the candidate position, then check the moving side's king.",
+      "code": "const bool red_mover = (turn == 0);  // Save the moving side\nstd::vector<Move> legal_moves;\nfor (Move m : pseudo_moves) {\n  char captured = make_move(m);\n  bool legal = !is_in_check(red_mover);\n  undo_move(m, captured);\n  if (legal) legal_moves.push_back(m);\n}",
+      "cards": [
+        {
+          "title": "Make",
+          "text": "Put the board into the candidate position."
+        },
+        {
+          "title": "Check",
+          "text": "Test enemy rook, cannon, horse, pawn, and king attacks on our king."
+        },
+        {
+          "title": "Always undo",
+          "text": "Return to the same starting position whether the move is legal or not."
+        }
+      ],
+      "steps": [
+        "Make the move to create the candidate position.",
+        "Check whether our king is under attack.",
+        "Always undo; retain only candidates that leave our king safe."
+      ],
+      "notes": "Create the candidate position, then check the moving side's king.\n\nMake the move to create the candidate position.\n\nCheck whether our king is under attack.\n\nAlways undo; retain only candidates that leave our king safe.\n\nMake: Put the board into the candidate position.\n\nCheck: Test enemy rook, cannon, horse, pawn, and king attacks on our king.\n\nAlways undo: Return to the same starting position whether the move is legal or not.\n\nPseudo-legal moves become legal after make → check → undo.",
+      "sources": [
+        "Original presentation PDF P8",
+        "xiangqi_ai.cpp:793",
+        "xiangqi_ai.cpp:1381"
+      ],
+      "takeaway": "Pseudo-legal moves become legal after make → check → undo."
+    },
+    {
+      "id": "f12",
+      "title": "Why cache the king positions?",
+      "eyebrow": "Moves · Frequent queries",
+      "layout": "compare",
+      "lead": "Every trial move checks king safety; repeatedly locating the king wastes work.",
+      "cards": [
+        {
+          "title": "Find it again",
+          "text": "Scan 90 squares, then check attacks."
+        },
+        {
+          "title": "Keep it cached",
+          "text": "king_pos[2] stores both kings; update on king moves, captures, and undo."
+        },
+        {
+          "title": "The same pattern",
+          "text": "Piece lists also retain answers to frequent queries in state."
+        }
+      ],
+      "steps": [
+        "Scanning 90 squares before every check repeats the same work.",
+        "king_pos changes only when the king position changes.",
+        "Piece lists and king positions are indices for frequent queries."
+      ],
+      "notes": "Every trial move checks king safety; repeatedly locating the king wastes work.\n\nScanning 90 squares before every check repeats the same work.\n\nking_pos changes only when the king position changes.\n\nPiece lists and king positions are indices for frequent queries.\n\nFind it again: Scan 90 squares, then check attacks.\n\nKeep it cached: king_pos[2] stores both kings; update on king moves, captures, and undo.\n\nThe same pattern: Piece lists also retain answers to frequent queries in state.\n\nMaintain frequent-query answers incrementally through make/undo.",
+      "sources": [
+        "Original presentation PDF P5–8",
+        "xiangqi_ai.cpp:299",
+        "xiangqi_ai.cpp:490"
+      ],
+      "takeaway": "Maintain frequent-query answers incrementally through make/undo."
+    },
+    {
+      "id": "f13",
+      "title": "No legal moves means the game is over",
+      "eyebrow": "Moves · Terminal conditions",
+      "layout": "cards",
+      "lead": "Checkmate and stalemate share one question: does the moving side have any legal move?",
+      "cards": [
+        {
+          "title": "In check + no legal move",
+          "text": "Checkmate: the side to move loses."
+        },
+        {
+          "title": "Not in check + no legal move",
+          "text": "Stalemate: the side to move also loses in Xiangqi."
+        },
+        {
+          "title": "One engine interface",
+          "text": "Generate and filter candidates; zero legal moves means a loss."
+        }
+      ],
+      "steps": [
+        "In check with no legal move is checkmate.",
+        "Not in check with no legal move is stalemate.",
+        "Both are losses for the side to move in Xiangqi."
+      ],
+      "notes": "Checkmate and stalemate share one question: does the moving side have any legal move?\n\nIn check with no legal move is checkmate.\n\nNot in check with no legal move is stalemate.\n\nBoth are losses for the side to move in Xiangqi.\n\nIn check + no legal move: Checkmate: the side to move loses.\n\nNot in check + no legal move: Stalemate: the side to move also loses in Xiangqi.\n\nOne engine interface: Generate and filter candidates; zero legal moves means a loss.\n\nZero legal moves ends the game; both mate and stalemate are losses.",
+      "sources": [
+        "xiangqi_ai.cpp:1250",
+        "xiangqi_ai.cpp:1516",
+        "webapp.py:115"
+      ],
+      "takeaway": "Zero legal moves ends the game; both mate and stalemate are losses."
+    },
+    {
+      "id": "f14",
+      "title": "We have built a world with rules",
+      "eyebrow": "Stage 1 complete",
+      "layout": "map",
+      "currentChapter": 0,
+      "lead": "We can now try every legal option. Next, decide which options are better.",
+      "steps": [
+        "Represent positions and propose candidates using piece rules.",
+        "Filter legal moves through make, check, and undo.",
+        "It cannot choose well yet, but it can move legally."
+      ],
+      "notes": "We can now try every legal option. Next, decide which options are better.\n\nRepresent positions and propose candidates using piece rules.\n\nFilter legal moves through make, check, and undo.\n\nIt cannot choose well yet, but it can move legally.\n\nFirst skill unlocked: legal moves.",
+      "sources": [
+        "Original presentation PDF P4–8"
+      ],
+      "takeaway": "First skill unlocked: legal moves."
+    },
+    {
+      "id": "f15",
+      "title": "All are legal. Which is better?",
+      "eyebrow": "Next: position evaluation",
+      "layout": "compare",
+      "lead": "Legality rejects impossible moves; the remaining moves still need comparison.",
+      "cards": [
+        {
+          "title": "Candidate A",
+          "text": "Legal, but may lose material or worsen the position."
+        },
+        {
+          "title": "Candidate B",
+          "text": "Also legal, but may gain material or improve placement."
+        },
+        {
+          "title": "The next question",
+          "text": "How can position quality become a comparable score?"
+        }
+      ],
+      "steps": [
+        "The rules layer retains every legal candidate.",
+        "Legal candidates can differ greatly in quality.",
+        "An evaluation function lets the program compare positions."
+      ],
+      "notes": "Legality rejects impossible moves; the remaining moves still need comparison.\n\nThe rules layer retains every legal candidate.\n\nLegal candidates can differ greatly in quality.\n\nAn evaluation function lets the program compare positions.\n\nCandidate A: Legal, but may lose material or worsen the position.\n\nCandidate B: Also legal, but may gain material or improve placement.\n\nThe next question: How can position quality become a comparable score?\n\nRules establish legality; evaluation distinguishes quality.",
+      "sources": [
+        "Original presentation PDF P9–10",
+        "xiangqi_ai.cpp:91-106"
+      ],
+      "takeaway": "Rules establish legality; evaluation distinguishes quality."
+    }
+  ]
+});

@@ -1,574 +1,1634 @@
-(function () {
-  const START_FEN = 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w';
-  const PAWN_RAW = [
-    [9,9,9,11,13,11,9,9,9],
-    [39,49,69,84,89,84,69,49,39],
-    [39,49,64,74,74,74,64,49,39],
-    [39,46,54,59,61,59,54,46,39],
-    [29,37,41,54,59,54,41,37,29],
-    [7,0,13,0,16,0,13,0,7],
-    [7,0,7,0,15,0,7,0,7],
-    [0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0]
-  ];
-  const FILES = 'abcdefghi';
-  const pawnHeatmap = PAWN_RAW.flatMap((row, rank) =>
-    row.map((value, file) => ({ square: `${FILES[file]}${rank}`, value }))
-  );
-
-  window.XQ_CHAPTERS = window.XQ_CHAPTERS || [];
-  window.XQ_CHAPTERS.push({
-    id: '03',
-    title: '第二阶段：给局面一点棋感',
-    slides: [
-      {
-        id: 'e01',
-        eyebrow: '第二阶段 · 评价',
-        title: '会走以后，往哪走？',
-        layout: 'board',
-        lead: '合法着可能有几十个。电脑需要一种可以比较未来局面的语言。',
-        boards: [{ fen: START_FEN, caption: '初始局面 · 红方走', orientation: 'red' }],
-        steps: ['搜索树停止展开的末端局面，叫叶子。', '到达叶子时，怎样知道谁更好？', '把“感觉”压成一个可比较的数。'],
-        cards: [
-          { title: '输入', text: '一个具体盘面' },
-          { title: '输出', text: '一个静态评价分数' }
-        ],
-        notes: '上一阶段里，我们先让程序会生成合法着、试走和悔棋。现在它面对一个更像人的问题：这么多合法着，哪一着更值得继续想？（停顿）搜索不可能永远展开，总会在某一层停下。搜索树停止展开的末端局面叫叶子；每个叶子都必须能够比较。\n\n[按键] 所以这一阶段先把一个盘面压缩成一个数。数越偏向红方，程序越愿意替红方保留这条变化；越偏向黑方则相反。“静态”表示它只衡量眼前盘面，后面的搜索再展开对手应手，检查这份判断。',
-        sources: ['xiangqi_ai.cpp:791'],
-        takeaway: '评价函数给搜索叶节点一个可比较的刻度。'
-      },
-      {
-        id: 'e02',
-        eyebrow: '第一把尺子',
-        title: '最朴素的棋感：我还剩多少子？',
-        layout: 'table',
-        lead: '先给每类棋子一个基础价格，再做红黑求和。',
-        table: {
-          headers: ['棋子', '将 / 帅', '车', '马', '炮', '仕 / 相', '兵'],
-          rows: [['项目中的基础值', '10000', '1000', '450', '450', '120', '100']]
+window.XQ_CHAPTERS = window.XQ_CHAPTERS || [];
+window.XQ_CHAPTERS.push({
+  "id": "03",
+  "title": "Stage 2: Evaluating positions",
+  "slides": [
+    {
+      "id": "e01",
+      "eyebrow": "Stage 2 · Evaluation",
+      "title": "We can move. Which move should we choose?",
+      "layout": "board",
+      "lead": "There may be dozens of legal moves. We need a language for comparing future positions.",
+      "boards": [
+        {
+          "fen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w",
+          "caption": "Initial position · Red to move",
+          "orientation": "red"
+        }
+      ],
+      "steps": [
+        "A position where the search stops expanding is a leaf.",
+        "At a leaf, how do we decide who is better?",
+        "Turn intuition into a comparable number."
+      ],
+      "cards": [
+        {
+          "title": "Input",
+          "text": "A specific position"
         },
-        steps: ['红方子力总和 − 黑方子力总和', '吃到一辆车，通常比吃到一个兵更值得。'],
-        code: 'score = Σ 红方棋子价值 − Σ 黑方棋子价值;',
-        notes: '第一把尺子非常直觉：数子。项目里将帅是一万，车是一千，马和炮各四百五，仕相一百二，兵一百。真正的胜负由搜索的终局逻辑单独处理。\n\n[按键] 对红方棋子加分，对黑方棋子减分。这样同一个 score 始终从红方视角表达局面，正数偏红，负数偏黑。材料价值是一套用于比较取舍的工程刻度，相对大小先表达“丢车通常很痛”。\n\n现在程序可以按子力多少比较候选，却会说出一句很可疑的话：两个位置上的同一枚兵，价值永远相同。',
-        sources: ['xiangqi_ai.cpp:91-106'],
-        takeaway: '子力求和能表达“有什么”，还不能表达“站在哪里”。'
+        {
+          "title": "Output",
+          "text": "A static evaluation score"
+        }
+      ],
+      "notes": "There may be dozens of legal moves. We need a language for comparing future positions.\n\nA position where the search stops expanding is a leaf.\n\nAt a leaf, how do we decide who is better?\n\nTurn intuition into a comparable number.\n\nInput: A specific position\n\nOutput: A static evaluation score\n\nEvaluation gives search leaves a common scale.",
+      "sources": [
+        "xiangqi_ai.cpp:791"
+      ],
+      "takeaway": "Evaluation gives search leaves a common scale."
+    },
+    {
+      "id": "e02",
+      "eyebrow": "The first measure",
+      "title": "Basic intuition: how much material remains?",
+      "layout": "table",
+      "lead": "Assign each piece type a base value, then sum for Red and Black.",
+      "table": {
+        "headers": [
+          "Piece",
+          "King",
+          "Rook",
+          "Horse",
+          "Cannon",
+          "Advisor / elephant",
+          "Pawn"
+        ],
+        "rows": [
+          [
+            "Project base values",
+            "10000",
+            "1000",
+            "450",
+            "450",
+            "120",
+            "100"
+          ]
+        ]
       },
-      {
-        id: 'e03',
-        eyebrow: '第一个反例',
-        title: '棋子没变，局面真的一样吗？',
-        layout: 'compare',
-        lead: '两边子力数量完全相同；右图的兵已经过河，单纯数子却仍给出同分。',
-        boards: [
+      "steps": [
+        "Red material total − Black material total",
+        "Winning a rook is usually worth more than winning a pawn."
+      ],
+      "code": "score = sum(Red piece values) − sum(Black piece values);",
+      "notes": "Assign each piece type a base value, then sum for Red and Black.\n\nRed material total − Black material total\n\nWinning a rook is usually worth more than winning a pawn.\n\nMaterial describes what remains, but not where it stands.",
+      "sources": [
+        "xiangqi_ai.cpp:91-106"
+      ],
+      "takeaway": "Material describes what remains, but not where it stands."
+    },
+    {
+      "id": "e03",
+      "eyebrow": "A first counterexample",
+      "title": "Same pieces, same position quality?",
+      "layout": "compare",
+      "lead": "Material is identical; the pawn on the right has crossed the river, yet material-only scores are equal.",
+      "boards": [
+        {
+          "fen": "9/9/5k3/9/9/4P4/9/9/9/3K5 w",
+          "caption": "Red to move · Central pawn before crossing",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e5",
+              "kind": "focus"
+            }
+          ],
+          "annotations": [
+            {
+              "square": "e5",
+              "text": "Same pawn"
+            }
+          ]
+        },
+        {
+          "fen": "9/9/5k3/9/4P4/9/9/9/9/3K5 w",
+          "caption": "Red to move · Central pawn after crossing",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e4",
+              "kind": "focus"
+            }
+          ],
+          "annotations": [
+            {
+              "square": "e4",
+              "text": "New square"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        "Material is unchanged.",
+        "After crossing, the pawn also gains sideways movement.",
+        "Can evaluation account for placement?"
+      ],
+      "notes": "Material is identical; the pawn on the right has crossed the river, yet material-only scores are equal.\n\nMaterial is unchanged.\n\nAfter crossing, the pawn also gains sideways movement.\n\nCan evaluation account for placement?\n\nEqual material can deserve different scores: add position.",
+      "sources": [
+        "xiangqi_ai.cpp:112-123",
+        "象棋教学局面核验.md:A2"
+      ],
+      "takeaway": "Equal material can deserve different scores: add position."
+    },
+    {
+      "id": "e04",
+      "eyebrow": "PST",
+      "title": "A table of squares for each piece",
+      "layout": "heatmap",
+      "lead": "PST: piece type × square → a predefined value.",
+      "boards": [
+        {
+          "caption": "Red pawn PST · Red perspective · 90 entries",
+          "orientation": "red",
+          "heatmap": [
+            {
+              "square": "a0",
+              "value": 9
+            },
+            {
+              "square": "b0",
+              "value": 9
+            },
+            {
+              "square": "c0",
+              "value": 9
+            },
+            {
+              "square": "d0",
+              "value": 11
+            },
+            {
+              "square": "e0",
+              "value": 13
+            },
+            {
+              "square": "f0",
+              "value": 11
+            },
+            {
+              "square": "g0",
+              "value": 9
+            },
+            {
+              "square": "h0",
+              "value": 9
+            },
+            {
+              "square": "i0",
+              "value": 9
+            },
+            {
+              "square": "a1",
+              "value": 39
+            },
+            {
+              "square": "b1",
+              "value": 49
+            },
+            {
+              "square": "c1",
+              "value": 69
+            },
+            {
+              "square": "d1",
+              "value": 84
+            },
+            {
+              "square": "e1",
+              "value": 89
+            },
+            {
+              "square": "f1",
+              "value": 84
+            },
+            {
+              "square": "g1",
+              "value": 69
+            },
+            {
+              "square": "h1",
+              "value": 49
+            },
+            {
+              "square": "i1",
+              "value": 39
+            },
+            {
+              "square": "a2",
+              "value": 39
+            },
+            {
+              "square": "b2",
+              "value": 49
+            },
+            {
+              "square": "c2",
+              "value": 64
+            },
+            {
+              "square": "d2",
+              "value": 74
+            },
+            {
+              "square": "e2",
+              "value": 74
+            },
+            {
+              "square": "f2",
+              "value": 74
+            },
+            {
+              "square": "g2",
+              "value": 64
+            },
+            {
+              "square": "h2",
+              "value": 49
+            },
+            {
+              "square": "i2",
+              "value": 39
+            },
+            {
+              "square": "a3",
+              "value": 39
+            },
+            {
+              "square": "b3",
+              "value": 46
+            },
+            {
+              "square": "c3",
+              "value": 54
+            },
+            {
+              "square": "d3",
+              "value": 59
+            },
+            {
+              "square": "e3",
+              "value": 61
+            },
+            {
+              "square": "f3",
+              "value": 59
+            },
+            {
+              "square": "g3",
+              "value": 54
+            },
+            {
+              "square": "h3",
+              "value": 46
+            },
+            {
+              "square": "i3",
+              "value": 39
+            },
+            {
+              "square": "a4",
+              "value": 29
+            },
+            {
+              "square": "b4",
+              "value": 37
+            },
+            {
+              "square": "c4",
+              "value": 41
+            },
+            {
+              "square": "d4",
+              "value": 54
+            },
+            {
+              "square": "e4",
+              "value": 59
+            },
+            {
+              "square": "f4",
+              "value": 54
+            },
+            {
+              "square": "g4",
+              "value": 41
+            },
+            {
+              "square": "h4",
+              "value": 37
+            },
+            {
+              "square": "i4",
+              "value": 29
+            },
+            {
+              "square": "a5",
+              "value": 7
+            },
+            {
+              "square": "b5",
+              "value": 0
+            },
+            {
+              "square": "c5",
+              "value": 13
+            },
+            {
+              "square": "d5",
+              "value": 0
+            },
+            {
+              "square": "e5",
+              "value": 16
+            },
+            {
+              "square": "f5",
+              "value": 0
+            },
+            {
+              "square": "g5",
+              "value": 13
+            },
+            {
+              "square": "h5",
+              "value": 0
+            },
+            {
+              "square": "i5",
+              "value": 7
+            },
+            {
+              "square": "a6",
+              "value": 7
+            },
+            {
+              "square": "b6",
+              "value": 0
+            },
+            {
+              "square": "c6",
+              "value": 7
+            },
+            {
+              "square": "d6",
+              "value": 0
+            },
+            {
+              "square": "e6",
+              "value": 15
+            },
+            {
+              "square": "f6",
+              "value": 0
+            },
+            {
+              "square": "g6",
+              "value": 7
+            },
+            {
+              "square": "h6",
+              "value": 0
+            },
+            {
+              "square": "i6",
+              "value": 7
+            },
+            {
+              "square": "a7",
+              "value": 0
+            },
+            {
+              "square": "b7",
+              "value": 0
+            },
+            {
+              "square": "c7",
+              "value": 0
+            },
+            {
+              "square": "d7",
+              "value": 0
+            },
+            {
+              "square": "e7",
+              "value": 0
+            },
+            {
+              "square": "f7",
+              "value": 0
+            },
+            {
+              "square": "g7",
+              "value": 0
+            },
+            {
+              "square": "h7",
+              "value": 0
+            },
+            {
+              "square": "i7",
+              "value": 0
+            },
+            {
+              "square": "a8",
+              "value": 0
+            },
+            {
+              "square": "b8",
+              "value": 0
+            },
+            {
+              "square": "c8",
+              "value": 0
+            },
+            {
+              "square": "d8",
+              "value": 0
+            },
+            {
+              "square": "e8",
+              "value": 0
+            },
+            {
+              "square": "f8",
+              "value": 0
+            },
+            {
+              "square": "g8",
+              "value": 0
+            },
+            {
+              "square": "h8",
+              "value": 0
+            },
+            {
+              "square": "i8",
+              "value": 0
+            },
+            {
+              "square": "a9",
+              "value": 0
+            },
+            {
+              "square": "b9",
+              "value": 0
+            },
+            {
+              "square": "c9",
+              "value": 0
+            },
+            {
+              "square": "d9",
+              "value": 0
+            },
+            {
+              "square": "e9",
+              "value": 0
+            },
+            {
+              "square": "f9",
+              "value": 0
+            },
+            {
+              "square": "g9",
+              "value": 0
+            },
+            {
+              "square": "h9",
+              "value": 0
+            },
+            {
+              "square": "i9",
+              "value": 0
+            }
+          ],
+          "heatMax": 100
+        }
+      ],
+      "steps": [
+        "A lookup takes O(1).",
+        "Black uses the same table with ranks mirrored.",
+        "Zeros on the rear three ranks mark unreachable pawn squares, not worthless legal squares."
+      ],
+      "notes": "PST: piece type × square → a predefined value.\n\nA lookup takes O(1).\n\nBlack uses the same table with ranks mirrored.\n\nZeros on the rear three ranks mark unreachable pawn squares, not worthless legal squares.\n\nOne PST lookup combines piece type and location.",
+      "sources": [
+        "xiangqi_ai.cpp:109-123",
+        "xiangqi_ai.cpp:434-441"
+      ],
+      "takeaway": "One PST lookup combines piece type and location."
+    },
+    {
+      "id": "e05",
+      "eyebrow": "PST suggests; search checks consequences",
+      "title": "What does 16 → 59 → 89 → 13 express?",
+      "layout": "compare",
+      "lead": "Four diagrams show one pawn's table value at four points on a file.",
+      "boards": [
+        {
+          "fen": "9/9/5k3/9/9/4P4/9/9/9/3K5 w",
+          "caption": "Before crossing · 16",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e5",
+              "kind": "focus"
+            }
+          ],
+          "annotations": [
+            {
+              "square": "e5",
+              "text": "16"
+            }
+          ]
+        },
+        {
+          "fen": "9/9/5k3/9/4P4/9/9/9/9/3K5 w",
+          "caption": "Just crossed · 59",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e4",
+              "kind": "focus"
+            }
+          ],
+          "annotations": [
+            {
+              "square": "e4",
+              "text": "59"
+            }
+          ]
+        },
+        {
+          "fen": "9/4P4/5k3/9/9/9/9/9/9/3K5 w",
+          "caption": "Penultimate rank · 89",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e1",
+              "kind": "focus"
+            }
+          ],
+          "annotations": [
+            {
+              "square": "e1",
+              "text": "89"
+            }
+          ]
+        },
+        {
+          "fen": "4P4/9/5k3/9/9/9/9/9/9/3K5 w",
+          "caption": "Back rank · 13",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e0",
+              "kind": "focus"
+            }
+          ],
+          "annotations": [
+            {
+              "square": "e0",
+              "text": "13"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        "The table favors advanced pawns on the penultimate rank.",
+        "The back-rank value 13 is a static preference; search determines tactical value."
+      ],
+      "notes": "Four diagrams show one pawn's table value at four points on a file.\n\nThe table favors advanced pawns on the penultimate rank.\n\nThe back-rank value 13 is a static preference; search determines tactical value.\n\nPST encodes heuristics; the position and search determine the outcome.",
+      "sources": [
+        "xiangqi_ai.cpp:112-123",
+        "象棋教学局面核验.md:对当前预览稿的棋理教学审查"
+      ],
+      "takeaway": "PST encodes heuristics; the position and search determine the outcome."
+    },
+    {
+      "id": "s06",
+      "title": "Wins and losses are not ordinary scores",
+      "eyebrow": "Evaluation limits · Terminal scores",
+      "layout": "cards",
+      "lead": "Material and position compare ongoing games; decisive outcomes use scores near ±30000.",
+      "cards": [
+        {
+          "title": "Ongoing position",
+          "text": "Material and square values measure relative positional quality."
+        },
+        {
+          "title": "Red wins",
+          "text": "Black king absent, or Black has no legal move: return near +30000."
+        },
+        {
+          "title": "Black wins",
+          "text": "Red king absent, or Red has no legal move: return near −30000."
+        },
+        {
+          "title": "Why separate them?",
+          "text": "A decisive outcome must outweigh ordinary material or positional gains."
+        }
+      ],
+      "steps": [
+        "SCORE_INF is 30000 in this project.",
+        "A missing king or no legal move establishes a decisive result.",
+        "Terminal scores greatly exceed ordinary evaluation magnitudes."
+      ],
+      "notes": "Material and position compare ongoing games; decisive outcomes use scores near ±30000.\n\nSCORE_INF is 30000 in this project.\n\nA missing king or no legal move establishes a decisive result.\n\nTerminal scores greatly exceed ordinary evaluation magnitudes.\n\nOngoing position: Material and square values measure relative positional quality.\n\nRed wins: Black king absent, or Black has no legal move: return near +30000.\n\nBlack wins: Red king absent, or Red has no legal move: return near −30000.\n\nWhy separate them?: A decisive outcome must outweigh ordinary material or positional gains.\n\nStatic evaluation compares ongoing positions; terminal scores encode decisive outcomes.",
+      "sources": [
+        "xiangqi_ai.cpp:31-32",
+        "xiangqi_ai.cpp:1172-1173",
+        "xiangqi_ai.cpp:1516-1519"
+      ],
+      "takeaway": "Static evaluation compares ongoing positions; terminal scores encode decisive outcomes."
+    },
+    {
+      "id": "e06",
+      "eyebrow": "Evaluation × Search",
+      "title": "Why advance the pawn for a static loss of 60?",
+      "layout": "compare",
+      "lead": "Capturing the horse looks better immediately; exploring replies reveals a winning alternative.",
+      "boards": [
+        {
+          "fen": "3n1k3/5nP2/9/9/9/9/9/9/9/4K4 w",
+          "caption": "Before · Red to move · Two candidates",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "g1",
+              "kind": "from"
+            },
+            {
+              "square": "f1",
+              "kind": "danger"
+            },
+            {
+              "square": "g0",
+              "kind": "to"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "g1",
+              "to": "f1",
+              "kind": "secondary"
+            },
+            {
+              "from": "g1",
+              "to": "g0",
+              "kind": "primary"
+            }
+          ],
+          "annotations": []
+        },
+        {
+          "fen": "3n1k3/5P3/9/9/9/9/9/9/9/4K4 b",
+          "caption": "Pawn captures horse sideways; Black king can recapture on (1,5)",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "f0",
+              "kind": "from"
+            },
+            {
+              "square": "f1",
+              "kind": "danger"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "f0",
+              "to": "f1",
+              "kind": "secondary"
+            }
+          ]
+        },
+        {
+          "fen": "3n1kP2/5n3/9/9/9/9/9/9/9/4K4 b",
+          "caption": "Pawn advances; Black cannot escape check: mate in one",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "g0",
+              "kind": "focus"
+            },
+            {
+              "square": "f0",
+              "kind": "danger"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "g0",
+              "to": "f0",
+              "kind": "primary"
+            }
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "title": "Immediate capture gain",
+          "text": "Black horse total 102; pawn rises from 69 to 84: static gain +117."
+        },
+        {
+          "title": "Static advance cost",
+          "text": "Pawn PST falls from 69 to 9: −60."
+        },
+        {
+          "title": "After searching",
+          "text": "Advancing delivers mate, returning a score near +30000."
+        }
+      ],
+      "steps": [
+        "Material gain usually exceeds a small positional improvement, making the capture attractive.",
+        "Black's king recaptures the pawn; search removes it and continues the exchange line.",
+        "The advance loses 60 statically but leaves Black no escape from check."
+      ],
+      "notes": "Capturing the horse looks better immediately; exploring replies reveals a winning alternative.\n\nMaterial gain usually exceeds a small positional improvement, making the capture attractive.\n\nBlack's king recaptures the pawn; search removes it and continues the exchange line.\n\nThe advance loses 60 statically but leaves Black no escape from check.\n\nImmediate capture gain: Black horse total 102; pawn rises from 69 to 84: static gain +117.\n\nStatic advance cost: Pawn PST falls from 69 to 9: −60.\n\nAfter searching: Advancing delivers mate, returning a score near +30000.\n\nSearch follows exchanges; their net gain is still below the alternative's decisive win.",
+      "sources": [
+        "xiangqi_ai.cpp:112-123",
+        "xiangqi_ai.cpp:182-195",
+        "xiangqi_ai.cpp:434-441",
+        "xiangqi_ai.cpp:1516-1518"
+      ],
+      "takeaway": "Search follows exchanges; their net gain is still below the alternative's decisive win."
+    },
+    {
+      "id": "e08",
+      "eyebrow": "Avoid scanning all 90 squares",
+      "title": "A quiet advance changes only two values",
+      "layout": "compare",
+      "lead": "The same legal central-pawn advance, with an empty target.",
+      "boards": [
+        {
+          "fen": "9/9/5k3/9/9/4P4/9/9/9/3K5 w",
+          "caption": "Before advance · Pawn value 16",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e5",
+              "kind": "from"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "e5",
+              "to": "e4",
+              "kind": "primary"
+            }
+          ]
+        },
+        {
+          "fen": "9/9/5k3/9/4P4/9/9/9/9/3K5 b",
+          "caption": "After advance · Pawn value 59",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e4",
+              "kind": "to"
+            }
+          ]
+        }
+      ],
+      "code": "Δscore = −16 + 59 = +43",
+      "steps": [
+        "Δscore = −16 + 59 = +43",
+        "Subtract the old square value and add the new one.",
+        "Undo applies the exact inverse."
+      ],
+      "notes": "The same legal central-pawn advance, with an empty target.\n\nΔscore = −16 + 59 = +43\n\nSubtract the old square value and add the new one.\n\nUndo applies the exact inverse.\n\nMaintain evaluation with moves instead of rescanning each search node.",
+      "sources": [
+        "xiangqi_ai.cpp:485-505",
+        "xiangqi_ai.cpp:552-568",
+        "象棋教学局面核验.md:A2"
+      ],
+      "takeaway": "Maintain evaluation with moves instead of rescanning each search node."
+    },
+    {
+      "id": "e09",
+      "eyebrow": "Incremental scoring",
+      "title": "If the target is occupied, remove its value too",
+      "layout": "compare",
+      "lead": "The same pawn advance, now capturing a black pawn.",
+      "boards": [
+        {
+          "fen": "9/9/5k3/9/4p4/4P4/9/9/9/3K5 w",
+          "caption": "Before · Black pawn ahead",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e5",
+              "kind": "from"
+            },
+            {
+              "square": "e4",
+              "kind": "capture"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "e5",
+              "to": "e4",
+              "kind": "capture"
+            }
+          ]
+        },
+        {
+          "fen": "9/9/5k3/9/4P4/9/9/9/9/3K5 b",
+          "caption": "After · Black pawn removed",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e4",
+              "kind": "to"
+            }
+          ],
+          "annotations": [
+            {
+              "square": "e4",
+              "text": "59"
+            }
+          ]
+        }
+      ],
+      "code": "Δscore = −16 − (−16) + 59 = +59",
+      "steps": [
+        "Δscore = −16 − (−16) + 59 = +59",
+        "Remove the old red-pawn value: −16.",
+        "Remove Black's contribution: −(−16); add the new red-pawn value: +59."
+      ],
+      "notes": "The same pawn advance, now capturing a black pawn.\n\nΔscore = −16 − (−16) + 59 = +59\n\nRemove the old red-pawn value: −16.\n\nRemove Black's contribution: −(−16); add the new red-pawn value: +59.\n\nMoves, captures, and undo update only affected pieces.",
+      "sources": [
+        "xiangqi_ai.cpp:485-505",
+        "象棋教学局面核验.md:A1"
+      ],
+      "takeaway": "Moves, captures, and undo update only affected pieces."
+    },
+    {
+      "id": "e10",
+      "eyebrow": "A second counterexample",
+      "title": "Independent square values miss relationships",
+      "layout": "board",
+      "lead": "Adding separate piece scores loses interactions between pieces.",
+      "cards": [
+        {
+          "title": "Defensive structure",
+          "text": "Mutual protection by advisors and elephants is a relationship, not one square value."
+        },
+        {
+          "title": "Open-file cannon",
+          "text": "Its value depends on the line and occupancy between cannon and enemy king."
+        },
+        {
+          "title": "Pins / control",
+          "text": "Moving one piece can change another piece's legal space."
+        }
+      ],
+      "boards": [
+        {
+          "fen": "4k4/9/9/9/4C4/9/9/9/9/3K5 w",
+          "caption": "Open-file cannon · No screen, so no current check",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e0",
+              "kind": "focus"
+            },
+            {
+              "square": "e4",
+              "kind": "focus"
+            }
+          ],
+          "annotations": [
+            {
+              "square": "e2",
+              "text": "No screen"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        "PST asks only: what piece, and where?",
+        "Relational features ask: with whom, behind which blocker, controlling what together?"
+      ],
+      "notes": "Adding separate piece scores loses interactions between pieces.\n\nPST asks only: what piece, and where?\n\nRelational features ask: with whom, behind which blocker, controlling what together?\n\nDefensive structure: Mutual protection by advisors and elephants is a relationship, not one square value.\n\nOpen-file cannon: Its value depends on the line and occupancy between cannon and enemy king.\n\nPins / control: Moving one piece can change another piece's legal space.\n\nSingle-piece features are cheap; richer relationships require more computation.",
+      "sources": [
+        "如何写一个业余象棋引擎.pdf:P12-P13",
+        "xiangqi_ai.cpp:791"
+      ],
+      "takeaway": "Single-piece features are cheap; richer relationships require more computation."
+    },
+    {
+      "id": "e17",
+      "eyebrow": "Another evaluation path · 1/5",
+      "title": "Model relationships while updating few features",
+      "layout": "compare",
+      "lead": "NNUE extends the incremental PST idea from one number to a vector of intermediate features.",
+      "boards": [
+        {
+          "fen": "9/9/5k3/9/9/4P4/9/9/9/3K5 w",
+          "caption": "Before · Pawn has not crossed",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e5",
+              "kind": "from"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "e5",
+              "to": "e4",
+              "kind": "primary"
+            }
+          ]
+        },
+        {
+          "fen": "9/9/5k3/9/4P4/9/9/9/9/3K5 b",
+          "caption": "After advance · Pawn has crossed",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e4",
+              "kind": "to"
+            }
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "title": "PST",
+          "text": "P[pawn, square] is a scalar: one number."
+        },
+        {
+          "title": "NNUE",
+          "text": "W[pawn, square] is a first-layer weight column: a vector."
+        }
+      ],
+      "code": "PST:  S' = S − P[pawn, old] + P[pawn, new]\nNNUE: A' = A − W[pawn, old] + W[pawn, new]",
+      "steps": [
+        "Only a few piece-on-square features are active.",
+        "Both PST and NNUE subtract the old feature and add the new one."
+      ],
+      "notes": "NNUE extends the incremental PST idea from one number to a vector of intermediate features.\n\nOnly a few piece-on-square features are active.\n\nBoth PST and NNUE subtract the old feature and add the new one.\n\nPST: P[pawn, square] is a scalar: one number.\n\nNNUE: W[pawn, square] is a first-layer weight column: a vector.\n\nPST updates a scalar; NNUE updates a vector. Both touch only changed features.",
+      "sources": [
+        "https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html",
+        "pikafish-pst/src/evaluate.cpp:143-176",
+        "pikafish-pst/src/nnue/nnue_accumulator.h:19-21",
+        "xiangqi_ai.cpp:791"
+      ],
+      "takeaway": "PST updates a scalar; NNUE updates a vector. Both touch only changed features."
+    },
+    {
+      "id": "e17b",
+      "eyebrow": "Another evaluation path · 2/5",
+      "title": "Cache the first-layer sum in an accumulator",
+      "layout": "code",
+      "lead": "A stores the sum of contributions from all active board features.",
+      "code": "Accumulator      A = [10, 20]\nOld contribution Wold = [2, 3]\nNew contribution Wnew = [5, 4]\n\nA' = A − Wold + Wnew\n   = [10,20] − [2,3] + [5,4]\n   = [13,21]",
+      "codeNote": "Two-dimensional teaching example, not actual network weights.",
+      "cards": [
+        {
+          "title": "Weight vector W",
+          "text": "The learned contribution of one piece-square feature."
+        },
+        {
+          "title": "Accumulator A",
+          "text": "Sum all active feature columns and retain the result."
+        }
+      ],
+      "steps": [
+        "The pawn leaves its old square: subtract that column.",
+        "It appears on the new square: add that column.",
+        "Other pieces' contributions remain cached in A."
+      ],
+      "notes": "A stores the sum of contributions from all active board features.\n\nThe pawn leaves its old square: subtract that column.\n\nIt appears on the new square: add that column.\n\nOther pieces' contributions remain cached in A.\n\nWeight vector W: The learned contribution of one piece-square feature.\n\nAccumulator A: Sum all active feature columns and retain the result.\n\nThe accumulator replaces full recomputation with subtract-old, add-new.",
+      "sources": [
+        "https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html#updating-the-accumulator"
+      ],
+      "takeaway": "The accumulator replaces full recomputation with subtract-old, add-new."
+    },
+    {
+      "id": "e17c",
+      "eyebrow": "Another evaluation path · 3/5",
+      "title": "Captures also subtract the captured vector",
+      "layout": "compare",
+      "lead": "The pawn advances again, this time onto a black pawn.",
+      "boards": [
+        {
+          "fen": "9/9/5k3/9/4p4/4P4/9/9/9/3K5 w",
+          "caption": "Before · Black pawn ahead",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e5",
+              "kind": "from"
+            },
+            {
+              "square": "e4",
+              "kind": "capture"
+            }
+          ],
+          "arrows": [
+            {
+              "from": "e5",
+              "to": "e4",
+              "kind": "capture"
+            }
+          ]
+        },
+        {
+          "fen": "9/9/5k3/9/4P4/9/9/9/9/3K5 b",
+          "caption": "After · Black pawn removed",
+          "orientation": "red",
+          "highlights": [
+            {
+              "square": "e4",
+              "kind": "to"
+            }
+          ]
+        }
+      ],
+      "code": "A' = A\n   − W[red pawn, old square]\n   − W[black pawn, captured square]\n   + W[red pawn, new square]",
+      "steps": [
+        "Moving piece: subtract its old feature and add its new feature.",
+        "Captured piece: subtract its feature vector too.",
+        "An ordinary non-king move usually changes only these few inputs."
+      ],
+      "notes": "The pawn advances again, this time onto a black pawn.\n\nMoving piece: subtract its old feature and add its new feature.\n\nCaptured piece: subtract its feature vector too.\n\nAn ordinary non-king move usually changes only these few inputs.\n\nMoves and captures incrementally update only changed first-layer columns.",
+      "sources": [
+        "https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html#updating-the-accumulator",
+        "象棋教学局面核验.md:A1"
+      ],
+      "takeaway": "Moves and captures incrementally update only changed first-layer columns."
+    },
+    {
+      "id": "e17d",
+      "eyebrow": "Another evaluation path · 4/5",
+      "title": "The accumulator still needs an output network",
+      "layout": "figure",
+      "lead": "Incremental updates save first-layer summation; this project minimizes the remaining network to preserve search depth.",
+      "figure": {
+        "src": "assets/nnue/stockfish-a-features-network.svg",
+        "alt": "Stockfish NNUE teaching diagram: sparse board features feed a wide first layer, smaller hidden layers, and a position score.",
+        "caption": "Official chess NNUE diagram; this project reuses the incremental wide-layer idea with a smaller direct output head.",
+        "credit": "Stockfish nnue-pytorch documentation · GPLv3",
+        "legend": [
           {
-            fen: '9/9/5k3/9/9/4P4/9/9/9/3K5 w',
-            caption: '红走 · 未过河的中兵',
-            orientation: 'red',
-            highlights: [{ square: 'e5', kind: 'focus' }],
-            annotations: [{ square: 'e5', text: '同一枚兵' }]
+            "color": "#10c940",
+            "text": "Dark green: piece-square features"
           },
           {
-            fen: '9/9/5k3/9/4P4/9/9/9/9/3K5 w',
-            caption: '红走 · 过河后的中兵',
-            orientation: 'red',
-            highlights: [{ square: 'e4', kind: 'focus' }],
-            annotations: [{ square: 'e4', text: '位置变了' }]
+            "color": "#b8efd0",
+            "text": "Light green: incremental first layer A"
+          },
+          {
+            "color": "#fff100",
+            "text": "Yellow: subsequent network"
+          },
+          {
+            "color": "#f20d17",
+            "text": "Red: final score"
           }
-        ],
-        steps: ['材料完全相同。', '过河后，它的活动方式也变了。', '能否把“位置”也交给评价函数？'],
-        notes: '请看两个独立的教学摆局：双方棋子种类和数量完全相同，只改变红兵的位置。（停顿）如果只数子，两边会得到同一个分数。\n\n[按键] 右边的兵已经过河，活动方式也随之改变。同样是兵，位置能不能成为评价函数的输入？\n\n[按键] 下一页给这个工具命名为 PST，并展示源码里的具体数值。位置表先给出偏好，搜索再检查走法安全和对手反击。',
-        sources: ['xiangqi_ai.cpp:112-123', '象棋教学局面核验.md:A2'],
-        takeaway: '材料相同仍可能需要不同评分，于是位置进入评价。'
+        ]
       },
-      {
-        id: 'e04',
-        eyebrow: 'PST',
-        title: '给每种棋子画一张位置表',
-        layout: 'heatmap',
-        lead: 'PST（Piece-Square Table）：棋子种类 × 所在格 → 一个预先写好的值。',
-        boards: [{
-          caption: '红兵 PST 数值底板 · 红方视角 · 90 个表项',
-          orientation: 'red',
-          heatmap: pawnHeatmap,
-          heatMax: 100
-        }],
-        steps: ['查表是 O(1)。', '黑方使用上下镜像后的同一张表。', '后三线的 0 是正常对局中红兵不可到达的位置，不是“可走但没价值”。'],
-        notes: '这张图借棋盘坐标展示九十个表项，盘上不放棋子，是一张位置统计底板。PST 是 Piece-Square Table 的缩写，可以理解为“某种棋子站在某个交叉点时，程序先给多少分”。\n\n[按键] 查一次表只需要棋子类型、行和列，所以是常数时间。黑方把行上下镜像后复用同一张表。\n\n[按键] 底部三行的零对应正常对局中红兵无法退回的格子，表示不可达位置，不是“可走但价值为零”。这张表提供位置先验，具体走法仍由搜索展开。',
-        sources: ['xiangqi_ai.cpp:109-123', 'xiangqi_ai.cpp:434-441'],
-        takeaway: 'PST 用一次查表把棋子类型和位置合并成一个值。'
-      },
-      {
-        id: 'e05',
-        eyebrow: 'PST 给方向，搜索看后果',
-        title: '16 → 59 → 89 → 13，表达了什么？',
-        layout: 'compare',
-        lead: '四幅图分别观察同一路兵在四个位置上的表值。',
-        boards: [
-          { fen: '9/9/5k3/9/9/4P4/9/9/9/3K5 w', caption: '未过河 · 16', orientation: 'red', highlights: [{square:'e5',kind:'focus'}], annotations:[{square:'e5',text:'16'}] },
-          { fen: '9/9/5k3/9/4P4/9/9/9/9/3K5 w', caption: '刚过河 · 59', orientation: 'red', highlights: [{square:'e4',kind:'focus'}], annotations:[{square:'e4',text:'59'}] },
-          { fen: '9/4P4/5k3/9/9/9/9/9/9/3K5 w', caption: '底二线 · 89', orientation: 'red', highlights: [{square:'e1',kind:'focus'}], annotations:[{square:'e1',text:'89'}] },
-          { fen: '4P4/9/5k3/9/9/9/9/9/9/3K5 w', caption: '底线 · 13', orientation: 'red', highlights: [{square:'e0',kind:'focus'}], annotations:[{square:'e0',text:'13'}] }
+      "steps": [
+        "First layer: 11,340 sparse features share weights for two H16 accumulators.",
+        "Activation: CReLU clips each component to its valid range.",
+        "Direct head: concatenate mover/opponent views; select a middlegame/endgame head to predict the PST residual."
+      ],
+      "notes": "Incremental updates save first-layer summation; this project minimizes the remaining network to preserve search depth.\n\nFirst layer: 11,340 sparse features share weights for two H16 accumulators.\n\nActivation: CReLU clips each component to its valid range.\n\nDirect head: concatenate mover/opponent views; select a middlegame/endgame head to predict the PST residual.\n\nAn H16 direct head learns interactions while keeping per-node inference cheap.",
+      "sources": [
+        "https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html",
+        "trainnnue/nnue_engine.cpp",
+        "trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json"
+      ],
+      "takeaway": "An H16 direct head learns interactions while keeping per-node inference cheap."
+    },
+    {
+      "id": "e17e",
+      "eyebrow": "Another evaluation path · 5/5",
+      "title": "Addition alone is still just a larger table",
+      "layout": "table",
+      "lead": "Nonlinearity lets two features together trigger an effect neither creates alone.",
+      "table": {
+        "headers": [
+          "Feature x",
+          "Feature y",
+          "x + y",
+          "h = max(0, x + y − 1)"
         ],
-        steps: ['表偏好兵深入后在底二线蓄势。', '底线的 13 是静态倾向；进底后的战术价值由搜索判断。'],
-        notes: '沿中路抽四个独立摆局，代码给这枚红兵的位置评分依次是十六、五十九、八十九、十三。\n\n[按键] 这张表给底二线较高分，可以把它读成一种蓄势偏好。\n\n[按键] 底线的十三只表达静态位置倾向。如果进底能将军、破士、控制关键逃格或者形成杀势，搜索展开具体应手后仍会选择它。PST 给出方向，搜索负责判断时机与安全。',
-        sources: ['xiangqi_ai.cpp:112-123', '象棋教学局面核验.md:对当前预览稿的棋理教学审查'],
-        takeaway: 'PST 是启发式偏好；好不好要由具体局面和搜索共同决定。'
-      },
-      {
-        id: 's06', title: '胜负不是普通的局面分', eyebrow: '评价边界 · 终局分', layout: 'cards',
-        lead: '普通局面用材料与位置比较优劣；明确胜负使用约 ±30000 的终局分。',
-        cards: [
-          {title: '普通局面', text: '材料分与位置分衡量当前盘面的相对优劣'},
-          {title: '红方胜利', text: '黑将不在，或轮到黑方却没有合法着：返回接近 +30000'},
-          {title: '黑方胜利', text: '红帅不在，或轮到红方却没有合法着：返回接近 −30000'},
-          {title: '为什么分开', text: '明确胜负必须压过任何普通的得子或位置收益'}
-        ],
-        steps: ['SCORE_INF 在本项目中是 30000', '将帅不存在或当前方无合法着时，判定明确胜负', '终局分的绝对值远大于普通局面分'],
-        notes: '材料分和位置分只是在尚未结束的局面中比较哪一边更好，不能把明确胜负当作一次普通得子。本项目把 `SCORE_INF` 定为 30000，用这一量级表示终局结果。\n\n[按键] 如果红帅已经不在，或轮到红方却没有任何合法着，返回接近负三万；如果黑将已经不在，或轮到黑方却没有任何合法着，返回接近正三万。将死和困毙都属于无合法着，因此都由当前行棋方负。\n\n[按键] 这个量级远高于材料分和位置分，所以明确赢棋一定压过普通的得子收益，明确输棋也不会被眼前多几个子掩盖。下一页用两个真实候选看这种区别。',
-        sources: ['xiangqi_ai.cpp:31-32','xiangqi_ai.cpp:1172-1173','xiangqi_ai.cpp:1516-1519'], takeaway: '静态评价比较未结束的局面；终局分表达已经确定的胜负。'
-      },
-      {
-        id: 'e06',
-        eyebrow: '评价 × 搜索',
-        title: '静态少 60 分，为什么还要兵三进一？',
-        layout: 'compare',
-        lead: '眼前吃马更赚分；把双方应手展开后，另一步却直接结束棋局。',
-        boards: [
-          {
-            fen: '3n1k3/5nP2/9/9/9/9/9/9/9/4K4 w',
-            caption: '走前 · 红走 · 两个候选',
-            orientation: 'red',
-            highlights: [{square:'g1',kind:'from'},{square:'f1',kind:'danger'},{square:'g0',kind:'to'}],
-            arrows: [{from:'g1',to:'f1',kind:'secondary'},{from:'g1',to:'g0',kind:'primary'}],
-            annotations: []
-          },
-          {
-            fen: '3n1k3/5P3/9/9/9/9/9/9/9/4K4 b',
-            caption: '兵三平四吃马 · 黑将可在 (1,5) 吃回',
-            orientation: 'red',
-            highlights: [{square:'f0',kind:'from'},{square:'f1',kind:'danger'}],
-            arrows: [{from:'f0',to:'f1',kind:'secondary'}]
-          },
-          {
-            fen: '3n1kP2/5n3/9/9/9/9/9/9/9/4K4 b',
-            caption: '兵三进一 · 黑走 · 无法解将，红方一步杀',
-            orientation: 'red',
-            highlights: [{square:'g0',kind:'focus'},{square:'f0',kind:'danger'}],
-            arrows: [{from:'g0',to:'f0',kind:'primary'}]
-          }
-        ],
-        cards: [
-          { title: '吃马的眼前收益', text: '黑马总值 102；红兵从 69 到 84，静态分合计 +117。' },
-          { title: '进底的静态变化', text: '红兵从 69 到 9，PST 方向是 −60。' },
-          { title: '搜索后的结果', text: '兵三进一形成将死，终局回传接近 +30000。' }
-        ],
-        steps: ['得子收益通常大于小幅位置改善，所以兵三平四眼前更诱人。', '黑将随后吃回红兵；搜索扣掉这枚兵后，继续计算这条交换线。', '兵三进一虽然静态少 60 分，却让黑方无棋解将。'],
-        notes: '这个局面给红方两个很具体的候选。先看兵三平四：红兵从 (1,6) 到 (1,5)，吃掉黑马。按当前评价表，黑马在这个位置总值一百零二，红兵自身又从六十九升到八十四，所以眼前静态分一共增加一百一十七。当前表里的马约为八十到一百一十九，车约为二百一十三到二百五十六；搜索确认得子时，移除这笔敌方价值的收益通常会超过几十点的位置改善，具体净值仍由被吃棋子和走子起终格共同决定。\n\n[按键] 接着黑将从 (0,5) 到 (1,5) 吃回红兵。搜索会扣掉这枚红兵，再继续计算交换后的局面；这条线仍然获得了马换兵的净收益，只是不能停在吃马后的加一百一十七。\n\n[按键] 再看兵三进一，从 (1,6) 到 (0,6)。这一步没有吃子，红兵总值反而从六十九降到九，静态少六十分；可它横向将到 (0,5) 的黑将。黑将去 (0,4) 会与 (9,4) 的红帅照面，(1,5) 被己方马占，(0,6) 又在九宫之外，两匹马也无法解除这个贴身将。黑方没有合法应手。\n\n源码对无合法着返回接近三万的终局分；这次实算得到明确胜局。于是搜索选择静态少六十分却直接赢棋的兵三进一，而不是只有得子净收益的交换线。PST 给方向，搜索用双方应手决定结果。',
-        sources: ['xiangqi_ai.cpp:112-123', 'xiangqi_ai.cpp:182-195', 'xiangqi_ai.cpp:434-441', 'xiangqi_ai.cpp:1516-1518'],
-        takeaway: '搜索会继续计算交换线；得子的净收益仍不如静态 −60 后直接赢棋。'
-      },
-      {
-        id: 'e08',
-        eyebrow: '别每次扫描 90 格',
-        title: '普通前进一步，只改两个数',
-        layout: 'compare',
-        lead: '同一合法着：兵五进一；前方为空。',
-        boards: [
-          { fen:'9/9/5k3/9/9/4P4/9/9/9/3K5 w', caption:'兵五进一前 · 红兵 16', orientation:'red', highlights:[{square:'e5',kind:'from'}], arrows:[{from:'e5',to:'e4',kind:'primary'}] },
-          { fen:'9/9/5k3/9/4P4/9/9/9/9/3K5 b', caption:'兵五进一后 · 红兵 59', orientation:'red', highlights:[{square:'e4',kind:'to'}] }
-        ],
-        code: 'Δscore = −16 + 59 = +43',
-        steps: ['Δscore = −16 + 59 = +43', '减去起点旧值，再加上终点新值。', '撤销时做完全相反的更新。'],
-        notes: '如果每到一个搜索节点都重新扫描九十个交叉点，评价再简单也会被调用次数拖垮。这里用一个真实合法着看增量更新：中兵向前一步。\n\n[按键] 先从 current_score 里减掉它在起点的十六。\n\n[按键] 再加上终点的五十九，所以 +43 是整盘分相对走前的变化量。\n\n[按键] undo 时把这两步倒着做，就能精确恢复旧分数。每次走棋只触碰发生变化的棋子，复杂度是常数级。',
-        sources: ['xiangqi_ai.cpp:485-505', 'xiangqi_ai.cpp:552-568', '象棋教学局面核验.md:A2'],
-        takeaway: '把评价状态随走法维护，搜索节点无需重扫全盘。'
-      },
-      {
-        id: 'e09',
-        eyebrow: '增量评分',
-        title: '如果终点有敌子，再移除它',
-        layout: 'compare',
-        lead: '红兵仍走“兵五进一”，这次前方有一枚黑卒。',
-        boards: [
-          { fen:'9/9/5k3/9/4p4/4P4/9/9/9/3K5 w', caption:'走前 · 前方有卒', orientation:'red', highlights:[{square:'e5',kind:'from'},{square:'e4',kind:'capture'}], arrows:[{from:'e5',to:'e4',kind:'capture'}] },
-          { fen:'9/9/5k3/9/4P4/9/9/9/9/3K5 b', caption:'兵五进一后 · 黑卒消失', orientation:'red', highlights:[{square:'e4',kind:'to'}], annotations:[{square:'e4',text:'59'}] }
-        ],
-        code: 'Δscore = −16 − (−16) + 59 = +59',
-        steps: ['Δscore = −16 − (−16) + 59 = +59', '减起点红兵：−16', '移除黑卒：−(−16)；再加终点红兵：+59'],
-        notes: '现在把终点放上一枚黑卒。红兵仍然前进一步，同时吃掉前方敌子。\n\n[按键] 红兵离开 (5,4)，减十六。\n\n[按键] 黑卒的有符号值是负十六；把它从棋盘移除，就是再减去负十六。\n\n[按键] 最后把红兵在 (4,4) 的五十九加回来，总变化是正五十九。右图中起点已经清空，被吃的黑卒也消失；make_move 恰好更新这三个变化项。',
-        sources: ['xiangqi_ai.cpp:485-505', '象棋教学局面核验.md:A1'],
-        takeaway: '走、吃、撤销都只更新受影响的棋子。'
-      },
-      {
-        id: 'e10',
-        eyebrow: '第二个反例',
-        title: '一张单子位置表，看不见“关系”',
-        layout: 'board',
-        lead: '把每枚棋子分别打分再相加，会丢掉棋子之间的结构。',
-        cards: [
-          { title: '连士象', text: '价值来自相互保护与结构，不属于某一枚棋子的单格坐标。' },
-          { title: '空头炮', text: '价值来自炮与对方将帅之间的线路和占位关系。' },
-          { title: '牵制 / 控制', text: '一枚棋子的去留，会改变另一枚棋子的合法空间。' }
-        ],
-        boards: [{
-          fen: '4k4/9/9/9/4C4/9/9/9/9/3K5 w',
-          caption: '空头炮线路示意 · 无炮架，当前并未将军',
-          orientation: 'red',
-          highlights: [{square:'e0',kind:'focus'},{square:'e4',kind:'focus'}],
-          annotations: [{square:'e2',text:'无炮架'}]
-        }],
-        steps: ['PST 只回答“我是谁、我在哪”。', '关系特征还要回答“我和谁、隔着谁、共同控制什么”。'],
-        notes: 'PST 已经获得位置感，但它仍把每枚棋子单独看待。象棋中很多价值存在于棋子之间。图中的红炮与黑将同一路，中间没有炮架，所以红炮当前不能沿线吃将，黑将也没有被将；这就是“空头炮”的线路关系。连士象则是一种结构关系。\n\n[按键] 要识别这些关系，输入还要查看周围占位、攻击线或者成组棋子。这个项目曾经尝试加入关系特征和更丰富的评价，实际运行慢了好几倍，因此最终版本没有保留。另一条表达棋子关系的路线，是让神经网络学习这些组合模式。',
-        sources: ['如何写一个业余象棋引擎.pdf:P12-P13', 'xiangqi_ai.cpp:791'],
-        takeaway: '单子特征便宜清楚，关系特征更丰富但需要额外计算。'
-      },
-      {
-        id: 'e17',
-        eyebrow: '另一条评价路线 · 1/5',
-        title: '既想看见组合关系，又想只更新少数项',
-        layout: 'compare',
-        lead: 'NNUE（高效可更新神经网络）从 PST 的增量思路出发，把“一个数”扩成“一组中间特征”。',
-        boards: [
-          { fen:'9/9/5k3/9/9/4P4/9/9/9/3K5 w', caption:'走前 · 兵在未过河位置', orientation:'red', highlights:[{square:'e5',kind:'from'}], arrows:[{from:'e5',to:'e4',kind:'primary'}] },
-          { fen:'9/9/5k3/9/4P4/9/9/9/9/3K5 b', caption:'兵五进一后 · 兵已过河', orientation:'red', highlights:[{square:'e4',kind:'to'}] }
-        ],
-        cards: [
-          { title: 'PST', text: 'P[兵, 位置] 是一个标量，也就是一个数。' },
-          { title: 'NNUE', text: 'W[兵, 位置] 是第一层的一列权重，也就是一组数。' }
-        ],
-        code: `PST:  S' = S − P[兵, 旧位置] + P[兵, 新位置]\nNNUE: A' = A − W[兵, 旧位置] + W[兵, 新位置]`,
-        steps: ['棋盘上只有少量“棋子在某位置”特征处于开启状态。', 'PST 与 NNUE 都只减去旧位置、加上新位置。'],
-        notes: '先看输入。我们可以为每一种“棋子—位置”组合准备一个特征。当前盘面真正开启的，只是盘上已有棋子对应的少量特征，所以这种输入叫稀疏特征。\n\n[按键] PST 为每个开启特征查出一个数，再求和。NNUE 的第一层则为每个开启特征查出一列权重；一列权重就是一组数字，也叫向量。\n\n[按键] 中兵前进一步时，其他棋子没有变化。PST 从总分 S 中减掉旧格分数、加上新格分数；NNUE 从第一层累加器 A 中减掉旧特征的权重向量、加上新特征的权重向量。两条路线共享同一个增量思想。',
-        sources: ['https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html', 'pikafish-pst/src/evaluate.cpp:143-176', 'pikafish-pst/src/nnue/nnue_accumulator.h:19-21', 'xiangqi_ai.cpp:791'],
-        takeaway: 'PST 更新一个数；NNUE 更新一组数，二者都只处理走法改变的特征。'
-      },
-      {
-        id: 'e17b',
-        eyebrow: '另一条评价路线 · 2/5',
-        title: '第一层累加器：把全盘贡献先存起来',
-        layout: 'code',
-        lead: 'A 是一组已经累加了全盘开启特征的数字。',
-        code: `走前累加器      A = [10, 20]\n旧位置贡献  W旧 = [ 2,  3]\n新位置贡献  W新 = [ 5,  4]\n\nA' = A − W旧 + W新\n   = [10,20] − [2,3] + [5,4]\n   = [13,21]`,
-        codeNote: '二维数字仅为教学示意，不是真实网络权重。',
-        cards: [
-          { title: '权重向量 W', text: '训练为一个棋子—位置特征学到的一组贡献值。' },
-          { title: '累加器 A', text: '把当前全盘所有开启特征的贡献列相加，并保存结果。' }
-        ],
-        steps: ['旧兵离开：整列相减。', '新兵出现：整列相加。', '其余棋子的贡献已经留在 A 中，无需重算。'],
-        notes: '把向量缩成两个数字，我们可以完整算一遍。走前的累加器 A 是十、二十；它已经包含盘上所有开启特征的第一层贡献。这里只用二维教学数帮助理解，真实网络的向量更长。\n\n[按键] 兵离开旧位置，就把旧特征对应的二、三整列减掉。\n\n[按键] 兵出现在新位置，再把五、四整列加上。结果变成十三、二十一。其他棋子贡献已经保存在 A 里，走这一步时无需重新查出并相加。\n\n这就是 NNUE 名字里“高效可更新”的核心：复用上一个局面的第一层累加结果。',
-        sources: ['https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html#updating-the-accumulator'],
-        takeaway: '累加器让第一层从“重算全盘”变成“减旧列、加新列”。'
-      },
-      {
-        id: 'e17c',
-        eyebrow: '另一条评价路线 · 3/5',
-        title: '吃子时，再减掉被吃子的向量',
-        layout: 'compare',
-        lead: '仍是兵五进一，这次终点有一枚黑卒。',
-        boards: [
-          { fen:'9/9/5k3/9/4p4/4P4/9/9/9/3K5 w', caption:'走前 · 红兵前方有黑卒', orientation:'red', highlights:[{square:'e5',kind:'from'},{square:'e4',kind:'capture'}], arrows:[{from:'e5',to:'e4',kind:'capture'}] },
-          { fen:'9/9/5k3/9/4P4/9/9/9/9/3K5 b', caption:'走后 · 黑卒被移除', orientation:'red', highlights:[{square:'e4',kind:'to'}] }
-        ],
-        code: `A' = A\n   − W[红兵, 旧位置]\n   − W[黑卒, 被吃位置]\n   + W[红兵, 新位置]`,
-        steps: ['移动棋子：减旧特征，加新特征。', '被吃棋子：再减掉它的特征向量。', '普通非将帅走子通常只改变这几个第一层输入。'],
-        notes: '吃子与 PST 的增量更新也完全同构。红兵离开旧位置，减掉旧列；黑卒从棋盘消失，减掉黑卒对应的列；红兵出现在终点，加上新列。\n\n[按键] 变化项的数量由这一步棋实际改变了哪些棋子决定，而不是由棋盘上还有多少棋子决定。\n\n[按键] 这里展示的是普通非将帅走子。某些 NNUE 特征会把将帅位置编入其他棋子的特征索引；当将帅移动到新的分区时，许多特征可能一起变化，程序会刷新相应累加器。',
-        sources: ['https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html#updating-the-accumulator', '象棋教学局面核验.md:A1'],
-        takeaway: '走子和吃子只增量修改第一层中真正改变的特征列。'
-      },
-      {
-        id: 'e17d',
-        eyebrow: '另一条评价路线 · 4/5',
-        title: '累加器还不是分数：再经过后续小网络',
-        layout: 'figure',
-        lead: '增量更新省下第一层的大量重复求和；本项目把后续网络压到最小，以换取搜索深度。',
-        figure: {
-          src: 'assets/nnue/stockfish-a-features-network.svg',
-          alt: 'Stockfish NNUE 教学结构图：稀疏棋盘特征进入较宽的第一层，再经过较小的隐藏层，最终输出一个局面分数。',
-          caption: '官方国际象棋 NNUE 教学图；本项目沿用“宽第一层可增量更新”的思想，但采用更小的直接输出头。',
-          credit: 'Stockfish nnue-pytorch 文档 · GPLv3',
-          legend: [
-            { color:'#10c940', text:'深绿：棋子位置特征' },
-            { color:'#b8efd0', text:'浅绿：可增量更新的第一层 A' },
-            { color:'#fff100', text:'黄色：后续小网络' },
-            { color:'#f20d17', text:'红色：最终评分' }
+        "rows": [
+          [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          [
+            "1",
+            "0",
+            "1",
+            "0"
+          ],
+          [
+            "0",
+            "1",
+            "1",
+            "0"
+          ],
+          [
+            "1",
+            "1",
+            "2",
+            "1"
           ]
-        },
-        steps: ['第一层：11,340个稀疏特征共享映射到两个H16累加器。', '激活：CReLU把每项限制在有效范围。', '直接头：拼接待走方/对方视角，选择中局或残局线性头输出PST残差。'],
-        notes: 'A 是网络的中间表示，还不是最终分数。图中较宽的第一层容纳大量棋子—位置特征的贡献；相邻局面复用这一层的累加结果，只更新走法改变的几列。\n\n[按键] 这张外部教学图展示的是一般NNUE结构。本项目真正落地的版本更小：HalfKA共有一万一千三百四十个候选特征，但一个局面只开启盘上棋子对应的少量行；红黑两个视角各累加成十六维向量，经过CReLU后直接接线性输出头，没有额外隐藏层。\n\n[按键] 输出学习的不是完整分数，而是“搜索教师分减PST分”的残差；最后把残差加回PST。剩余棋子多于二十和不多于二十时各选一个输出头，但一次只运行一个，所以没有增加每节点的输出乘加数量。',
-        sources: ['https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html', 'trainnnue/nnue_engine.cpp', 'trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json'],
-        takeaway: '本项目采用H16直接头：保留可学习关系，同时把每节点前向成本压低。'
+        ]
       },
-      {
-        id: 'e17e',
-        eyebrow: '另一条评价路线 · 5/5',
-        title: '如果始终只做加法，神经网络仍只是一张大表',
-        layout: 'table',
-        lead: '组合关系来自非线性：两个特征共同出现时，可以触发单独出现时没有的效果。',
-        table: {
-          headers: ['特征 x', '特征 y', 'x + y', 'h = max(0, x + y − 1)'],
-          rows: [
-            ['0', '0', '0', '0'],
-            ['1', '0', '1', '0'],
-            ['0', '1', '1', '0'],
-            ['1', '1', '2', '1']
+      "code": "h = max(0, x + y − 1)\n\nh activates only when both x and y are present.",
+      "steps": [
+        "Linear sums give each piece-square feature a fixed contribution and collapse back into a PST.",
+        "Nonlinear activation makes a feature's effect depend on other active features."
+      ],
+      "notes": "Nonlinearity lets two features together trigger an effect neither creates alone.\n\nLinear sums give each piece-square feature a fixed contribution and collapse back into a PST.\n\nNonlinear activation makes a feature's effect depend on other active features.\n\nIncremental sums preserve speed; nonlinearity goes beyond fixed square bonuses.",
+      "sources": [
+        "https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html"
+      ],
+      "takeaway": "Incremental sums preserve speed; nonlinearity goes beyond fixed square bonuses."
+    },
+    {
+      "id": "e12",
+      "eyebrow": "Where does intuition come from?",
+      "title": "Can data learn the table values?",
+      "layout": "cards",
+      "lead": "Represent each historical position as x and its eventual result as y.",
+      "cards": [
+        {
+          "title": "Sample x",
+          "text": "The board and required side-to-move information"
+        },
+        {
+          "title": "Label y",
+          "text": "Red win = 1; draw = 0.5; Red loss = 0"
+        },
+        {
+          "title": "Parameters θ",
+          "text": "Material values, PST entries, or weights of a richer model"
+        }
+      ],
+      "steps": [
+        "The model assigns the position a score sθ(x).",
+        "Map it to Red's expected score in [0,1].",
+        "Train predictions toward historical labels."
+      ],
+      "notes": "Represent each historical position as x and its eventual result as y.\n\nThe model assigns the position a score sθ(x).\n\nMap it to Red's expected score in [0,1].\n\nTrain predictions toward historical labels.\n\nSample x: The board and required side-to-move information\n\nLabel y: Red win = 1; draw = 0.5; Red loss = 0\n\nParameters θ: Material values, PST entries, or weights of a richer model\n\nTraining fits parameters to positions with outcomes.",
+      "sources": [
+        "如何写一个业余象棋引擎.pdf:P15"
+      ],
+      "takeaway": "Training fits parameters to positions with outcomes."
+    },
+    {
+      "id": "e13",
+      "eyebrow": "From evaluation to expected score",
+      "title": "Sigmoid maps any score to 0–1",
+      "layout": "code",
+      "lead": "Evaluations may be hundreds or thousands; result labels are 0, 0.5, or 1.",
+      "code": "predicted_score(x) = sigmoid(s(x) / K)\n\nsigmoid(z) = 1 / (1 + exp(−z))",
+      "cards": [
+        {
+          "title": "Very negative",
+          "text": "Prediction approaches 0"
+        },
+        {
+          "title": "Near zero",
+          "text": "Prediction is about 0.5"
+        },
+        {
+          "title": "Very positive",
+          "text": "Prediction approaches 1"
+        }
+      ],
+      "steps": [
+        "K controls how much evaluation change produces a substantial prediction change.",
+        "Estimate K on separate calibration data, then freeze it during network training.",
+        "The output is Red's predicted score."
+      ],
+      "notes": "Evaluations may be hundreds or thousands; result labels are 0, 0.5, or 1.\n\nK controls how much evaluation change produces a substantial prediction change.\n\nEstimate K on separate calibration data, then freeze it during network training.\n\nThe output is Red's predicted score.\n\nVery negative: Prediction approaches 0\n\nNear zero: Prediction is about 0.5\n\nVery positive: Prediction approaches 1\n\nSigmoid aligns evaluation and outcome scales; independently calibrate and freeze K.",
+      "sources": [
+        "如何写一个业余象棋引擎.pdf:P15",
+        "trainnnue/train.py",
+        "trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json"
+      ],
+      "takeaway": "Sigmoid aligns evaluation and outcome scales; independently calibrate and freeze K."
+    },
+    {
+      "id": "e14",
+      "eyebrow": "Reducing error",
+      "title": "MSE penalizes prediction error",
+      "layout": "code",
+      "lead": "Compute mean squared error over a batch and update parameters along its gradient.",
+      "code": "loss = mean((predicted_score(x) − y)²)\n\nExample: prediction 0.8, Red loses (y=0)\nError = (0.8 − 0)² = 0.64\n\nBatch → mean loss → gradient → update θ",
+      "steps": [
+        "Square each prediction-minus-result error, then average the batch.",
+        "Predicting 0.8 for an actual Red loss contributes 0.64.",
+        "The entire batch's gradient determines the update direction."
+      ],
+      "notes": "Compute mean squared error over a batch and update parameters along its gradient.\n\nSquare each prediction-minus-result error, then average the batch.\n\nPredicting 0.8 for an actual Red loss contributes 0.64.\n\nThe entire batch's gradient determines the update direction.\n\nMSE measures prediction error; batch gradients determine parameter updates.",
+      "sources": [
+        "如何写一个业余象棋引擎.pdf:P15"
+      ],
+      "takeaway": "MSE measures prediction error; batch gradients determine parameter updates."
+    },
+    {
+      "id": "e14a",
+      "eyebrow": "Completed experiment · Search distillation",
+      "title": "Teach a model to recognize what search discovers",
+      "layout": "code",
+      "lead": "The project connects PST teacher search, million-position datasets, NNUE learning, and quantized deployment.",
+      "code": "Position x\n  ↓ PST teacher search D3 / D4, selective pruning disabled\nSearch score from the moving side's view\n  ↓ Learn teacher − PST residual\nQuantized value model vθ(x) + original PST",
+      "cards": [
+        {
+          "title": "Teacher",
+          "text": "Keep alpha-beta and quiescence; disable selective pruning that could bias labels."
+        },
+        {
+          "title": "Data",
+          "text": "One million unique positions each for D3 and D4; 500k per side; split by whole game."
+        },
+        {
+          "title": "Student",
+          "text": "Learn the teacher's correction to PST; quantized CPU inference remains inside search."
+        }
+      ],
+      "steps": [
+        "Depth is a hyperparameter: D3 is cheaper and easier to fit; D4 is stronger but more expensive.",
+        "Deduplicate globally; resolve conflicting labels explicitly or discard the group.",
+        "Add a centipawn residual loss to probability error to avoid near-zero corrections.",
+        "Quantize to integer weights and test in the same searcher as PST under equal time."
+      ],
+      "notes": "The project connects PST teacher search, million-position datasets, NNUE learning, and quantized deployment.\n\nDepth is a hyperparameter: D3 is cheaper and easier to fit; D4 is stronger but more expensive.\n\nDeduplicate globally; resolve conflicting labels explicitly or discard the group.\n\nAdd a centipawn residual loss to probability error to avoid near-zero corrections.\n\nQuantize to integer weights and test in the same searcher as PST under equal time.\n\nTeacher: Keep alpha-beta and quiescence; disable selective pruning that could bias labels.\n\nData: One million unique positions each for D3 and D4; 500k per side; split by whole game.\n\nStudent: Learn the teacher's correction to PST; quantized CPU inference remains inside search.\n\nSearch distillation yields a value model cheap enough for live CPU search.",
+      "sources": [
+        "trainnnue/teacher.cpp",
+        "trainnnue/generate_data.cpp",
+        "trainnnue/build_balanced_dataset.py",
+        "trainnnue/train.py"
+      ],
+      "takeaway": "Search distillation yields a value model cheap enough for live CPU search."
+    },
+    {
+      "id": "e14b",
+      "eyebrow": "Completed experiment · What worked?",
+      "title": "Bigger networks and deeper teachers can cost strength",
+      "layout": "table",
+      "lead": "Offline error screens candidates; quantized equal-CPU-time matches make the final decision.",
+      "table": {
+        "headers": [
+          "Experiment",
+          "Observation",
+          "Decision"
+        ],
+        "rows": [
+          [
+            "Old 150k one-sided D3 + H8",
+            "Little data, recording only one side to move",
+            "Expand to one million, balanced by side"
+          ],
+          [
+            "Million-position D3: H8 / H16",
+            "Easier to fit, weaker in matches than the best D4 model",
+            "Use for broad pretraining"
+          ],
+          [
+            "Million-position D4: random / D3 initialization",
+            "H16 with D3 initialization has the best validation correlation and match performance",
+            "Select as final candidate"
+          ],
+          [
+            "Old D5-H8",
+            "Deeper but more expensive and harder for a small network; Swiss score 48.13%",
+            "Do not default to the deepest teacher"
+          ],
+          [
+            "Small hidden layer",
+            "Adds cost to every leaf evaluation",
+            "Choose a direct head this round"
           ]
+        ]
+      },
+      "steps": [
+        "Effective: more balanced data, D3-to-D4 initialization, H16 direct head, residual learning.",
+        "Not selected: small one-sided data, depth alone, extra hidden layers.",
+        "H16's offline gain is modest; direct matches show it covers the speed cost."
+      ],
+      "notes": "Offline error screens candidates; quantized equal-CPU-time matches make the final decision.\n\nEffective: more balanced data, D3-to-D4 initialization, H16 direct head, residual learning.\n\nNot selected: small one-sided data, depth alone, extra hidden layers.\n\nH16's offline gain is modest; direct matches show it covers the speed cost.\n\nBalanced data, moderate teachers, curriculum initialization, and a light head worked best.",
+      "sources": [
+        "trainnnue/model_comparison.json",
+        "trainnnue/swiss_8models_5rounds.json",
+        "trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json"
+      ],
+      "takeaway": "Balanced data, moderate teachers, curriculum initialization, and a light head worked best."
+    },
+    {
+      "id": "e14c",
+      "eyebrow": "Completed experiment · Controlled matches",
+      "title": "First deployed NNUE scores 59.77% against PST",
+      "layout": "cards",
+      "lead": "Same search, same CPU time, 192 color-swapped held-out openings; evaluation is the core variable.",
+      "cards": [
+        {
+          "title": "172 wins / 115 draws / 97 losses",
+          "text": "Win=1, draw=0.5: NNUE scores 229.5 / 384 points."
         },
-        code: `h = max(0, x + y − 1)\n\n只有 x 与 y 同时出现，h 才被激活。`,
-        steps: ['线性求和：每个棋子—位置始终贡献一个固定值，最终仍能折回 PST。', '非线性激活：同一特征的作用可以随其他特征是否出现而变化。'],
-        notes: '为什么累加器后面还需要激活和小网络？如果从输入到输出始终只有线性加权与求和，最终分数可以展开为每个“棋子—位置”固定贡献的总和，本质上仍然能够折回一张更大的 PST。\n\n[按键] 非线性让组合关系出现。这里用两个取零或一的教学特征 x、y：h 等于 max(0, x+y−1)。只有 x 和 y 同时出现时，h 才从零变成一；单独出现任何一个都不会触发。\n\n因此，一个特征对最终分数的贡献可以随着另一个特征是否同时出现而变化，网络由此表达配合、结构和线路等组合模式。',
-        sources: ['https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html'],
-        takeaway: '增量累加保住速度，非线性让模型超越“每个格子固定加几分”。'
+        {
+          "title": "59.77% score rate",
+          "text": "9.77 percentage points above 50%; 95% CI 56.38%–63.15%."
+        },
+        {
+          "title": "H16 vs H8：54.17%",
+          "text": "149 wins, 118 draws, 117 losses; the wider model compensates for its small speed cost."
+        },
+        {
+          "title": "363 KB integer model",
+          "text": "Mean completed depth 9.24 vs PST 9.70: stronger evaluation costs about 0.46 ply."
+        }
+      ],
+      "steps": [
+        "192 openings, each played with both colors, produce 384 games.",
+        "Bootstrap opening pairs to retain the correlation between swapped games.",
+        "H16 scores 54.17% against H8 with only 0.06 ply difference in mean depth."
+      ],
+      "notes": "Same search, same CPU time, 192 color-swapped held-out openings; evaluation is the core variable.\n\n192 openings, each played with both colors, produce 384 games.\n\nBootstrap opening pairs to retain the correlation between swapped games.\n\nH16 scores 54.17% against H8 with only 0.06 ply difference in mean depth.\n\n172 wins / 115 draws / 97 losses: Win=1, draw=0.5: NNUE scores 229.5 / 384 points.\n\n59.77% score rate: 9.77 percentage points above 50%; 95% CI 56.38%–63.15%.\n\nH16 vs H8：54.17%: 149 wins, 118 draws, 117 losses; the wider model compensates for its small speed cost.\n\n363 KB integer model: Mean completed depth 9.24 vs PST 9.70: stronger evaluation costs about 0.46 ply.\n\nAfter quantization, first-generation NNUE lifts the equal-time score against PST to 59.77%.",
+      "sources": [
+        "trainnnue/direct_match_summary.json",
+        "trainnnue/RESULTS.generated.md",
+        "trainnnue/artifacts.json"
+      ],
+      "takeaway": "After quantization, first-generation NNUE lifts the equal-time score against PST to 59.77%."
+    },
+    {
+      "id": "e14d",
+      "eyebrow": "Completed experiment · Teacher iteration 1",
+      "title": "Search D3 with NNUE, then teach the results back",
+      "layout": "cards",
+      "lead": "A deeper PST teacher is costly; one best-NNUE + D3 iteration generates a new million-position dataset more cheaply.",
+      "cards": [
+        {
+          "title": "Configurable teacher",
+          "text": "One generator selects PST or a supplied NNUE; PST remains the compatible default."
+        },
+        {
+          "title": "Balanced million",
+          "text": "One million unique positions, 500k per side; only 12 conflict groups discarded."
+        },
+        {
+          "title": "Vs previous model: 60.94%",
+          "text": "174 wins, 120 draws, 90 losses; 95% CI 57.16%–64.71%."
+        },
+        {
+          "title": "Vs PST: 63.28%",
+          "text": "188 wins, 110 draws, 86 losses; up 3.52 points from 59.77%."
+        }
+      ],
+      "steps": [
+        "The quantized D4-H16 evaluates leaves in a three-ply teacher search.",
+        "Initialize from the current model, independently calibrate K; best validation at epoch 4.",
+        "The student scores 60.94% against its predecessor and 63.28% against PST."
+      ],
+      "notes": "A deeper PST teacher is costly; one best-NNUE + D3 iteration generates a new million-position dataset more cheaply.\n\nThe quantized D4-H16 evaluates leaves in a three-ply teacher search.\n\nInitialize from the current model, independently calibrate K; best validation at epoch 4.\n\nThe student scores 60.94% against its predecessor and 63.28% against PST.\n\nConfigurable teacher: One generator selects PST or a supplied NNUE; PST remains the compatible default.\n\nBalanced million: One million unique positions, 500k per side; only 12 conflict groups discarded.\n\nVs previous model: 60.94%: 174 wins, 120 draws, 90 losses; 95% CI 57.16%–64.71%.\n\nVs PST: 63.28%: 188 wins, 110 draws, 86 losses; up 3.52 points from 59.77%.\n\nThe first NNUE+D3 iteration beats its predecessor and raises the PST score to 63.28%.",
+      "sources": [
+        "trainnnue/iter1_experiment.json",
+        "trainnnue/generate_data.cpp",
+        "trainnnue/iter1_nnued3_h16_fromd4_gpu.nnue.json"
+      ],
+      "takeaway": "The first NNUE+D3 iteration beats its predecessor and raises the PST score to 63.28%."
+    },
+    {
+      "id": "e14e",
+      "eyebrow": "Completed experiment · Teacher iteration 2",
+      "title": "Repeat the cycle: 70.18% against PST",
+      "layout": "cards",
+      "lead": "Iter1 supplies both teacher and initialization; generate a fresh million positions with unchanged architecture and match conditions.",
+      "cards": [
+        {
+          "title": "A new million",
+          "text": "Sample exactly one million from 1,057,865 unique valid positions; 500k per side; 15 conflict groups discarded."
+        },
+        {
+          "title": "Independent K=54.708",
+          "text": "Calibrate on this iteration's data; best epoch 5, early stop at 25, restore best checkpoint."
+        },
+        {
+          "title": "Vs Iter1: 55.08%",
+          "text": "143 wins, 137 draws, 104 losses; 95% CI 51.43%–58.72%, entirely above 50%."
+        },
+        {
+          "title": "Vs PST: 70.18%",
+          "text": "218 wins, 103 draws, 63 losses; 95% CI 66.80%–73.44%, up 6.90 points."
+        }
+      ],
+      "steps": [
+        "Iter1 evaluates leaves while D3 search generates new labels.",
+        "Iter2 starts from Iter1 parameters; best validation at epoch 5.",
+        "Iter2 scores 55.08% against Iter1 and 70.18% against PST."
+      ],
+      "notes": "Iter1 supplies both teacher and initialization; generate a fresh million positions with unchanged architecture and match conditions.\n\nIter1 evaluates leaves while D3 search generates new labels.\n\nIter2 starts from Iter1 parameters; best validation at epoch 5.\n\nIter2 scores 55.08% against Iter1 and 70.18% against PST.\n\nA new million: Sample exactly one million from 1,057,865 unique valid positions; 500k per side; 15 conflict groups discarded.\n\nIndependent K=54.708: Calibrate on this iteration's data; best epoch 5, early stop at 25, restore best checkpoint.\n\nVs Iter1: 55.08%: 143 wins, 137 draws, 104 losses; 95% CI 51.43%–58.72%, entirely above 50%.\n\nVs PST: 70.18%: 218 wins, 103 draws, 63 losses; 95% CI 66.80%–73.44%, up 6.90 points.\n\nThe second iteration beats Iter1 and reaches 70.18% against PST under the same conditions.",
+      "sources": [
+        "trainnnue/iter2_experiment.json",
+        "trainnnue/iter2_nnued3_h16_fromiter1_gpu.nnue.json",
+        "trainnnue/RESULTS.generated.md"
+      ],
+      "takeaway": "The second iteration beats Iter1 and reaches 70.18% against PST under the same conditions."
+    },
+    {
+      "id": "e14f",
+      "eyebrow": "Teacher iteration · Common benchmark",
+      "title": "Four generations reach 70.18% against PST",
+      "layout": "figure",
+      "lead": "With architecture, held-out openings, and time controls fixed, generation 3 has the highest observed score.",
+      "figure": {
+        "src": "assets/nnue/iteration-vs-pst.svg",
+        "alt": "PST and four NNUE generations score 50%, 59.77%, 63.28%, 70.18%, and 70.05% against PST.",
+        "caption": "192 color-swapped held-out openings; 384 games per generation, 0.10 s per move, one CPU core.",
+        "credit": "Generated from experiment JSON"
       },
-      {
-        id: 'e12',
-        eyebrow: '棋感从哪来',
-        title: '能不能让数据替我们填表？',
-        layout: 'cards',
-        lead: '把每个历史局面记作 x，把最终结果记作 y。',
-        cards: [
-          { title: '样本 x', text: '盘面，以及必要的行棋方信息' },
-          { title: '标签 y', text: '红胜 = 1，和棋 = 0.5，红负 = 0' },
-          { title: '参数 θ', text: '子力值、PST 格点值，或更复杂模型的权重' }
+      "notes": "With architecture, held-out openings, and time controls fixed, generation 3 has the highest observed score.\n\nTeacher iteration improves the small H16 model; generation 3 reaches 70.18% under one protocol.",
+      "sources": [
+        "trainnnue/iter3_experiment.json",
+        "trainnnue/iteration_vs_pst.svg",
+        "trainnnue/run_teacher_iteration.ps1"
+      ],
+      "takeaway": "Teacher iteration improves the small H16 model; generation 3 reaches 70.18% under one protocol."
+    },
+    {
+      "id": "e14g",
+      "eyebrow": "External benchmark · Official Pikafish NNUE",
+      "title": "Above Pikafish's built-in 1900 setting",
+      "layout": "figure",
+      "lead": "On 360 held-out color-swapped games, our NNUE scores 56.39%; full-strength Pikafish shows the remaining gap.",
+      "figure": {
+        "src": "assets/nnue/external-benchmark.svg",
+        "alt": "Our NNUE scores 56.39% against official Pikafish UCI Elo 1900 and 7.78% against full strength.",
+        "caption": "Official Pikafish 2026-01-31; 180 formal openings, each color-swapped, 360 games.",
+        "credit": "Per-game JSON and paired bootstrap"
+      },
+      "notes": "On 360 held-out color-swapped games, our NNUE scores 56.39%; full-strength Pikafish shows the remaining gap.\n\nOur NNUE exceeds Pikafish's built-in 1900 setting, with a large gap to full strength.",
+      "sources": [
+        "trainnnue/iter2_vs_pikafish_elo1900_180pairs.json",
+        "trainnnue/iter2_vs_pikafish_official_180pairs.json",
+        "trainnnue/run_external_match.ps1"
+      ],
+      "takeaway": "Our NNUE exceeds Pikafish's built-in 1900 setting, with a large gap to full strength."
+    },
+    {
+      "id": "e18a",
+      "eyebrow": "The AlphaGo approach · How it works",
+      "title": "Policy guides, value evaluates, the tree backs up results",
+      "layout": "figure",
+      "lead": "CNNs scan local board windows and combine features across layers; each new leaf's output guides subsequent tree visits.",
+      "figure": {
+        "src": "assets/alphago/alphago-policy-value-search.svg",
+        "alt": "The full board enters policy and value CNNs; policy supplies move priors, value evaluates leaves, and tree backup guides branch selection.",
+        "caption": "Redrawn from 2016 AlphaGo, Figs. 1b and 3; that version combines value predictions with fast rollouts.",
+        "credit": "Silver et al. · Nature 2016"
+      },
+      "steps": [
+        "Policy: prioritize legal moves and guide the tree.",
+        "Value: estimate a new leaf's outcome prospects.",
+        "Back up evaluations so stronger branches receive more visits."
+      ],
+      "notes": "CNNs scan local board windows and combine features across layers; each new leaf's output guides subsequent tree visits.\n\nPolicy: prioritize legal moves and guide the tree.\n\nValue: estimate a new leaf's outcome prospects.\n\nBack up evaluations so stronger branches receive more visits.\n\nPolicy and value guide the tree with richer, more expensive full-board inference at new leaves.",
+      "sources": [
+        "https://deepmind-media.storage.googleapis.com/alphago/AlphaGoNaturePaper.pdf"
+      ],
+      "takeaway": "Policy and value guide the tree with richer, more expensive full-board inference at new leaves."
+    },
+    {
+      "id": "e18",
+      "eyebrow": "Two neural approaches · A direct comparison",
+      "title": "Why is NNUE cheaper inside this CPU searcher?",
+      "layout": "table",
+      "lead": "Incremental evaluation leaves more CPU time for exploring continuations.",
+      "table": {
+        "headers": [
+          "Approach",
+          "Reuse between adjacent positions",
+          "Cost of a new node",
+          "Effect under fixed time"
         ],
-        steps: ['模型先给盘面一个分数 sθ(x)。', '把分数映射为红方预期得分（0～1）。', '让预测逐渐靠近历史标签。'],
-        notes: '手填表格很直接，但每个数到底该是多少？可以把它改写成一个监督学习问题。我们收集大量盘面 x，并带上最终对局结果 y。这里用红胜一、和棋零点五、红负零，得到统一的结果得分。\n\n[按键] 参数 θ 可以只是五类子力，也可以扩展为每种棋子、每个格子的 PST。sθ(x) 表示“用参数 θ 给盘面 x 算出的原始分数”。\n\n[按键] 再把原始分数映射到零至一，得到红方预测得分。下一页先解决映射，随后再定义怎样衡量预测误差。训练得到静态相关性，具体走法继续由搜索验证。',
-        sources: ['如何写一个业余象棋引擎.pdf:P15'],
-        takeaway: '训练把手工调表变成“用带结果的局面拟合参数”。'
-      },
-      {
-        id: 'e13',
-        eyebrow: '从分数到预测得分',
-        title: 'Sigmoid：把任意分数映射到 0～1',
-        layout: 'code',
-        lead: '子力与位置评分常有数百、数千；结果标签只有 0、0.5、1。',
-        code: `predicted_score(x) = sigmoid(s(x) / K)\n\nsigmoid(z) = 1 / (1 + exp(−z))`,
-        cards: [
-          { title: '很负', text: '预测更接近 0' },
-          { title: '接近 0', text: '预测约为 0.5' },
-          { title: '很正', text: '预测更接近 1' }
-        ],
-        steps: ['K 决定多少评价分变化对应一次明显的预测变化。', 'K 只用校准数据单独统计，随后冻结，不和网络权重一起优化。', '输出表示红方预测得分。'],
-        notes: '评价分可能从很大的负数到很大的正数，而标签只有零、零点五和一。Sigmoid 就像一个压缩器：负分压向零，零分映到零点五，正分压向一。\n\n[按键] 公式里的 K 是温度或尺度参数。K 太小，大量不同分数都会被挤到接近零或一；K 太大，输出又都挤在零点五附近。这个项目把训练局面按整局分开，专门留出 calibration 集，只在这部分数据上独立求一个 K，求完就冻结，不能让网络通过联合调整 K 偷偷改变目标尺度。\n\n[按键] 因为和棋标签记作零点五，这个输出表示红方预测得分。预测零点五既可能来自大量和棋，也可能来自胜负各半，所以它不是红方胜率。',
-        sources: ['如何写一个业余象棋引擎.pdf:P15', 'trainnnue/train.py', 'trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json'],
-        takeaway: 'Sigmoid 统一分数与结果尺度；K 由独立校准集统计后冻结。'
-      },
-      {
-        id: 'e14',
-        eyebrow: '让误差变小',
-        title: 'MSE：预测差多少，就为差距付代价',
-        layout: 'code',
-        lead: '对一批样本计算均方误差，再沿梯度调整参数。',
-        code: `loss = mean((predicted_score(x) − y)²)\n\n一个样本：预测 0.8，结果是红负 y=0\n误差 = (0.8 − 0)² = 0.64\n\n一批局面 → 求平均 loss → 求梯度 → 更新 θ`,
-        steps: ['MSE：把“预测 − 结果”的差平方，再对一批局面取平均。', '预测 0.8、实际红负 0，这个样本贡献 0.64。', '参数向哪边调整，由整批样本的梯度共同决定。'],
-        notes: '均方误差简称 MSE。对每个样本计算“预测得分减真实结果得分”，把差平方后再对一批样本取平均，这个平均值就是 loss。\n\n[按键] 例如模型对一个局面预测零点八，最终结果是红负，标签为零；这个样本的平方误差就是零点六四。这个数说明预测偏得有多远。\n\n[按键] 单个样本不能直接决定“某个兵值就该加几分”。梯度是整批 loss 对每个参数的变化率，它综合这一批局面对同一参数的影响，决定参数向上还是向下挪一小步。所有参数反复更新，就形成梯度下降。\n\n标签为红胜一、和棋零点五、红负零时，MSE希望输出逼近条件预期得分：P(红胜|x)+0.5×P(和|x)。这里 P(红胜|x) 表示“给定盘面 x 时红胜的概率”，竖线读作“在 x 条件下”。',
-        sources: ['如何写一个业余象棋引擎.pdf:P15'],
-        takeaway: 'MSE 衡量预测差距，整批样本的梯度共同决定参数更新方向。'
-      },
-      {
-        id: 'e14a',
-        eyebrow: '已经完成 · 搜索蒸馏',
-        title: '让多步搜索，真的教会模型一眼判断',
-        layout: 'code',
-        lead: '项目已经打通“PST搜索教师 → 百万局面 → NNUE价值模型 → 量化部署”的闭环。',
-        code: `局面 x
-  ↓ 无风险剪枝的PST教师搜索 D3 / D4
-待走方视角搜索分数 v_search
-  ↓ 学习 teacher − PST 残差
-量化价值模型 vθ(x) + 原PST`,
-        cards: [
-          { title: '教师', text: '保留Alpha-Beta与静态搜索，关闭会让标签带偏的选择性剪枝。' },
-          { title: '数据', text: 'D3、D4各100万唯一局面；红黑待走各50万，按整局隔离切分。' },
-          { title: '学生', text: '学习搜索教师相对PST的修正；量化后仍由CPU在搜索每个节点调用。' }
-        ],
-        steps: [
-          '深度是超参数：D3便宜且易拟合，D4更强但更贵；没有默认越深越好。',
-          '重复局面全局去重，冲突标签按明确规则消解或整组丢弃。',
-          'Sigmoid概率误差之外加入cp残差损失，避免模型只学到“接近零修正”。',
-          '训练完成后转为整数权重，并进入与PST相同的搜索器做等时测试。'
-        ],
-        notes: '前面的原理现在已经变成项目中的真实流水线。教师仍然是这台自研PST引擎，但生成标签时关掉null move、LMR、futility、razoring、SEE pruning等会用经验提前少算的机制，让固定深度分数更适合作为监督目标；安全的Alpha-Beta截断、走法排序、将军延伸和静态搜索仍保留。\n\n[按键] 深度不是越深越好。D3每条标签便宜、相似局面覆盖广，也更容易被小网络拟合；D4每条更贵但判断更深入；D5曾经试过，最终实战不如百万级D4学生。正式数据各有一百万条，红黑待走严格平衡，并按整个对局划分训练、验证和校准，避免同局泄漏。\n\n[按键] 学生不从零替代所有评价，而是学习teacher减PST的残差。这样训练起点就是原引擎；同时加入cp空间误差，避免sigmoid在高分局面饱和后容忍“什么也不改”。部署前再把权重量化为整数。\n\n[按键] 这里完成的是价值蒸馏，不是策略网络：模型学会更快地评价局面，具体选哪一步仍由后面的传统搜索负责。',
-        sources: ['trainnnue/teacher.cpp', 'trainnnue/generate_data.cpp', 'trainnnue/build_balanced_dataset.py', 'trainnnue/train.py'],
-        takeaway: '搜索蒸馏已经闭环：百万级搜索标签训练出可在CPU搜索中实时调用的价值模型。'
-      },
-      {
-        id: 'e14b',
-        eyebrow: '已经完成 · 哪些尝试有效',
-        title: '不是“网络越大、教师越深”就越强',
-        layout: 'table',
-        lead: '离线误差负责筛选，最终必须看量化后、相同CPU时间里的对局。',
-        table: {
-          headers: ['尝试', '观察', '项目决策'],
-          rows: [
-            ['旧15万单边D3 + H8', '数据少，而且只记录一方待走', '扩到百万并平衡红黑'],
-            ['百万D3：H8 / H16', '更容易拟合，但实战不如D4最佳模型', '作为覆盖广的预训练'],
-            ['百万D4：随机 / D3初始化', 'H16 + D3初始化的验证相关性与实战最好', '选为最终候选'],
-            ['旧D5-H8', '教师更深，却更贵、更难由小网络学习；瑞士轮48.13%', '不把最深教师当默认答案'],
-            ['小隐藏层', '会增加每次叶子评价成本', '本轮先选无隐藏直接头']
+        "rows": [
+          [
+            "NNUE + traditional search",
+            "Subtract old features, add new ones; reuse the first-layer accumulator",
+            "Low CPU latency, followed by a small output network",
+            "Evaluate many nodes and search deeper"
+          ],
+          [
+            "AlphaGo-style CNN + MCTS",
+            "Run full-board convolution at each new leaf; cache results in the tree",
+            "Heavier leaf inference; the original system used asynchronous GPUs",
+            "Fewer new leaves; policy priors focus visits on promising branches"
           ]
-        },
-        steps: ['有效：更多且平衡的数据、D3到D4课程初始化、H16直接头、残差学习。', '没有成为最终方案：少量单边数据、只追更深教师、额外隐藏层。', 'H16离线优势不算大，真正决定选择的是直接对局仍能覆盖速度成本。'],
-        notes: '这一页想传达的不是一串超参数，而是实验方法。最早约十五万条D3数据只记录一方待走，网络看到的分布不完整；扩到一百万后，红黑各五十万，并做全局去重，这是最直接有效的数据改进。\n\n[按键] D3标签比较浅，容易拟合、覆盖更广；D4更难，却能提供不同于PST的更深判断。最终先让H16学D3，再把参数带到D4训练，比只用随机初始化更稳定。D5不是自动更好：每条标签成本约继续成倍增加，而小网络未必学得下。\n\n[按键] 我们也讨论过增加小隐藏层，但搜索会在大量节点上重复调用评价，哪怕每次只多一点乘加，最终都可能少完成一层。现有实验先把网络结构控制为H16直接头，用数据、目标和初始化提升表达能力。\n\n最后，MSE、MAE和相关性只用来淘汰明显失败模型；只有把量化模型放回相同搜索器、给相同CPU时间对局，才能知道它是否真的更强。',
-        sources: ['trainnnue/model_comparison.json', 'trainnnue/swiss_8models_5rounds.json', 'trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json'],
-        takeaway: '这次最有效的不是堆层数，而是平衡大数据、适中教师、课程初始化和轻量直接头。'
+        ]
       },
-      {
-        id: 'e14c',
-        eyebrow: '已经完成 · 公平对局结果',
-        title: '第一代部署模型对PST：得分率59.77%',
-        layout: 'cards',
-        lead: '同一搜索、同一CPU时间、192个保留开局逐一换先；唯一核心变量是评价。',
-        cards: [
-          { title: '172胜 / 115和 / 97负', text: '胜=1、和=0.5：NNUE得到229.5 / 384分。' },
-          { title: '59.77% 得分率', text: '比双方等强的50%基准高9.77个百分点；95%区间为56.38%～63.15%。' },
-          { title: 'H16 vs H8：54.17%', text: '149胜118和117负；更宽模型的收益覆盖了很小的速度差。' },
-          { title: '363KB整数模型', text: '平均完成深度9.24；PST为9.70，评价更强但仍付出约0.46 ply。' }
+      "cards": [
+        {
+          "title": "Pikafish Wiki · 2025-01-06",
+          "text": "The wiki reports that CPU engines remain stronger than GPU engines in Xiangqi."
+        }
+      ],
+      "steps": [
+        "NNUE caches the expensive first layer, updates changed features, and runs small later layers.",
+        "An AlphaGo-style CNN performs multilayer full-board inference at each new leaf.",
+        "On the same CPU budget, heavier nodes mean fewer replies explored and less reachable depth."
+      ],
+      "notes": "Incremental evaluation leaves more CPU time for exploring continuations.\n\nNNUE caches the expensive first layer, updates changed features, and runs small later layers.\n\nAn AlphaGo-style CNN performs multilayer full-board inference at each new leaf.\n\nOn the same CPU budget, heavier nodes mean fewer replies explored and less reachable depth.\n\nPikafish Wiki · 2025-01-06: The wiki reports that CPU engines remain stronger than GPU engines in Xiangqi.\n\nNNUE spends the budget on more nodes; the AlphaGo approach uses richer guidance per leaf.",
+      "sources": [
+        "https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html",
+        "https://deepmind-media.storage.googleapis.com/alphago/AlphaGoNaturePaper.pdf",
+        "https://www.pikafish.com/wiki/index.php?oldid=482&title=象棋有“阿尔法狗”吗？"
+      ],
+      "takeaway": "NNUE spends the budget on more nodes; the AlphaGo approach uses richer guidance per leaf."
+    },
+    {
+      "id": "e11",
+      "eyebrow": "Evaluation · Selecting the current version",
+      "title": "What do we use after these experiments?",
+      "layout": "table",
+      "lead": "Keep PST as a transparent baseline; deploy the trained and validated NNUE as the default upgrade.",
+      "table": {
+        "headers": [
+          "Option",
+          "Project result",
+          "Current use"
         ],
-        steps: ['192个保留开局逐一交换红黑，共形成384盘。', '置信区间以开局对为抽样单位，保留换先两盘的相关性。', 'H16以54.17%直接战胜H8，平均完成深度相差0.06层。'],
-        notes: '第一代结果来自模型回到完整搜索器后的直接对局。实验准备一百九十二个保留开局；每个开局下两盘，NNUE和PST各执一次红方，共三百八十四盘。双方每步零点一秒、最长一百六十个半回合，并固定CPU。\n\n[按键] NNUE取得一百七十二胜、一百一十五和、九十七负。按胜一分、和半分计算，共二百二十九点五分，得分率百分之五十九点七七。以开局对为单位做bootstrap，百分之九十五区间为百分之五十六点三八到六十三点一五。\n\n[按键] H16与同路线H8再直接进行三百八十四盘比赛，H16得分率为百分之五十四点一七。两者平均完成深度相差约零点零六层，从八维增加到十六维的表达收益覆盖了速度成本。\n\n[按键] 对PST比赛中，NNUE平均完成深度为九点二四，PST为九点七零；更准确的叶子评价把这部分速度投入转化为百分之五十九点七七的等时得分率。',
-        sources: ['trainnnue/direct_match_summary.json', 'trainnnue/RESULTS.generated.md', 'trainnnue/artifacts.json'],
-        takeaway: '第一代NNUE不只“训练完成”：量化部署后在公平直接对局中把PST得分率从50%基准提升到59.77%。'
-      },
-      {
-        id: 'e14d',
-        eyebrow: '已经完成 · 第一次教师迭代',
-        title: '让当前NNUE搜索D3，再把结果教回网络',
-        layout: 'cards',
-        lead: '更深的PST教师很贵；一次“最佳NNUE + D3搜索”迭代用更低成本产生了新的百万数据。',
-        cards: [
-          { title: '教师可配置', text: '同一生成器可选PST或指定NNUE；默认PST，旧命令和旧数据保留。' },
-          { title: '百万平衡数据', text: '最终100万唯一局面，红黑待走各50万；只丢弃12个冲突组。' },
-          { title: '对上一代：60.94%', text: '174胜120和90负；95%区间57.16%～64.71%。' },
-          { title: '对PST：63.28%', text: '188胜110和86负；比上一代的59.77%高3.52个百分点。' }
-        ],
-        steps: ['D4-H16量化模型充当叶子评价，教师搜索3个半回合。', '学生从当前模型初始化，K独立校准，第4轮取得最佳验证点。', '新学生对上一代得分60.94%，对PST得分63.28%。'],
-        notes: '第一次教师迭代让D4-H16模型负责叶子评价，再用D3搜索处理回吃、将军和短战术，把搜索后的分数重新蒸馏回同样轻量的H16网络。数据生成器支持PST与指定NNUE两类教师，两条数据路线共享同一套过滤和训练流程。\n\n[按键] 本轮生成约一百一十九万条原始记录，过滤、去重和冲突消解后精确抽取一百万条，红黑待走各五十万。K在本轮校准集独立统计；学生从上一代参数开始训练，最佳验证点位于第四轮，第二十五轮早停并恢复最佳checkpoint。\n\n[按键] 新模型对上一代取得一百七十四胜、一百二十和、九十负，得分率百分之六十点九四；对PST取得一百八十八胜、一百一十和、八十六负，得分率百分之六十三点二八。统一PST基准比上一代提高三点五二个百分点。',
-        sources: ['trainnnue/iter1_experiment.json', 'trainnnue/generate_data.cpp', 'trainnnue/iter1_nnued3_h16_fromd4_gpu.nnue.json'],
-        takeaway: '第一次NNUE+D3教师迭代有效：直接战胜上一代，并把对PST得分率提高到63.28%。'
-      },
-      {
-        id: 'e14e',
-        eyebrow: '已经完成 · 第二次教师迭代',
-        title: '相同闭环再走一轮：对PST达到70.18%',
-        layout: 'cards',
-        lead: '第二轮的教师和初始化都使用Iter1，并重新生成独立的百万局面；网络结构与公平测试条件不变。',
-        cards: [
-          { title: '新的百万数据', text: '105.79万唯一有效局面中精确抽取100万；红黑各50万，只丢弃15个冲突组。' },
-          { title: '独立K=54.708', text: '本轮校准集独立统计；第5轮最佳，第25轮早停并恢复最佳checkpoint。' },
-          { title: '对Iter1：55.08%', text: '143胜137和104负；95%区间51.43%～58.72%，完整高于50%。' },
-          { title: '对PST：70.18%', text: '218胜103和63负；95%区间66.80%～73.44%，比Iter1再高6.90个百分点。' }
-        ],
-        steps: ['Iter1量化模型负责叶子评价，D3搜索生成全新标签。', 'Iter2从Iter1参数初始化，第5轮取得最佳验证点。', 'Iter2对Iter1得分55.08%，对PST得分70.18%。'],
-        notes: '第二轮重复相同闭环，教师和初始化都切换为第一轮模型。全新随机种子生成独立局面，再经过过滤、全局去重、按整局划分与红黑平衡。\n\n[按键] 本轮K等于五十四点七零八，由校准集一维统计得到并在训练中冻结。训练目标在第五轮取得最佳验证值；第二十五轮触发早停并恢复最佳checkpoint。\n\n[按键] 量化学生对第一轮模型得到百分之五十五点零八，配对置信区间为百分之五十一点四三到五十八点七二；对PST得到百分之七十点一八，比第一轮对PST的百分之六十三点二八提高六点九零个百分点。',
-        sources: ['trainnnue/iter2_experiment.json', 'trainnnue/iter2_nnued3_h16_fromiter1_gpu.nnue.json', 'trainnnue/RESULTS.generated.md'],
-        takeaway: '第二次NNUE+D3教师迭代继续有效：直接战胜Iter1，并把同条件对PST得分率提高到70.18%。'
-      },
-      {
-        id: 'e14f',
-        eyebrow: '教师迭代 · 统一基准结果',
-        title: '四代训练将对PST得分率推至70.18%',
-        layout: 'figure',
-        lead: '相同网络结构、相同保留开局与相同时间控制下，代际收益在第三世代达到实测峰值。',
-        figure: {
-          src: 'assets/nnue/iteration-vs-pst.svg',
-          alt: 'PST初代与四个NNUE迭代世代的对PST得分率折线图，依次为50%、59.77%、63.28%、70.18%和70.05%。',
-          caption: '192个保留开局逐一换先；每代384盘、每步0.10秒、单CPU核。',
-          credit: '实验JSON自动生成'
-        },
-        notes: '这张图把四轮实验放在统一PST基准上比较。PST与自身对局的得分率定义为百分之五十；每个NNUE世代使用同一组一百九十二个保留开局逐一换先，每步零点一秒，所以每个点都来自三百八十四盘。\n\n[按键] 世代1整合PST教师的D3和D4训练，每个深度各生成一百万条数据，对PST达到百分之五十九点七七。\n\n[按键] 世代2到世代4把上一代量化NNUE放回D3教师搜索，每轮重新生成一百万条红黑平衡数据；对PST得分率依次达到百分之六十三点二八、百分之七十点一八和百分之七十点零五。\n\n[按键] 世代3是统一协议下的最高点，模型大小三百六十三KB，对PST战绩为二百一十八胜、一百零三和、六十三负，配对百分之九十五区间为百分之六十六点八零到七十三点四四。网页与本地NNUE入口使用这一代权重。',
-        sources: ['trainnnue/iter3_experiment.json', 'trainnnue/iteration_vs_pst.svg', 'trainnnue/run_teacher_iteration.ps1'],
-        takeaway: '轻量H16结构通过教师迭代持续吸收搜索结果，第三世代在统一协议下达到70.18%的对PST得分率。'
-      },
-      {
-        id: 'e14g',
-        eyebrow: '外部基准 · 官方Pikafish NNUE',
-        title: '外部坐标：战胜Pikafish内置1900档',
-        layout: 'figure',
-        lead: '独立保留集的360盘换先赛中，自研NNUE取得56.39%得分率；满强Pikafish给出顶级引擎距离。',
-        figure: {
-          src: 'assets/nnue/external-benchmark.svg',
-          alt: '自研NNUE对官方Pikafish内置UCI Elo 1900档和满强档的得分率对比图，分别为56.39%和7.78%。',
-          caption: '官方Pikafish 2026-01-31；180个正式开局逐一换先，共360盘。',
-          credit: '逐盘JSON与配对bootstrap'
-        },
-        notes: '内部PST对照回答了NNUE带来多少提升；这一页回答引擎在外部参照系中的位置。对手是官方Pikafish二〇二六年一月三十一日版本及其官方NNUE网络，双方单线程运行，同一开局交换红黑。前十二个开局用于选择时间倍率和限强档位，正式结果使用其余一百八十个开局。\n\n[按键] Pikafish的UCI_LimitStrength提供一千二百八十到三千一百三十三的内置刻度。校准阶段把等强点定位到一千九百档；冻结设置后，自研取得一百六十九胜、六十八和、一百二十三负，得分率百分之五十六点三九，配对百分之九十五区间为百分之五十一点九四到六十点八三。这里的一千九百是Pikafish自己的UCI刻度。\n\n[按键] 满强Pikafish使用相同的一百八十个正式开局。自研取得六胜、四十四和、三百一十负，得分率百分之七点七八。这个点给出当前实现与顶级开源引擎的距离。\n\n[按键] 自研引擎用零点二五秒名义预算适配完整深度停止策略；正式一千九百档比赛的实际平均搜索时间为七十六点二毫秒，Pikafish为一百零一点三毫秒。结果因此同时报告配置时限和实际耗时。',
-        sources: ['trainnnue/iter2_vs_pikafish_elo1900_180pairs.json', 'trainnnue/iter2_vs_pikafish_official_180pairs.json', 'trainnnue/run_external_match.ps1'],
-        takeaway: '外部基准给出清晰坐标：当前自研NNUE高于Pikafish内置1900档，与满强Pikafish仍有显著距离。'
-      },
-      {
-        id: 'e18a',
-        eyebrow: 'AlphaGo 类路线 · 先看它怎样工作',
-        title: '策略网络指路，价值网络评叶，结果再回到树上',
-        layout: 'figure',
-        lead: '卷积网络（CNN）用小窗口扫描棋盘、逐层组合局部特征；每次扩展新叶时，树根据它的输出决定下一次把计算投向哪里。',
-        figure: {
-          src: 'assets/alphago/alphago-policy-value-search.svg',
-          alt: '完整棋盘分别输入多层卷积策略网络和价值网络；策略网络输出走法先验，价值网络评估新叶，树搜索回传结果后再次选择分支。',
-          caption: '依据 2016 AlphaGo 论文 Fig. 1b 与 Fig. 3 重绘；该版本还把价值网络与快速走子模拟共同用于叶子评估。',
-          credit: 'Silver et al. · Nature 2016'
-        },
-        steps: ['策略网络：给合法走法分配优先程度，告诉树先看哪里。', '价值网络：估计新叶局面的胜负前景。', '树把评估结果向上回传，让较好的分支获得更多访问。'],
-        notes: '先用普通话把图走一遍。树搜索来到一个还没有展开过的新局面，也就是新叶。卷积网络简称 CNN：它用一个小窗口扫描棋盘，在每一层提取局部形状，再由后续层把这些局部形状组合成更大范围的特征。\n\n[按键] 策略网络读取完整棋盘，经过多层卷积和非线性变换，输出每个合法走法的优先程度。它解决的是“接下来先试哪一着”。\n\n[按键] 价值网络也读取完整棋盘，经过另一套多层卷积，输出这个新叶的胜负前景。它解决的是“走到这里大概有多好”。2016 年原始 AlphaGo 的叶子评估还会运行一条更快的走子策略直到终局，再把快速模拟结果与价值网络结果混合。\n\n[按键] 新叶得到评价后，结果沿访问路径向上回传。下一轮选择时，已有结果较好、同时还值得探索的分支会获得更多访问。这里的“蒙特卡洛树搜索”可以先理解为：反复选择、扩展、评估、回传，让计算逐渐集中到更有希望的变化。\n\n接下来只盯住图中两个紫色模块：每扩展一个新叶，都要对完整棋盘运行多层网络。这就是它和 NNUE 在计算路径上的关键差别。',
-        sources: ['https://deepmind-media.storage.googleapis.com/alphago/AlphaGoNaturePaper.pdf'],
-        takeaway: 'AlphaGo 类路线用策略与价值网络指导树：每个新叶判断更丰富，也要完成更重的全盘前向计算。'
-      },
-      {
-        id: 'e18',
-        eyebrow: '两条神经网络路线 · 直接比较',
-        title: '为什么 NNUE 更快、能搜得更深？',
-        layout: 'table',
-        lead: '对当前 CPU 搜索器，增量更新降低单次评价成本，把时间留给更多后续变化。',
-        table: {
-          headers: ['做法', '相邻局面怎样复用', '单个新节点的代价', '固定时间里的搜索效果'],
-          rows: [
-            ['NNUE + 传统搜索', '走一步只减旧特征、加新特征；复用第一层累加器', 'CPU 低延迟；再跑较小的后续网络', '能评价大量节点，让传统搜索继续向深处展开'],
-            ['AlphaGo 类 CNN + MCTS', '相邻一步仍完整运行多层全盘卷积；结果留在树中', '单个新叶更重，原始系统由 GPU 异步计算', '能验证的新叶更少；策略先验把计算集中到更有希望的分支']
+        "rows": [
+          [
+            "Material only",
+            "Piece types and counts; incremental O(1) updates",
+            "Simplest evaluation baseline"
+          ],
+          [
+            "PST",
+            "Fast, interpretable ElephantEye tables adjusted through practice",
+            "Keep as the project PST engine and comparison baseline"
+          ],
+          [
+            "Piece relationships",
+            "The attempted features made execution several times slower",
+            "Removed"
+          ],
+          [
+            "Project NNUE",
+            "D3/D4 training and three NNUE+D3 teacher iterations completed",
+            "Iter2 peaks at 70.18%; deployed in the web demo"
           ]
-        },
-        cards: [
-          { title: '皮卡鱼 Wiki · 2025-01-06', text: '“象棋领域，CPU 引擎仍然强于显卡引擎。”' }
-        ],
-        steps: ['NNUE 缓存最贵的第一层，只加减走子改变的特征，再运行小后续层。', 'AlphaGo 类 CNN 对每个新叶做多层全盘前向，单节点更重。', '同一 CPU 与时间预算下，节点变少；而多看一步还要面对多种应手，可达深度因此受限。'],
-        notes: '现在可以直接比较慢在哪里。\n\n[按键] NNUE 把棋盘表示成稀疏的棋子—位置特征。相邻局面只改少量特征，所以最宽、最贵的第一层可以缓存：减旧向量、加新向量，然后只运行较小的后续网络。Stockfish 官方文档把目标说得很明确：低延迟 CPU 推理，让传统搜索能高频评价节点。\n\n[按键] AlphaGo 类 CNN 把棋盘表示成多通道网格。卷积和非线性逐层计算后，一个棋子的变化会影响后续多层特征；原始 AlphaGo 推理不会像 NNUE 那样，只加减少量第一层向量就复用整个昂贵部分。每扩展一个新叶，策略网络和价值网络都要完成全盘前向。论文指出，这些网络比传统搜索启发式多耗费数个数量级的计算，因此用 CPU 运行树、用 GPU 异步计算网络。\n\n[按键] 把这类重网络用于当前 CPU 逐节点搜索时，每个新增局面的评价更贵，同一段时间能验证的局面就更少；想再深入一步，还要继续处理对手的多种应手，搜索树随深度快速增长，所以能深入的程度会被限制。\n\nAlphaGo 类路线用策略先验把较少的扩展集中到更有希望的分支，并用价值网络提高每个新叶的信息量；NNUE 则用增量与浅小网络，把更多预算留给搜索节点。皮卡鱼 Wiki 在 2025 年 1 月 6 日给出的象棋领域判断是：“CPU 引擎仍然强于显卡引擎。”这条有日期的判断支持当前工程选择：在 CPU 象棋密集搜索里，NNUE 的计算路径更贴合现有传统搜索主循环。',
-        sources: ['https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html', 'https://deepmind-media.storage.googleapis.com/alphago/AlphaGoNaturePaper.pdf', 'https://www.pikafish.com/wiki/index.php?oldid=482&title=象棋有“阿尔法狗”吗？'],
-        takeaway: 'NNUE 把预算换成更多搜索节点；AlphaGo 类路线把预算集中在更重、更有指导性的单节点判断。'
+        ]
       },
-      {
-        id: 'e11',
-        eyebrow: '评价路线 · 阶段选择',
-        title: '完成实验后，当前版本怎么选？',
-        layout: 'table',
-        lead: '保留PST作为透明、稳定的基线；把已经训练和验证的NNUE作为默认升级。',
-        table: {
-          headers: ['方案', '项目中的结果', '现在怎样处理'],
-          rows: [
-            ['仅计算子力', '只看棋子种类与数量；移动时查表加减，O(1)', '最简单的评价基线'],
-            ['PST', '象眼表经实践微调，速度快、容易解释', '保留为自研PST引擎与公平基线'],
-            ['棋子关系项', '实际尝试后慢了好几倍', '已移除'],
-            ['自有NNUE', 'D3/D4训练与三次NNUE+D3教师迭代均已完成', 'Iter2实测峰值70.18%，已部署网页Demo']
-          ]
+      "steps": [
+        "Explicit relationship terms added information but cost several times more runtime.",
+        "PST remains interpretable and makes neural gains measurable.",
+        "Iter2 has the highest observed score across three teacher iterations; deploy.ps1 updates the demo."
+      ],
+      "notes": "Keep PST as a transparent baseline; deploy the trained and validated NNUE as the default upgrade.\n\nExplicit relationship terms added information but cost several times more runtime.\n\nPST remains interpretable and makes neural gains measurable.\n\nIter2 has the highest observed score across three teacher iterations; deploy.ps1 updates the demo.\n\nPST is the transparent baseline; NNUE is the validated default. Evaluate both with search cost.",
+      "sources": [
+        "xiangqi_ai.cpp:791",
+        "trainnnue/nnue_engine.cpp",
+        "trainnnue/direct_match_summary.json",
+        "trainnnue/RESULTS.generated.md"
+      ],
+      "takeaway": "PST is the transparent baseline; NNUE is the validated default. Evaluate both with search cost."
+    },
+    {
+      "id": "e19",
+      "eyebrow": "Stage 2 complete",
+      "title": "We have intuition, but not foresight",
+      "layout": "cards",
+      "lead": "Neither PST nor search-distilled NNUE replaces explicit consideration of replies.",
+      "cards": [
+        {
+          "title": "What we have",
+          "text": "Two evaluators: fast, transparent PST and incremental NNUE that learns relationships."
         },
-        steps: ['关系项增加信息，却让实际运行慢了好几倍，因此移除。', 'PST继续承担可解释基线，便于定位网络究竟带来了多少收益。', '三轮教师迭代在Iter2达到实测峰值，并通过deploy.ps1更新网页Demo。'],
-        notes: '把这一章的评价路线放在一起看。仅计算子力时，只看棋子种类与数量，是最简单的基线；PST继续保持O(1)增量更新，又加入位置信息，速度快、行为透明，因此没有因为NNUE完成就被删除。\n\n[按键] 我实际加入过棋子关系项，它增加了局面信息，却让程序慢了好几倍。评价与搜索共享同一份时间预算，所以这条路线被移除。这个失败尝试也留下了一个工程原则：评价不只要更准，还必须让引擎在固定时间内搜得动。\n\n[按键] 自有NNUE随后完成了数据生成、训练、整数化、增量累加器、网页部署和公平对局。最初部署的D4-H16模型对PST得分率59.77%，平均搜索深度比PST少约0.46层；三轮教师迭代在Iter2达到70.18%的实测峰值，Iter3平台探针为70.05%。网页Demo现已部署Iter2，当前产品默认NNUE，同时保留PST作为对照和低成本选择。仓库中的Pikafish仍是第三方开源引擎，只用于更强对照与协议桥接。',
-        sources: ['xiangqi_ai.cpp:791', 'trainnnue/nnue_engine.cpp', 'trainnnue/direct_match_summary.json', 'trainnnue/RESULTS.generated.md'],
-        takeaway: 'PST是可解释基线，NNUE是已验证的默认升级；二者都必须和搜索成本一起评价。'
-      },
-      {
-        id: 'e19',
-        eyebrow: '第二阶段完成',
-        title: '我们有棋感了，但还不会算后果',
-        layout: 'cards',
-        lead: '无论是PST还是已经蒸馏搜索经验的NNUE，单次静态评价都不能代替真正展开应手。',
-        cards: [
-          { title: '已经拥有', text: 'PST与增量NNUE两把评价尺：一把透明快速，一把能学习组合关系。' },
-          { title: '仍然缺少', text: '对手会怎么回应？眼前得子会不会马上被吃回？' },
-          { title: '第三阶段', text: '把走法展开成树，用双方选择检验静态棋感。' }
-        ],
-        steps: ['评价负责衡量搜索到达的局面。', '搜索负责决定哪些局面真的可能发生。'],
-        notes: '到这里，电脑已经拥有两种棋感。PST直接累加人工设计的位置偏好；NNUE把搜索教师的经验压进一个小型网络，并用增量累加器维持可接受的CPU速度。它们都能为当前盘面给出有符号分数。\n\n但NNUE学过多步搜索标签，不等于推理时已经把未来走完。眼前吃到一个炮可能加分，可如果下一步整辆车被马吃回去呢？模型可以从相似样本中形成倾向，却无法保证所有具体战术都见过。\n\n[按键] 因此评价负责给搜索到达的局面一个刻度；搜索负责真正展开双方应手，决定这些盘面能不能发生。第三阶段从“一步贪吃”开始，把双方轮流选择写成递归，再解决搜索树怎样在有限时间里算得完。',
-        sources: ['xiangqi_ai.cpp:791', 'trainnnue/nnue_engine.cpp', 'xiangqi_ai.cpp:1123'],
-        takeaway: '评价与搜索形成闭环：评价衡量叶子，搜索用具体应手修正静态判断。'
-      }
-    ]
-  });
-})();
+        {
+          "title": "What is missing",
+          "text": "How will the opponent reply? Will a captured piece immediately be recaptured?"
+        },
+        {
+          "title": "Stage 3",
+          "text": "Expand moves into a tree and test intuition against both players' choices."
+        }
+      ],
+      "steps": [
+        "Evaluation measures positions reached by search.",
+        "Search determines which positions can actually arise."
+      ],
+      "notes": "Neither PST nor search-distilled NNUE replaces explicit consideration of replies.\n\nEvaluation measures positions reached by search.\n\nSearch determines which positions can actually arise.\n\nWhat we have: Two evaluators: fast, transparent PST and incremental NNUE that learns relationships.\n\nWhat is missing: How will the opponent reply? Will a captured piece immediately be recaptured?\n\nStage 3: Expand moves into a tree and test intuition against both players' choices.\n\nEvaluation scores leaves; search tests those scores against concrete replies.",
+      "sources": [
+        "xiangqi_ai.cpp:791",
+        "trainnnue/nnue_engine.cpp",
+        "xiangqi_ai.cpp:1123"
+      ],
+      "takeaway": "Evaluation scores leaves; search tests those scores against concrete replies."
+    }
+  ]
+});

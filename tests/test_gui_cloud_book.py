@@ -45,5 +45,5 @@ def test_gui_toggle_controls_next_cloud_query(monkeypatch):
     app.request_ai_move()
 
     assert seen == [False, True]
-    assert app.btn_cloud_book.text == "云库: 开"
+    assert app.btn_cloud_book.text == "Book: on"
     assert app.ai.commands == ["search", "search"]

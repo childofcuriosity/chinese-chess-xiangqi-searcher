@@ -105,14 +105,14 @@ def parse_forbid(text):
     try:
         nums = [int(x) for x in text.split()]
     except ValueError:
-        return None, "禁招格式错误：需要 4 个整数 (r1 c1 r2 c2)"
+        return None, "Invalid blocked move: expected 4 integers (r1 c1 r2 c2)"
     if len(nums) != 4:
-        return None, "禁招格式错误：需要 4 个整数 (r1 c1 r2 c2)"
+        return None, "Invalid blocked move: expected 4 integers (r1 c1 r2 c2)"
     r1, c1, r2, c2 = nums
     if (r1, c1) == (r2, c2):
         return None, None
     if not (0 <= r1 < ROWS and 0 <= r2 < ROWS and 0 <= c1 < COLS and 0 <= c2 < COLS):
-        return None, "禁招坐标越界 (r:0-9, c:0-8)"
+        return None, "Blocked move out of bounds (r:0-9, c:0-8)"
     return ((r1, c1), (r2, c2)), None
 
 
@@ -120,9 +120,9 @@ def parse_search_time(value):
     try:
         seconds = float(value)
     except (TypeError, ValueError):
-        return None, "思考时间必须是数字"
+        return None, "Thinking time must be a number"
     if not MIN_SEARCH_TIME <= seconds <= MAX_SEARCH_TIME:
-        return None, f"思考时间必须在 {MIN_SEARCH_TIME:g} 到 {MAX_SEARCH_TIME:g} 秒之间"
+        return None, f"Thinking time must be between {MIN_SEARCH_TIME:g} and {MAX_SEARCH_TIME:g} seconds"
     return seconds, None
 
 
@@ -131,9 +131,9 @@ def parse_cloud_book(value=_MISSING, *, allow_default=True):
     if value is _MISSING:
         if allow_default:
             return CLOUD_BOOK_ENABLED, None
-        return None, "缺少云库开关 enabled"
+        return None, "Missing cloud-book enabled flag"
     if type(value) is not bool:
-        return None, "cloud_book 必须是布尔值"
+        return None, "cloud_book must be a boolean"
     return value, None
 
 
@@ -193,18 +193,18 @@ class GameSession:
     # ---- 人类走子（服务端权威校验） ----
     def try_human_move(self, r1, c1, r2, c2):
         if self.game_over:
-            return False, "对局已结束"
+            return False, "Game has ended"
         if self.thinking:
-            return False, "引擎思考中"
+            return False, "Engine is thinking"
         if self.board.turn != self.player_side:
-            return False, "还没轮到你"
+            return False, "Not your turn"
         if not self.board.in_board(r1, c1) or not self.board.in_board(r2, c2):
-            return False, "坐标越界"
+            return False, "Coordinates out of bounds"
         piece = self.board.board[r1][c1]
         if piece == '.' or self.board.is_red(piece) != (self.player_side == 'red'):
-            return False, "不能移动对方棋子"
+            return False, "Cannot move an opponent piece"
         if (r2, c2) not in self.board.get_valid_moves(r1, c1):
-            return False, "非法走法"
+            return False, "Illegal move"
         self.board.move(r1, c1, r2, c2)
         self.last_move = {"r1": r1, "c1": c1, "r2": r2, "c2": c2}
         self.engine.send(f"move {r1} {c1} {r2} {c2}")
@@ -376,7 +376,7 @@ async def reaper_loop():
         for s in victims:
             if s.ws is not None:
                 try:
-                    await s.ws.send_json({"type": "error", "msg": "长时间未操作，对局已结束"})
+                    await s.ws.send_json({"type": "error", "msg": "Game ended due to inactivity"})
                     await s.ws.close()
                 except Exception:
                     pass
@@ -473,11 +473,11 @@ async def _handle_message(ws, session, data):
 
     if mtype == "move":
         if session.game_over or session.thinking:
-            await ws.send_json({"type": "error", "msg": "现在不能走子"})
+            await ws.send_json({"type": "error", "msg": "Cannot move right now"})
             return True
         r1, c1, r2, c2 = data.get("r1"), data.get("c1"), data.get("r2"), data.get("c2")
         if not all(isinstance(x, int) for x in (r1, c1, r2, c2)):
-            await ws.send_json({"type": "error", "msg": "参数不完整"})
+            await ws.send_json({"type": "error", "msg": "Missing parameters"})
             return True
         ok, err = session.try_human_move(r1, c1, r2, c2)
         if not ok:
@@ -492,11 +492,11 @@ async def _handle_message(ws, session, data):
 
     if mtype == "select":
         if session.game_over or session.thinking or session.board.turn != session.player_side:
-            await ws.send_json({"type": "error", "msg": "现在不能选子"})
+            await ws.send_json({"type": "error", "msg": "Cannot select a piece right now"})
             return True
         r, c = data.get("r"), data.get("c")
         if not isinstance(r, int) or not isinstance(c, int):
-            await ws.send_json({"type": "error", "msg": "参数不完整"})
+            await ws.send_json({"type": "error", "msg": "Missing parameters"})
             return True
         legal = session.legal_moves_for(r, c)
         await ws.send_json(session.state_msg(legal=legal))
@@ -543,7 +543,7 @@ async def _handle_message(ws, session, data):
         await ws.send_json(session.state_msg())
         return True
 
-    await ws.send_json({"type": "error", "msg": f"未知消息类型: {mtype}"})
+    await ws.send_json({"type": "error", "msg": f"Unknown message type: {mtype}"})
     return True
 
 
@@ -572,11 +572,11 @@ async def ws_endpoint(ws: WebSocket):
                 first["cloud_book"] if "cloud_book" in first else _MISSING
             )
             if side not in ("red", "black"):
-                await ws.send_json({"type": "error", "msg": "side 必须是 red 或 black"})
+                await ws.send_json({"type": "error", "msg": "side must be red or black"})
                 await ws.close()
                 return
             if engine not in ENGINE_PATHS:
-                await ws.send_json({"type": "error", "msg": "未知引擎"})
+                await ws.send_json({"type": "error", "msg": "Unknown engine"})
                 await ws.close()
                 return
             if time_error:
@@ -592,7 +592,7 @@ async def ws_endpoint(ws: WebSocket):
                     side, flip, forbid, engine, search_time, cloud_book
                 )
             except RuntimeError as e:
-                await ws.send_json({"type": "error", "msg": f"引擎启动失败: {e}"})
+                await ws.send_json({"type": "error", "msg": f"Failed to start engine: {e}"})
                 await ws.close()
                 return
             if session is None:
@@ -608,7 +608,7 @@ async def ws_endpoint(ws: WebSocket):
         elif ftype == "resume":
             session = manager.get(first.get("sid", ""))
             if session is None:
-                await ws.send_json({"type": "error", "msg": "会话不存在，请新开对局"})
+                await ws.send_json({"type": "error", "msg": "Session not found. Start a new game."})
                 await ws.close()
                 return
             # 单写者：新连接接管，旧连接关闭
@@ -624,7 +624,7 @@ async def ws_endpoint(ws: WebSocket):
                 # 接管思考等待（引擎输出是 session 级状态，新连接继续 drain）
                 await _wait_engine(ws, session)
         else:
-            await ws.send_json({"type": "error", "msg": "首条消息必须是 new_game 或 resume"})
+            await ws.send_json({"type": "error", "msg": "First message must be new_game or resume"})
             await ws.close()
             return
 
@@ -635,7 +635,7 @@ async def ws_endpoint(ws: WebSocket):
             except WebSocketDisconnect:
                 break
             if not isinstance(data, dict):
-                await ws.send_json({"type": "error", "msg": "消息格式错误"})
+                await ws.send_json({"type": "error", "msg": "Invalid message format"})
                 continue
             if data.get("type") == "new_game":
                 # 同连接重开新局：回收旧会话，创建新会话
@@ -650,10 +650,10 @@ async def ws_endpoint(ws: WebSocket):
                     data["cloud_book"] if "cloud_book" in data else _MISSING
                 )
                 if side not in ("red", "black"):
-                    await ws.send_json({"type": "error", "msg": "side 必须是 red 或 black"})
+                    await ws.send_json({"type": "error", "msg": "side must be red or black"})
                     continue
                 if engine not in ENGINE_PATHS:
-                    await ws.send_json({"type": "error", "msg": "未知引擎"})
+                    await ws.send_json({"type": "error", "msg": "Unknown engine"})
                     continue
                 if time_error:
                     await ws.send_json({"type": "error", "msg": time_error})
@@ -667,7 +667,7 @@ async def ws_endpoint(ws: WebSocket):
                         side, flip, forbid, engine, search_time, cloud_book
                     )
                 except RuntimeError as e:
-                    await ws.send_json({"type": "error", "msg": f"引擎启动失败: {e}"})
+                    await ws.send_json({"type": "error", "msg": f"Failed to start engine: {e}"})
                     await ws.close()
                     return
                 if session is None:

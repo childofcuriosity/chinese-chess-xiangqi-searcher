@@ -115,3 +115,9 @@ trainnnue/*
 !trainnnue/run_tianqi_match.ps1
 !trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json
 !trainnnue/iter2_vs_tianqi118_180pairs.compact.json
+
+# English/Chinese documentation and local authoring scratch
+!trainnnue/README_zh.md
+!trainnnue/RESULTS.generated_zh.md
+!trainnnue/*_zh.svg
+tmp/

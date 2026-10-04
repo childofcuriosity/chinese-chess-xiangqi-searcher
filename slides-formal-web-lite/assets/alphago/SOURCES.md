@@ -1,10 +1,12 @@
-# AlphaGo 图示来源
+﻿# AlphaGo Diagram Sources
 
-`alphago-policy-value-search.svg` 是为本讲稿重绘的中文教学图，不直接复制论文图片像素。
+[English](SOURCES.md) · [简体中文](SOURCES_zh.md)
 
-结构依据：David Silver 等，*Mastering the game of Go with deep neural networks and tree search*，Nature 529 (2016)，Fig. 1b 与 Fig. 3：
+`alphago-policy-value-search.svg` is an original teaching redraw, rather than a pixel copy of a paper figure. The English edition translates the labels; the original Chinese diagram is preserved in `slides-formal-web-lite_zh/`.
 
-- 论文 PDF：https://deepmind-media.storage.googleapis.com/alphago/AlphaGoNaturePaper.pdf
-- DOI：https://doi.org/10.1038/nature16961
+Structure: David Silver et al., *Mastering the game of Go with deep neural networks and tree search*, Nature 529 (2016), Figs. 1b and 3.
 
-图中保留原始 AlphaGo 的关键关系：策略网络给出走法先验，价值网络评价新叶，树搜索回传结果；2016 版本的叶子评价还混合快速走子模拟。SVG 中的中文说明、布局和配色为本课件自行制作。
+- [Paper PDF](https://deepmind-media.storage.googleapis.com/alphago/AlphaGoNaturePaper.pdf)
+- [DOI](https://doi.org/10.1038/nature16961)
+
+The diagram preserves the original AlphaGo relationships: policy priors guide moves, value evaluates new leaves, and tree search backs up results. The 2016 version also combines value estimates with fast rollouts. Explanations, layout, and colors were created for this tutorial.

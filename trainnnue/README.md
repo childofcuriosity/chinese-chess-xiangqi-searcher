@@ -1,228 +1,194 @@
-# Xiangqi NNUE：设计、训练与验证
+# Xiangqi NNUE: Design, Training, and Validation
 
-本目录记录完整象棋 AI 系统中的 **NNUE 评价专题**；规则、搜索、客户端、实验框架和教程的总览见仓库根 [`README.md`](../README.md)。`Iter2-NNUE-D3` 在统一 PST 基准上达到70.18%；象眼、天启和旋风三组外部实战把当前棋力集中定位在**约 2400 Elo、人类大师水平**。
+[English](README.md) · [简体中文](README_zh.md)
 
-## 1. 最终结果
+This directory covers **NNUE evaluation** within the complete Xiangqi system. See the [root README](../README.md) for rules, search, clients, and the tutorial. `Iter2-NNUE-D3` scores **70.18%** against the PST baseline. Results against ElephantEye, Tianqi, and Cyclone place it around **2400 Elo on the cited reference scale**.
 
-### 公开引擎实战坐标
+## 1. Results
 
-正式比赛统一使用180个开局逐一换先，形成360盘；双方固定到同一逻辑 CPU。换算使用 `对手参考 Elo + 400 × log10(得分率 / (1 − 得分率))`，参考分来自[公开象棋引擎等级分榜](https://zhuanlan.zhihu.com/p/2072972857840350627)。
+### External engines
 
-| 公开引擎 | 自研胜/和/负（得分率） | 换算 Elo |
+Each match uses 180 color-swapped opening pairs (360 games), with both engines pinned to the same logical CPU per game. Implied ratings use `opponent reference Elo + 400 × log10(score / (1 − score))`, with anchors from a [public Xiangqi engine rating list](https://zhuanlan.zhihu.com/p/2072972857840350627).
+
+| Opponent | Our W / D / L (score rate) | Implied Elo |
 |---|---:|---:|
-| [巫师象眼 3.1](iter2_vs_eleeye31_180pairs.json) | 290/31/39（84.86%） | ≈2430 |
-| [象棋天启 V1.1.8](iter2_vs_tianqi118_180pairs.compact.json) | 109/79/172（41.25%） | ≈2369 |
-| [象棋旋风 2007C](iter2_vs_cyclone2007c_180pairs.compact.json) | 60/95/205（29.86%） | ≈2452 |
-| [Pikafish 2026-01-31 · UCI_Elo=1900](iter2_vs_pikafish_elo1900_180pairs.json) | 169/68/123（56.39%） | ≈1945（限强刻度） |
-| [Pikafish 2026-01-31 · 满强](iter2_vs_pikafish_official_180pairs.json) | 6/44/310（7.78%） | ≈3573（跨代边界） |
+| [ElephantEye 3.1](iter2_vs_eleeye31_180pairs.json) | 290 / 31 / 39 (84.86%) | ≈2430 |
+| [Tianqi V1.1.8](iter2_vs_tianqi118_180pairs.compact.json) | 109 / 79 / 172 (41.25%) | ≈2369 |
+| [Cyclone 2007C](iter2_vs_cyclone2007c_180pairs.compact.json) | 60 / 95 / 205 (29.86%) | ≈2452 |
+| [Pikafish 2026-01-31 · UCI_Elo=1900](iter2_vs_pikafish_elo1900_180pairs.json) | 169 / 68 / 123 (56.39%) | ≈1945 (limited-strength scale) |
+| [Pikafish 2026-01-31 · full strength](iter2_vs_pikafish_official_180pairs.json) | 6 / 44 / 310 (7.78%) | ≈3573 (cross-generation comparison) |
 
-![官方Pikafish外部参照](external_benchmark.svg)
+![Official Pikafish reference](external_benchmark.svg)
 
-三个相邻历史引擎换算为 **2369–2452 Elo**，共同支持**约 2400 Elo、人类大师水平**的结论。Pikafish 两行提供现代引擎的限强坐标与满强上界。实际平均用时（自研 / 对手）为：象眼104.0 / 119.4 ms、天启155.0 / 159.6 ms、旋风112.4 / 89.9 ms、Pikafish 1900档76.2 / 101.3 ms、满强86.9 / 91.4 ms；旋风一组中自研实际用时多约25%。
+The historical opponents imply **2369–2452 Elo**, around human-master level on the reference scale. Pikafish provides modern limited-strength and full-strength comparisons. Mean measured times (ours / opponent): ElephantEye 104.0 / 119.4 ms; Tianqi 155.0 / 159.6 ms; Cyclone 112.4 / 89.9 ms; Pikafish 1900 76.2 / 101.3 ms; full strength 86.9 / 91.4 ms. Our engine used about 25% more time against Cyclone.
 
-复现入口为 [`run_eleeye_match.ps1`](run_eleeye_match.ps1)、[`run_tianqi_match.ps1`](run_tianqi_match.ps1)、[`run_cyclone_match.ps1`](run_cyclone_match.ps1) 和 [`run_external_match.ps1`](run_external_match.ps1)。逐盘 JSON 保存开局、换先结果、搜索统计、可执行文件/模型 SHA-256 与配对 bootstrap 置信区间；旋风和天启的完整合法着法审计由 [`compact_match_result.py`](compact_match_result.py) 压缩为可提交记录。
+Reproduce with [ElephantEye](run_eleeye_match.ps1), [Tianqi](run_tianqi_match.ps1), [Cyclone](run_cyclone_match.ps1), and [Pikafish](run_external_match.ps1) pipelines. Per-game JSON preserves openings, colors, outcomes, search statistics, hashes, and paired bootstrap intervals. [compact_match_result.py](compact_match_result.py) condenses the full Cyclone/Tianqi legality audits into committed records.
 
-### 内部模型对照
+### Internal comparisons
 
-统一条件：192 个保留开局，每个开局交换红黑，共384盘；每步0.10秒；最长160 ply；每个对局进程固定到一个逻辑 CPU；置信区间以开局对为抽样单位。
+All comparisons use 192 held-out openings, colors swapped (384 games), 0.10 seconds per move, a 160-ply limit, and one logical CPU per game process. Confidence intervals resample opening pairs.
 
-| 直接对抗 | 胜/和/负 | 得分率 | 配对95% CI |
+| Match | W / D / L | Score rate | Paired 95% CI |
 |---|---:|---:|---:|
-| **Iter3-NNUE-D3 vs Iter2-NNUE-D3** | **132 / 142 / 110** | **52.86%** | **49.35%–56.38%** |
-| **Iter3-NNUE-D3 vs PST** | **224 / 90 / 70** | **70.05%** | **66.67%–73.44%** |
-| **Iter2-NNUE-D3 vs Iter1-NNUE-D3** | **143 / 137 / 104** | **55.08%** | **51.43%–58.72%** |
-| **Iter2-NNUE-D3 vs PST** | **218 / 103 / 63** | **70.18%** | **66.80%–73.44%** |
-| **Iter1-NNUE-D3 vs D4-H16-D3init** | **174 / 120 / 90** | **60.94%** | **57.16%–64.71%** |
-| **Iter1-NNUE-D3 vs PST** | **188 / 110 / 86** | **63.28%** | **59.51%–66.93%** |
-| **D4-H16-D3init vs PST** | **172 / 115 / 97** | **59.77%** | **56.38%–63.15%** |
-| **D4-H16-D3init vs D4-H8-D3init** | **149 / 118 / 117** | **54.17%** | **50.26%–58.07%** |
+| Iter3 vs Iter2 | 132 / 142 / 110 | 52.86% | 49.35%–56.38% |
+| Iter3 vs PST | 224 / 90 / 70 | 70.05% | 66.67%–73.44% |
+| Iter2 vs Iter1 | 143 / 137 / 104 | 55.08% | 51.43%–58.72% |
+| **Iter2 vs PST** | **218 / 103 / 63** | **70.18%** | **66.80%–73.44%** |
+| Iter1 vs D4-H16-D3init | 174 / 120 / 90 | 60.94% | 57.16%–64.71% |
+| Iter1 vs PST | 188 / 110 / 86 | 63.28% | 59.51%–66.93% |
+| D4-H16-D3init vs PST | 172 / 115 / 97 | 59.77% | 56.38%–63.15% |
+| D4-H16-D3init vs D4-H8-D3init | 149 / 118 / 117 | 54.17% | 50.26%–58.07% |
 
-逐项摘要见 [`direct_match_summary.json`](direct_match_summary.json)。8模型、5轮瑞士制的完整排名见 [`swiss_8models_5rounds.json`](swiss_8models_5rounds.json)。由这些JSON自动生成的汇总见 [`RESULTS.generated.md`](RESULTS.generated.md)。
+See [direct summaries](direct_match_summary.json), the [eight-model, five-round Swiss tournament](swiss_8models_5rounds.json), and the [generated report](RESULTS.generated.md).
 
-![D4-H16-D3init训练曲线](training_curve.svg)
+![D4-H16-D3init training](training_curve.svg)
+![Iteration 1 training](iter1_training_curve.svg)
+![Iteration 2 training](iter2_training_curve.svg)
+![Iteration 3 training](iter3_training_curve.svg)
+![PST and four model generations](iteration_vs_pst.svg)
 
-![Iter1-NNUE-D3训练曲线](iter1_training_curve.svg)
+PST is the 50% baseline. Generations 1–4 score 59.77%, 63.28%, 70.18%, and 70.05% under the same protocol. Generation 1 uses one million positions each from PST D3 and D4; generations 2–4 each use one million from previous-NNUE D3 search. The observed peak is generation 3, named Iter2 in filenames.
 
-![Iter2-NNUE-D3训练曲线](iter2_training_curve.svg)
+## 2. Architecture
 
-![Iter3-NNUE-D3训练曲线](iter3_training_curve.svg)
-
-![PST初代与四个迭代世代的对PST得分率](iteration_vs_pst.svg)
-
-PST初代以50%作为自身基准；迭代世代1–4均来自同一组192个保留开局、逐开局换先、每步0.10秒的384盘比赛。得分率依次为59.77%、63.28%、70.18%和70.05%，因此当前实测峰值位于迭代世代3。世代1先后使用PST D3、D4教师各生成100万条数据；世代2–4使用上一代NNUE教师的D3搜索，各生成100万条数据。
-
-## 2. 网络结构
-
-最终网络预测相对 PST 的 centipawn 残差，而不是完全替代 PST：
+The network predicts a centipawn residual relative to PST:
 
 ```text
-XQ-HalfKA-9x14x90（11,340维稀疏特征）
-  → 红/黑双视角共享 11,340×16 特征表
-  → 两个 H16 累加器
+XQ-HalfKA-9x14x90 (11,340 sparse features)
+  → shared 11,340×16 feature table for Red/Black perspectives
+  → two H16 accumulators
   → CReLU
-  → concat[待走方视角, 对方视角]
-  → 中局/残局二选一线性输出头
+  → concat[side-to-move perspective, opponent perspective]
+  → one selected middlegame/endgame linear output head
   → clamp(residual, ±300cp) + PST
 ```
 
-- 9：己方将帅在九宫中的锚点位置。
-- 14：7种棋子 × 己方/敌方。
-- 90：棋盘格；黑方视角旋转180度。
-- 两视角共享同一特征表；输出头按剩余棋子数20分为中局/残局，但每次只执行一个头。
-- 普通走子、吃子和 undo 只加减对应特征行；己方将帅移动时重建受影响的单个视角；null move 不修改累加器。
+Dimensions: 9 palace king anchors, 14 channels (seven types × friendly/enemy), and 90 squares. Black's view rotates 180 degrees. Both perspectives share weights. A 20-piece threshold selects a phase head; only one head runs per evaluation.
 
-最终结构没有小隐藏层。实验表明，在当前搜索频繁调用评价的条件下，H16 直接头取得了更好的棋力/速度平衡。
+Moves, captures, and undo add/subtract feature rows. King moves rebuild the affected perspective; null moves leave accumulators unchanged. There is no additional hidden layer: H16 with a direct head gave the best observed strength/speed balance.
 
-## 3. 教师与数据
+## 3. Teachers and datasets
 
-### 教师
+Teachers use frozen PST or specified quantized NNUE. Both retain alpha-beta/PVS, valid beta cutoffs, ordering, check extensions, and quiescence. Label generation disables TT score cutoffs, reverse futility, razoring, null move, late-move/futility/SEE pruning, LMR, and negative-SEE filtering in quiescence.
 
-教师的静态评价可选择冻结PST或指定的量化NNUE；两条路径都保留完整 Alpha-Beta/PVS、合法 beta cutoff、走法排序、将军延伸和 qsearch。生成标签时关闭可能引入有偏分数的 TT 截断、reverse futility、razoring、null move、late-move/futility/SEE pruning、LMR，以及 qsearch 的负 SEE 捕获过滤。
+Depth is a hyperparameter: D3 is cheaper and easier to fit; D4 gives stronger, costlier labels. Historical D5 is retained for comparison but excluded from the selected model. Use `--teacher pst|nnue`; PST is the compatible default. NNUE also requires `--nnue MODEL`.
 
-搜索深度作为超参数而非固定常数。D3 提供更易拟合的大覆盖数据，D4 提供更强但更昂贵的标签；D5 旧方案保留作对照，没有用于最终最佳模型。
+Each D3, D4, Iter1, Iter2, and Iter3 dataset has **1,000,000** positions: Red 500k / Black 500k, split **700k / 150k / 150k** for training / validation / calibration. Deduplicate globally by `board + side-to-move` and split by game ID. Keep a duplicate group's unique normal nonzero, non-mate score; discard groups with conflicting normal scores. Each dataset is about 108 MB and is regenerated rather than committed.
 
-数据生成器现在通过 `--teacher pst|nnue` 选择教师，默认仍是PST，因此旧命令保持兼容。NNUE教师必须同时提供 `--nnue MODEL`；两种模式都使用相同的无风险标签搜索，保留Alpha-Beta与qsearch，但关闭TT分数截断、null move、LMR/LMP、futility、razoring和SEE选择性过滤。
+| Dataset | Raw | Valid | Unique | Discarded conflict groups |
+|---|---:|---:|---:|---:|
+| D3 | 1,111,298 | 1,041,008 | 1,040,044 | 119 |
+| D4 | 1,178,220 | 1,045,306 | 1,044,346 | 46 |
+| Iter1 | 1,194,941 | 1,102,045 | 1,101,430 | 12 |
+| Iter2 | 1,181,556 | 1,058,557 | 1,057,865 | 15 |
+| Iter3 | 1,200,622 | 1,091,222 | 1,090,445 | 19 |
 
-### 百万级数据集
+Iter3 also resolves two historical zero-score conflicts using the unique normal score.
 
-| 数据集 | 最终样本 | 待走方 | 划分 |
-|---|---:|---:|---:|
-| D3 | 1,000,000 | 红500k / 黑500k | 700k / 150k / 150k |
-| D4 | 1,000,000 | 红500k / 黑500k | 700k / 150k / 150k |
-| NNUE+D3迭代1 | 1,000,000 | 红500k / 黑500k | 700k / 150k / 150k |
-| NNUE+D3迭代2 | 1,000,000 | 红500k / 黑500k | 700k / 150k / 150k |
-| NNUE+D3迭代3 | 1,000,000 | 红500k / 黑500k | 700k / 150k / 150k |
+## 4. Objective and training
 
-数据按完整 `board + side-to-move` 全局去重，并按 game id 隔离 train/validation/calibration，避免同局面或同局游戏泄漏。重复组中若只存在一个正常非零、非绝杀教师分，则保留该分；正常教师分互相冲突的组整组丢弃。原始百万数据约108MB/份，因体积与可再生性不提交 Git。
+Calibrate sigmoid temperature K separately, then freeze it: D3 **60.943546**, D4 **56.343903**, Iter1 **60.667468**, Iter2 **54.708417**, Iter3 **61.309585**. It is not jointly optimized with network weights.
 
-去重统计：
+Learn `teacher − PST` with fixed-K probability error plus centipawn SmoothL1 loss, avoiding near-zero residuals caused by sigmoid saturation at large scores.
 
-- D3：1,111,298条原始记录 → 1,041,008条有效记录 → 1,040,044个唯一局面；119个无法消解的冲突组丢弃。
-- D4：1,178,220条原始记录 → 1,045,306条有效记录 → 1,044,346个唯一局面；46个冲突组丢弃。
-- NNUE+D3迭代1：1,194,941条原始记录 → 1,102,045条有效记录 → 1,101,430个唯一局面；12个冲突组丢弃。
-- NNUE+D3迭代2：1,181,556条原始记录 → 1,058,557条有效记录 → 1,057,865个唯一局面；15个冲突组丢弃。
-- NNUE+D3迭代3：1,200,622条原始记录 → 1,091,222条有效记录 → 1,090,445个唯一局面；19个冲突组丢弃，另有2组零分历史冲突按唯一正常分消解。
+| Parameter | D4-H16-D3init |
+|---|---|
+| Width / hidden | 16 / 0 |
+| Activation | CReLU |
+| Epochs / best epoch | 100 / 26; export best validation checkpoint |
+| Batch | 8192 |
+| Optimizer | AdamW + cosine schedule |
+| Initial LR | 0.003 |
+| Search / result lambda | 0.95 / 0.05 |
+| Delta weight | 0.25 |
+| Delta clip / Huber beta | 250 / 25 cp |
+| Seed | 79808 |
+| Initialization | Best D3-H16 checkpoint; rescale output by K ratio |
 
-## 4. 训练目标与超参数
-
-Sigmoid 温度 `K` 只在 calibration 集上做一维统计拟合，随后冻结；它不是网络参数，也不参与联合优化：
-
-- D3：`K=60.943546`
-- D4：`K=56.343903`
-- 迭代1：`K=60.667468`
-- 迭代2：`K=54.708417`
-- 迭代3：`K=61.309585`
-
-网络学习 `teacher - PST` 残差。主目标为冻结 K 下的概率误差，同时加入 cp 空间 SmoothL1，避免 sigmoid 在高绝对分局面饱和后退化成近零残差。
-
-| 参数 | 值 |
-|---|---:|
-| width / hidden | 16 / 0 |
-| activation | CReLU |
-| epochs | 100（按最佳验证 checkpoint 导出） |
-| best epoch | 26 |
-| batch size | 8192 |
-| optimizer | AdamW + cosine schedule |
-| initial LR | 0.003 |
-| search/result lambda | 0.95 / 0.05 |
-| delta loss weight | 0.25 |
-| delta clip / Huber beta | 250 / 25 cp |
-| seed | 79808 |
-| initialization | D3-H16 最佳 checkpoint，按 K 比例重标输出层 |
-
-主要验证集结果（机器可读来源为 [`model_comparison.json`](model_comparison.json)）：
-
-| 模型 | 概率MSE | teacher MAE(cp) | 残差相关系数 |
+| Model | Probability MSE | Teacher MAE (cp) | Residual correlation |
 |---|---:|---:|---:|
 | D3-H8 | 0.007843 | 18.67 | 0.345 |
 | D3-H16 | 0.007707 | 18.60 | 0.366 |
 | D4-H8 random | 0.010372 | 22.16 | 0.446 |
 | D4-H8 D3-init | 0.010630 | 22.12 | 0.411 |
 | D4-H16 random | 0.010042 | 22.17 | 0.467 |
-| **D4-H16 D3-init** | **0.009906** | **22.08** | **0.473** |
+| D4-H16 D3-init | 0.009906 | 22.08 | 0.473 |
 | D4 PST-only | 0.012926 | 24.73 | — |
 
-离线指标用于筛选而不是代替实战；最终选择依据是量化后、等时、换先配对比赛。
+Source: [model_comparison.json](model_comparison.json). Offline metrics screen candidates; quantized equal-time paired matches determine selection.
 
-### 第一次教师迭代
+**Iter1** starts from D4-H16; maximum 150 epochs, minimum 25, patience 15. Best validation: epoch 4; early stop: 25. Validation probability MSE 0.007689, MAE 20.60 cp, correlation 0.643. Quantized MAE on 30k positions: 20.45 cp.
 
-`Iter1-NNUE-D3` 从D4-H16初始化，使用独立校准的 `K=60.667468`。最大150轮、最少25轮、patience 15；最佳验证点出现在第4轮，第25轮早停。验证集概率MSE为0.007689、teacher MAE为20.60cp、残差相关系数为0.643。量化后30k局面MAE为20.45cp。
+**Iter2** uses Iter1 as teacher and initialization. Best epoch 5, stop at 25. Validation MSE 0.009012, MAE 21.78 cp, correlation 0.711. Quantized 30k-position MAE 21.63 cp, correlation 0.726.
 
-### 第二次教师迭代
+**Iter3** uses Iter2 for both roles. Minimum observed objective: epoch 2; `min_delta=1e-5` selects the nearly identical epoch-1 checkpoint. Stop at 25. Quantized 30k-position MAE 22.78 cp, correlation 0.751.
 
-`Iter2-NNUE-D3` 的教师和初始化都使用 `Iter1-NNUE-D3`。独立校准 `K=54.708417`；最佳验证点出现在第5轮，第25轮早停。验证集概率MSE为0.009012、teacher MAE为21.78cp、残差相关系数为0.711。量化后30k局面MAE为21.63cp、相关系数0.726。
+Iter3 scores 52.86% against Iter2 with an interval spanning 50%. Against PST it scores 70.05%, down 0.13 points. The predeclared rule stops at the first decline in the PST point estimate: no Iter4, retain Iter2. Overlapping intervals support a plateau, not a statistically established strength loss.
 
-### 第三次教师迭代与停止点
+## 5. Fixed-point inference
 
-`Iter3-NNUE-D3` 的教师和初始化都使用 `Iter2-NNUE-D3`。独立校准 `K=61.309585`；最小观测验证目标出现在第2轮，因 `min_delta=1e-5`，实际导出的是几乎相同的第1轮checkpoint，第25轮早停。量化后30k局面MAE为22.78cp、相关系数0.751。
+Feature weights/biases use Q12 with int32 accumulators. Output weights fold in K and use a safe power-of-two scale (128 for the final model). Dot products/biases use int64 and one signed fixed-point division. No sigmoid runs in the C++ hot path.
 
-Iter3对Iter2点估计为52.86%，但区间跨50%；对PST为70.05%，比Iter2的70.18%低0.13个百分点。按预先约定的“第一次点估计回落即停止”规则，不再生成Iter4，保留Iter2为当前实验最佳。该差异远未达到统计显著，只能称为平台/轻微观测回落，不能声称Iter3真实棋力更弱。
+Files include magic, version, dimensions, and metadata. Invalid loads report errors; running without a model falls back to PST. The initial D4 quantized model's 30k validation metrics: MAE 22.01 cp, RMSE 41.19 cp, correlation 0.493, and 81.5% sign accuracy for `|target|>=20`. These describe fit; paired games determine selection.
 
-## 5. 定点推理
+## 6. Findings
 
-- 特征权重/偏置使用固定 Q12，累加器为 int32。
-- 输出层折入冻结 K 后使用安全的二次幂 scale；最终模型输出 scale 为128。
-- 输出 dot/bias 使用 int64，只做一次带符号定点除法；C++ 热路径不执行 sigmoid。
-- 模型文件包含 magic、版本、结构尺寸和元数据，加载失败会明确报错；不加载模型时安全回退 PST。
+1. Million-position, side-balanced D3/D4 data improves on the old 150k one-sided setup.
+2. Deeper teachers can produce weaker students: historical D5-H8 scored 48.13% in the Swiss tournament.
+3. D3 initialization benefits D4 matches despite modest offline differences.
+4. H16 earns its cost: 54.17% against H8, mean depth 9.18 vs 9.24.
+5. Quantized equal-time matches include inference costs that offline MSE misses.
+6. Iteration reaches a plateau: 59.77% → 63.28% → 70.18% → 70.05% against PST. Iter2 is the observed peak; the final small decline meets the stopping rule without establishing a true regression.
 
-最终量化模型在30k D4验证子集上的离线指标为：MAE 22.01cp、RMSE 41.19cp、相关系数0.493、`|target|>=20`符号正确率81.5%。这些指标用于描述模型拟合，最终选择仍由固定开局换先赛决定。
+## 7. Key files
 
-## 6. 实验结论
-
-1. **数据覆盖优先于一味加深教师**：百万级、红黑平衡 D3/D4 比旧15万单边数据更有效。
-2. **更深标签不等于更强学生**：旧 D5-H8 在瑞士制中为48.13%，最终 D4-H16明显更好。
-3. **课程初始化对实战有价值**：D4 的随机初始化和 D3 初始化离线差距不大，但 D3-init H16 在直接比赛中胜出。
-4. **H16值得其成本**：对 H8 直接得分54.17%，平均完成深度仅9.18 vs 9.24，速度差很小。
-5. **必须量化后等时比较**：只看 MSE 会忽略累加器维护和输出头降低搜索深度的代价。
-6. **连续迭代在第三轮出现平台**：对PST从59.77%依次提高到63.28%、70.18%，第三轮为70.05%。因此当前实测峰值是Iter2；轻微回落不显著，但满足实验前约定的停止规则。
-
-## 7. 关键文件
-
-| 文件 | 用途 |
+| File | Purpose |
 |---|---|
-| [`nnue_engine.cpp`](nnue_engine.cpp) | NNUE特征、增量累加器、量化推理和搜索协议 |
-| [`train.py`](train.py) | K校准、训练、D3初始化和v3模型导出 |
-| [`generate_data.cpp`](generate_data.cpp) | 教师自对弈数据生成 |
-| [`build_balanced_dataset.py`](build_balanced_dataset.py) | 去重、冲突消解、红黑平衡和固定切分 |
-| [`verify_nnue.cpp`](verify_nnue.cpp) | 增量状态与对称性验证 |
-| [`validate_quant.cpp`](validate_quant.cpp) | Python/C++量化输出统计验证 |
-| [`engine_match.py`](engine_match.py) | 任意两模型换先配对比赛 |
-| [`swiss_tournament.py`](swiss_tournament.py) | 8模型并行瑞士轮 |
-| [`openings_final2_192.fen`](openings_final2_192.fen) | 最终统一保留开局 |
-| [`d4_balanced1m_h16_fromd3_full100_gpu.nnue`](d4_balanced1m_h16_fromd3_full100_gpu.nnue) | 第一代D4量化权重（历史基线） |
-| [`artifacts.json`](artifacts.json) | 模型、数据、源码的版本与SHA-256清单 |
-| [`report_results.py`](report_results.py) | 从JSON重建结果表和SVG训练曲线 |
-| [`merge_match_shards.py`](merge_match_shards.py) | 合并并行比赛切片并重新计算配对CI |
-| [`iter1_experiment.json`](iter1_experiment.json) | 第一次教师迭代的数据、训练和比赛摘要 |
-| [`iter1_nnued3_h16_fromd4_gpu.nnue`](iter1_nnued3_h16_fromd4_gpu.nnue) | 第一次迭代量化模型 |
-| [`iter2_experiment.json`](iter2_experiment.json) | 第二次教师迭代的数据、训练和比赛摘要 |
-| [`iter2_nnued3_h16_fromiter1_gpu.nnue`](iter2_nnued3_h16_fromiter1_gpu.nnue) | 当前最佳与网页部署模型 |
-| [`iter3_experiment.json`](iter3_experiment.json) | 第三次教师迭代与停止依据 |
-| [`iter3_nnued3_h16_fromiter2_gpu.nnue`](iter3_nnued3_h16_fromiter2_gpu.nnue) | 第三次迭代模型（平台探针，未选为最佳） |
-| [`run_teacher_iteration.ps1`](run_teacher_iteration.ps1) | 单轮生成、训练、验证和双基准比赛的可续跑流水线 |
-| [`run_until_regression.ps1`](run_until_regression.ps1) | 按点估计回落规则连续执行多轮 |
+| [nnue_engine.cpp](nnue_engine.cpp) | Features, accumulators, inference, protocol |
+| [train.py](train.py) | K calibration, training, initialization, v3 export |
+| [generate_data.cpp](generate_data.cpp) | Teacher self-play |
+| [build_balanced_dataset.py](build_balanced_dataset.py) | Deduplication, conflicts, balance, splits |
+| [verify_nnue.cpp](verify_nnue.cpp) | Incremental state and symmetry |
+| [validate_quant.cpp](validate_quant.cpp) | Python/C++ quantization checks |
+| [engine_match.py](engine_match.py) | Paired matches |
+| [swiss_tournament.py](swiss_tournament.py) | Eight-model Swiss tournament |
+| [openings_final2_192.fen](openings_final2_192.fen) | Held-out openings |
+| [artifacts.json](artifacts.json) | Versions and SHA-256 |
+| [report_results.py](report_results.py) | Tables and SVG plots |
+| [merge_match_shards.py](merge_match_shards.py) | Merge shards and recompute CI |
+| [iter1_experiment.json](iter1_experiment.json) | First iteration summary |
+| [iter2_experiment.json](iter2_experiment.json) | Second iteration summary |
+| [iter3_experiment.json](iter3_experiment.json) | Stopping evidence |
+| [d4_balanced1m_h16_fromd3_full100_gpu.nnue](d4_balanced1m_h16_fromd3_full100_gpu.nnue) | Historical D4 baseline |
+| [iter1_nnued3_h16_fromd4_gpu.nnue](iter1_nnued3_h16_fromd4_gpu.nnue) | Iter1 model |
+| [iter2_nnued3_h16_fromiter1_gpu.nnue](iter2_nnued3_h16_fromiter1_gpu.nnue) | Selected deployed model |
+| [iter3_nnued3_h16_fromiter2_gpu.nnue](iter3_nnued3_h16_fromiter2_gpu.nnue) | Plateau probe |
+| [run_teacher_iteration.ps1](run_teacher_iteration.ps1) | Resumable generation, training, validation, matches |
+| [run_until_regression.ps1](run_until_regression.ps1) | Repeated iterations with stopping rule |
 
-## 8. 构建与使用
+## 8. Build and reproduce
+
+Build the engine and correctness checker, then start the selected model:
 
 ```powershell
-# 引擎
+# Engine
 g++ -O3 -std=c++17 -march=native -DNDEBUG `
   -o trainnnue/nnue_engine.exe trainnnue/nnue_engine.cpp
 
-# 正确性验证器
+# Correctness checker
 g++ -O3 -std=c++17 -march=native -DNDEBUG `
   -o trainnnue/verify_nnue.exe trainnnue/verify_nnue.cpp
 
 trainnnue/verify_nnue.exe `
   trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue
 
-# 启动当前网页部署引擎
+# Start the deployed model
 trainnnue/nnue_engine.exe `
   --nnue trainnnue/iter2_nnued3_h16_fromiter1_gpu.nnue `
   --nnue-blend 1
 ```
 
-训练示例（数据集需自行生成）：
+Train after regenerating the dataset:
 
 ```powershell
 python trainnnue/train.py trainnnue/train_depth4_balanced_1m_v2.bin `
@@ -234,18 +200,18 @@ python trainnnue/train.py trainnnue/train_depth4_balanced_1m_v2.bin `
   --init-nnue trainnnue/d3_balanced1m_h16_full100_gpu.nnue
 ```
 
-教师选择示例；不写 `--teacher` 时仍使用原PST教师：
+Select a teacher (PST remains the default):
 
 ```powershell
-# 原PST教师，旧命令兼容
+# Original PST teacher
 trainnnue/generate_data.exe shard.bin 1000 3 83000 120 2 6 1 8000000
 
-# 指定量化NNUE + D3搜索教师
+# Quantized NNUE teacher with D3 search
 trainnnue/generate_data.exe shard.bin 1000 3 83000 120 2 6 1 8000000 `
   --teacher nnue --nnue trainnnue/iter1_nnued3_h16_fromd4_gpu.nnue
 ```
 
-公开引擎换先赛；外部二进制由使用者自行准备，仓库保存适配器、参数、逐盘结果与 SHA-256：
+Run external engines you have supplied locally:
 
 ```powershell
 trainnnue/run_eleeye_match.ps1 `
@@ -261,9 +227,7 @@ trainnnue/run_tianqi_match.ps1 `
   -XqSecondsPerMove 0.46 -TianqiSecondsPerMove 0.10 -Force
 ```
 
-旋风2007C使用早期 Cyclone UCI 的 `fen ...` 方言；象眼3.1使用UCCI；天启V1.1.8使用标准UCI。比赛器逐步验证着法合法性，交换红黑后按开局对 bootstrap 计算95%置信区间。
-
-重新生成已提交的关键表格和图：
+Regenerate committed tables and figures:
 
 ```powershell
 python trainnnue/report_results.py
@@ -273,8 +237,8 @@ git diff --exit-code -- trainnnue/RESULTS.generated.md `
   trainnnue/iteration_vs_pst.svg trainnnue/external_benchmark.svg
 ```
 
-脚本只依赖Python标准库；若结果JSON发生变化，生成文件也必须随之更新。
+Cyclone 2007C uses the early `fen ...` UCI dialect; ElephantEye 3.1 uses UCCI; Tianqi V1.1.8 uses standard UCI. The runner validates every move and bootstraps opening pairs for 95% intervals. Reporting uses only the Python standard library; regenerate outputs whenever result JSON changes.
 
-## 9. 实验范围与下一步
+## 9. Scope and next steps
 
-当前数字对应本机单线程、指定开局集、最长160 ply和现有循环规则。Pikafish 1900表示其内置UCI限强刻度。下一阶段将扩展多时间控制复验，并加入完整长捉、长杀裁决后的规则一致性对照。
+Results apply to the recorded single-threaded setup, opening set, 160-ply limit, and current repetition rules. Pikafish 1900 is its built-in UCI scale. Further work will repeat multiple time controls and add complete perpetual-chase and perpetual-mating-threat adjudication.

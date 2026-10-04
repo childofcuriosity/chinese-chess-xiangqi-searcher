@@ -1,104 +1,79 @@
-# 实验设计与证据等级
+# Experiment Design and Evidence
 
-本项目把“代码正确”“性能等价”“棋力更强”和“产品可用”分开验证。一个测试通过，不能自动替代其他层面的证据。
+[English](EXPERIMENTS.md) · [简体中文](EXPERIMENTS_zh.md)
 
-## 1. 四类问题
+The project separately evaluates correctness, performance equivalence, playing strength, and application reliability. Each requires its own evidence.
 
-| 问题 | 首选方法 | 典型产物 |
+## 1. Four questions
+
+| Question | Preferred method | Evidence |
 |---|---|---|
-| 状态和规则是否正确？ | 单元测试、随机make/undo一致性、非法着测试 | pytest结果、转换计数 |
-| 纯优化是否等价？ | 固定局面/深度比较着法、分数、节点数 | 控制组日志 |
-| 评价或搜索修改是否更强？ | 固定开局逐一换先、相同时间、配对统计 | 逐盘JSON、W/D/L、CI |
-| 网页与部署是否可用？ | WebSocket端到端、真实引擎进程、HTTP健康检查 | 测试结果、systemd状态 |
+| Are state and rules correct? | Unit tests, randomized make/undo checks, illegal moves | pytest results, transition counts |
+| Is an optimization equivalent? | Compare moves, scores, and nodes at fixed positions/depths | Controlled logs |
+| Is evaluation or search stronger? | Fixed openings, swapped colors, equal time, paired statistics | Game JSON, W/D/L, CI |
+| Do the web app and deployment work? | WebSocket end-to-end, real processes, HTTP checks | Tests and systemd status |
 
-## 2. 脚本分工
+## 2. Tools
 
-### `selfplay.py`
+`selfplay.py` is a minimal single-game arbiter for checking whether two stdio engines can complete a game. One game is insufficient for statistical strength conclusions.
 
-最小单局仲裁器。适合快速观察两个 stdio 引擎是否能完整走完一局，不适合作为统计棋力结论。
+`ab_selfplay.py` runs baseline/candidate pairs across time controls in parallel. It detects crashes, unexpected resignations, and obvious regressions. Its default initial position produces correlated samples; see the [A/B guide](../AB_SELFPLAY.md).
 
-### `ab_selfplay.py`
+`cross_arena.py` bridges the project engine to official Pikafish, with configurable time controls and paired repetitions. It starts from the initial position and primarily supports protocol/function regression.
 
-在多个时间档并行运行候选版与基线版并交换先后手。适合发现崩溃、异常认输和明显回退。它默认从初始局面开始，因此结果高度相关；解释要求见 [`../AB_SELFPLAY.md`](../AB_SELFPLAY.md)。
+`trainnnue/engine_match.py` is the formal arbitrary-engine match runner. It reads a fixed FEN slice, swaps colors per opening, records nodes/depth/actual time, and bootstraps opening pairs. Additional process arguments allow official Pikafish bridges.
 
-### `cross_arena.py`
+`trainnnue/run_external_match.ps1` runs the official Pikafish NNUE benchmark. Shards use separate CPUs; both engines in a game share one logical core. Records include official executable, network, and project model hashes. Twelve calibration openings freeze time multipliers and strength settings; 180 remaining openings produce the formal 360 games.
 
-通过协议桥接让自研引擎与官方 Pikafish 对战，可设置多个时间档和换先组数。它从初始局面启动，主要用于协议与功能回归。
+Historical-engine pipelines reuse fixed openings, color swaps, affinity, wall-clock statistics, and paired bootstrap. The match runner validates each move and saves audit records:
 
-### `trainnnue/engine_match.py`
+- `run_eleeye_match.ps1`: ElephantEye 3.1 through UCCI.
+- `run_cyclone_match.ps1`: Cyclone 2007C through its early `fen ...` UCI dialect.
+- `run_tianqi_match.ps1`: Tianqi V1.1.8 through standard UCI.
 
-正式的任意双引擎配对工具：从固定FEN切片读取开局，每个开局交换红黑，记录节点、深度、实际搜索时间，并按开局对 bootstrap。可通过额外进程参数接入官方 Pikafish 桥接器。
+`trainnnue/swiss_tournament.py` ranks eight models over five rounds, pairing similar cumulative scores while avoiding rematches. Four concurrent matches use separate CPUs. Finalists and PST still require direct matches.
 
-### `trainnnue/run_external_match.ps1`
+`trainnnue/report_results.py` deterministically generates Markdown and SVG from model metadata, offline comparisons, Swiss results, and direct-match JSON. It preserves recorded values.
 
-官方 Pikafish NNUE 外部基准流水线。每个分片占用独立 CPU，每盘内双方固定同一逻辑核；结果保存官方二进制、网络和自研模型 SHA-256。前12个开局用于时间倍率与 `UCI_LimitStrength` 档位校准，剩余180个开局用于360盘正式换先赛。
+## 3. Formal controls
 
-### 公开历史引擎流水线
+- Internal comparisons share search implementation, compiler optimization, and protocol; evaluation is the target variable.
+- The 192 held-out openings are excluded from training and development selection.
+- Each opening is played with both colors.
+- Each engine gets 0.10 seconds per move, at most 160 plies, with fixed CPU affinity.
+- Confidence intervals cluster by opening pair, preserving within-pair correlation.
+- Freeze candidates before matches; subsequent tuning requires fresh development data.
 
-- `trainnnue/run_eleeye_match.ps1`：通过UCCI连接巫师象眼3.1。
-- `trainnnue/run_cyclone_match.ps1`：通过早期Cyclone UCI的`fen ...`方言连接象棋旋风2007C。
-- `trainnnue/run_tianqi_match.ps1`：通过标准UCI连接象棋天启V1.1.8。
+External Pikafish uses version `2026-01-31`, `Threads=1`, `Ponder=false`, and `Move Overhead=0`. Nominal times are 0.25 s for our engine and 0.10 s for Pikafish. The multiplier, calibrated on 12 openings, accounts for our completed-iteration stopping strategy. Formal measured means are 76.2 / 101.3 ms at UCI Elo 1900 and 86.9 / 91.4 ms at full strength.
 
-三条流水线复用固定开局、逐一换先、单核绑定、实际墙钟统计和配对bootstrap；`engine_match.py`逐步验证着法合法性并保存审计棋谱。
+## 4. Results and sources
 
-### `trainnnue/swiss_tournament.py`
+The [generated results](../trainnnue/RESULTS.generated.md) summarize these machine-readable records:
 
-8模型、5轮瑞士制。配对按累计盘分接近且避免重复对手；每轮4场占用独立CPU并行。瑞士轮用于候选排序，最终第一、第二与PST仍需直接对抗确认。
+- [Direct matches](../trainnnue/direct_match_summary.json) and [Swiss tournament](../trainnnue/swiss_8models_5rounds.json).
+- [D4 model metadata](../trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json).
+- [Iteration 1](../trainnnue/iter1_experiment.json), [iteration 2](../trainnnue/iter2_experiment.json), [iteration 3](../trainnnue/iter3_experiment.json).
+- [Pikafish 1900](../trainnnue/iter2_vs_pikafish_elo1900_180pairs.json) and [full strength](../trainnnue/iter2_vs_pikafish_official_180pairs.json).
+- [ElephantEye](../trainnnue/iter2_vs_eleeye31_180pairs.json), [Cyclone](../trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json), [Tianqi](../trainnnue/iter2_vs_tianqi118_180pairs.compact.json).
 
-### `trainnnue/report_results.py`
+D4-H16-D3init scores **59.77%** against PST (95% CI **56.38%–63.15%**) and **54.17%** against D4-H8-D3init (**50.26%–58.07%**).
 
-从模型元数据、离线比较、瑞士轮和直接对抗JSON生成Markdown表和SVG学习曲线。它不重新估计或润色数字，只做确定性汇总。
+Iter2 scores **169/68/123**, or **56.39%**, against Pikafish's built-in 1900 setting (CI **51.94%–60.83%**). Against full strength: **6/44/310**, **7.78%** (CI **5.69%–10.00%**).
 
-## 3. 正式对战控制变量
+Historical matches yield **290/31/39 (84.86%)** against ElephantEye, **109/79/172 (41.25%)** against Tianqi, and **60/95/205 (29.86%)** against Cyclone. With reference anchors **2130.4 / 2430 / 2600** from the [public rating list](https://zhuanlan.zhihu.com/p/2072972857840350627), implied ratings are about **2430 / 2369 / 2452 Elo**, near **2400, or human-master level on that scale**. Cyclone used 89.9 ms on average versus our 112.4 ms; the result retains this condition.
 
-- 双方使用相同搜索实现、编译优化和协议；评价模型是目标变量。
-- 192个保留开局不参与训练和开发筛选。
-- 每个开局各执红、黑一局，抵消先后手与单一开局偏差。
-- 双方每步0.10秒、最长160 ply；对局进程固定CPU。
-- 置信区间以开局对为聚类单位，不把换先两盘误当完全独立样本。
-- 对局开始前冻结候选；不根据正式测试结果继续调该候选。
+**Iteration 1:** D4-H16 plus D3 teacher search generates a fresh million positions. The student scores **60.94%** against its predecessor (CI **57.16%–64.71%**) and **63.28%** against PST (**59.51%–66.93%**), compared with the predecessor's 59.77%. This round shows improvement under the shared benchmark; later iterations require their own tests.
 
-外部 Pikafish 比赛额外控制：官方版本为 `Pikafish 2026-01-31`；`Threads=1`、`Ponder=false`、`Move Overhead=0`；自研名义时限0.25秒、Pikafish名义时限0.10秒。该倍率来自12个校准开局，用于适配自研引擎只提交完整迭代深度的停止策略。正式1900档比赛实际平均搜索时间为76.2 / 101.3ms，满强比赛为86.9 / 91.4ms。
+**Iteration 2:** Iter1 supplies teacher and initialization for another million positions. Iter2 scores **55.08%** against Iter1 (**51.43%–58.72%**) and **70.18%** against PST (**66.80%–73.44%**), a **6.90-point** increase. Two successful rounds establish these gains, while the asymptotic limit remains open.
 
-## 4. 当前结果
+**Iteration 3:** Iter2 supplies both roles. Iter3 scores **52.86%** against Iter2 (**49.35%–56.38%**) and **70.05%** against PST (**66.67%–73.44%**). The PST estimate declines **0.13 points**, triggering the predeclared first-decline stopping rule. Iter2 remains selected. Overlapping intervals support a plateau, not a statistically established loss of strength.
 
-机器可读来源：
+[run_teacher_iteration.ps1](../trainnnue/run_teacher_iteration.ps1) implements one complete round; [run_until_regression.ps1](../trainnnue/run_until_regression.ps1) repeats rounds with the stopping rule. Each preserves independent data, K, checkpoints, quantization checks, and both formal match sets.
 
-- [`../trainnnue/direct_match_summary.json`](../trainnnue/direct_match_summary.json)
-- [`../trainnnue/swiss_8models_5rounds.json`](../trainnnue/swiss_8models_5rounds.json)
-- [`../trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json`](../trainnnue/d4_balanced1m_h16_fromd3_full100_gpu.nnue.json)
-- [`../trainnnue/iter1_experiment.json`](../trainnnue/iter1_experiment.json)
-- [`../trainnnue/iter2_experiment.json`](../trainnnue/iter2_experiment.json)
-- [`../trainnnue/iter3_experiment.json`](../trainnnue/iter3_experiment.json)
-- [`../trainnnue/iter2_vs_pikafish_elo1900_180pairs.json`](../trainnnue/iter2_vs_pikafish_elo1900_180pairs.json)
-- [`../trainnnue/iter2_vs_pikafish_official_180pairs.json`](../trainnnue/iter2_vs_pikafish_official_180pairs.json)
-- [`../trainnnue/iter2_vs_eleeye31_180pairs.json`](../trainnnue/iter2_vs_eleeye31_180pairs.json)
-- [`../trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json`](../trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json)
-- [`../trainnnue/iter2_vs_tianqi118_180pairs.compact.json`](../trainnnue/iter2_vs_tianqi118_180pairs.compact.json)
+## 5. Interpretation
 
-确定性生成的展示结果：[`../trainnnue/RESULTS.generated.md`](../trainnnue/RESULTS.generated.md)。
+Internal PST matches measure neural-evaluation gains; official Pikafish provides an external comparison. `UCI_Elo=1900` is Pikafish's internal scale; platform ratings require placement matches on that platform. Swiss tournaments rank candidates, while direct paired matches determine selection. Current adjudication includes a 160-ply experimental cutoff; complete perpetual-chase and perpetual-mating-threat rules remain future work.
 
-正式直接测试中，D4-H16-D3init 对 PST 得分率59.77%，配对95% CI为56.38%–63.15%；对D4-H8-D3init为54.17%，CI为50.26%–58.07%。
+## 6. Further evidence
 
-官方 Pikafish 外部测试中，Iter2 对内置 `UCI_Elo=1900` 档为169胜68和123负，得分率56.39%，配对95% CI为51.94%–60.83%；对满强版本为6胜44和310负，得分率7.78%，CI为5.69%–10.00%。
-
-公开历史引擎测试中，Iter2对象眼3.1为290胜31和39负（84.86%），对天启V1.1.8为109胜79和172负（41.25%），对旋风2007C为60胜95和205负（29.86%）。按[公开象棋引擎等级分榜](https://zhuanlan.zhihu.com/p/2072972857840350627)的2130.4、2430和2600分作锚点，三组成绩分别换算为约2430、2369和2452 Elo，集中支持**约2400 Elo、人类大师水平**。旋风比赛中自研实际平均用时为112.4ms，对手为89.9ms；该结果保留此原始条件。
-
-第一次教师迭代中，D4-H16-D3init加D3无风险搜索生成新的百万数据。量化学生对原D4-H16得分率60.94%，配对95% CI为57.16%–64.71%；对PST得分率63.28%，CI为59.51%–66.93%。原D4-H16对PST为59.77%，因此本轮没有观察到自举偏差导致的PST退化；该结论不能外推到后续无限迭代。
-
-第二次教师迭代中，教师和初始化都改用Iter1-NNUE-D3，并重新生成一百万条独立数据。Iter2对Iter1得分率55.08%，配对95% CI为51.43%–58.72%；对PST得分率70.18%，CI为66.80%–73.44%。相较Iter1对PST的63.28%继续提高6.90个百分点，因此第二轮仍未观察到自举回退；但两轮结果不能确定渐近上限，也不保证第三轮继续提升。
-
-第三次迭代继续用上一代同时作为教师与初始化。Iter3对Iter2得分率52.86%，CI为49.35%–56.38%；对PST为70.05%，CI为66.67%–73.44%。对PST点估计比Iter2低0.13个百分点，满足预先约定的“第一次点估计回落即停止”规则，因此当前选择Iter2。区间高度重叠，证据只支持“进入平台”，不支持“Iter3真实更弱”的强结论。
-
-单轮完整流水线已固化为 [`../trainnnue/run_teacher_iteration.ps1`](../trainnnue/run_teacher_iteration.ps1)，连续迭代与停止规则由 [`../trainnnue/run_until_regression.ps1`](../trainnnue/run_until_regression.ps1) 执行。每轮保留独立数据、K、checkpoint、量化验证和两组正式比赛。
-
-## 5. 结果解释
-
-- 内部 PST 比赛量化 NNUE 评价升级；官方 Pikafish 比赛提供外部强度坐标。
-- `UCI_Elo=1900` 是 Pikafish 内置限强刻度；跨平台等级映射需要对应平台的定级对局。
-- 瑞士轮用于候选排序，直接换先赛用于最终模型判断。
-- 当前仲裁以160 ply作为实验终止点，后续规则实验将加入完整长捉、长杀裁决。
-
-## 6. 下一步证据
-
-若要给出稳定Elo估计，应预先登记模型与时间控制，扩展到数千盘独立开局对，在不同机器上重复，并补充完整长捉/长杀裁判。任何新调参都应使用新的开发集，不能回看正式保留集继续优化。
+A stable Elo estimate requires preregistered models/time controls, thousands of independent opening pairs, repetition across machines, and complete repetition adjudication. New tuning must use new development data rather than repeatedly optimizing against the formal held-out set.

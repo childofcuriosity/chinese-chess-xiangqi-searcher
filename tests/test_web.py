@@ -77,7 +77,7 @@ def test_illegal_move(client):
         ws.send_json({"type": "move", "r1": 7, "c1": 7, "r2": 7, "c2": 0})  # 炮不能横走一格? 其实7,7->7,0隔了兵
         msg = ws.receive_json()
         assert msg["type"] == "error"
-        assert "非法" in msg["msg"]
+        assert "Illegal" in msg["msg"]
 
         # 选子查询确认棋盘没变
         ws.send_json({"type": "select", "r": 7, "c": 7})

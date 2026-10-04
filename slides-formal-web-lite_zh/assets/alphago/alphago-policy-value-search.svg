@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">AlphaGo 类策略网络、价值网络与树搜索流程</title>
+  <desc id="desc">完整棋盘分别经过多层卷积策略网络和价值网络，策略网络输出候选走法先验，价值网络评估新叶局面，树搜索回传结果并继续选择。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#081525"/><stop offset="1" stop-color="#10243a"/></linearGradient>
+    <linearGradient id="cnn" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#7137d8"/><stop offset="1" stop-color="#a75cf4"/></linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L9,3 L0,6 Z" fill="#79d8ff"/></marker>
+    <style>
+      .t{font-family:"Noto Sans SC","Microsoft YaHei",sans-serif;fill:#eef7ff}.h{font-size:28px;font-weight:700}.b{font-size:21px}.s{font-size:17px;fill:#b9cad8}.box{stroke:#79d8ff;stroke-width:2;rx:18}.a{stroke:#79d8ff;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="620" rx="28" fill="url(#bg)"/>
+  <text x="600" y="48" text-anchor="middle" class="t h">一个新叶局面，要完整跑两类深层网络</text>
+
+  <rect x="40" y="225" width="190" height="150" class="box" fill="#173c4d"/>
+  <text x="135" y="275" text-anchor="middle" class="t h">完整棋盘</text>
+  <text x="135" y="312" text-anchor="middle" class="t b">所有棋子 / 落子</text>
+  <text x="135" y="343" text-anchor="middle" class="t s">新叶局面 s</text>
+
+  <path d="M230 268 H300" class="a"/><path d="M230 332 H300" class="a"/>
+
+  <rect x="305" y="112" width="300" height="170" class="box" fill="url(#cnn)"/>
+  <text x="455" y="143" text-anchor="middle" class="t h">策略网络</text>
+  <!-- 棋盘网格输入 -->
+  <g stroke="#d9c9ff" stroke-width="1.4" fill="#4b2799">
+    <rect x="321" y="158" width="64" height="64" rx="4"/>
+    <path d="M337 158V222M353 158V222M369 158V222M321 174H385M321 190H385M321 206H385"/>
+  </g>
+  <!-- 多通道特征图：同一棋盘的多张表示 -->
+  <g fill="#8055d8" stroke="#eadfff" stroke-width="1.5">
+    <rect x="408" y="171" width="52" height="48" rx="4"/><rect x="414" y="165" width="52" height="48" rx="4"/><rect x="420" y="159" width="52" height="48" rx="4"/>
+    <rect x="481" y="171" width="42" height="48" rx="4"/><rect x="487" y="165" width="42" height="48" rx="4"/><rect x="493" y="159" width="42" height="48" rx="4"/>
+  </g>
+  <path d="M386 190H413M473 190H486M536 190H552" class="a"/>
+  <!-- 走法概率热图 -->
+  <g stroke="#fff" stroke-width="1.2" fill="#ffbf43">
+    <rect x="555" y="160" width="34" height="62" rx="4"/>
+    <path d="M566 160V222M577 160V222M555 175H589M555 190H589M555 206H589" opacity=".65"/>
+    <circle cx="577" cy="175" r="5" fill="#ff4d67" stroke="none"/><circle cx="566" cy="206" r="4" fill="#ffe39a" stroke="none"/>
+  </g>
+  <text x="353" y="247" text-anchor="middle" class="t s">棋盘网格</text>
+  <text x="474" y="247" text-anchor="middle" class="t s">多通道 × 多层</text>
+  <text x="572" y="247" text-anchor="middle" class="t s">走法热图</text>
+  <text x="455" y="271" text-anchor="middle" class="t s">逐层卷积与非线性，给每个合法着分配先验</text>
+
+  <rect x="305" y="338" width="300" height="170" class="box" fill="url(#cnn)"/>
+  <text x="455" y="369" text-anchor="middle" class="t h">价值网络</text>
+  <g stroke="#d9c9ff" stroke-width="1.4" fill="#4b2799">
+    <rect x="321" y="384" width="64" height="64" rx="4"/>
+    <path d="M337 384V448M353 384V448M369 384V448M321 400H385M321 416H385M321 432H385"/>
+  </g>
+  <g fill="#8055d8" stroke="#eadfff" stroke-width="1.5">
+    <rect x="408" y="397" width="52" height="48" rx="4"/><rect x="414" y="391" width="52" height="48" rx="4"/><rect x="420" y="385" width="52" height="48" rx="4"/>
+    <rect x="481" y="397" width="42" height="48" rx="4"/><rect x="487" y="391" width="42" height="48" rx="4"/><rect x="493" y="385" width="42" height="48" rx="4"/>
+  </g>
+  <path d="M386 416H413M473 416H486M536 416H552" class="a"/>
+  <circle cx="572" cy="416" r="25" fill="#ffbf43" stroke="#fff" stroke-width="1.5"/>
+  <text x="572" y="424" text-anchor="middle" class="t h" fill="#24162f">V</text>
+  <text x="353" y="473" text-anchor="middle" class="t s">棋盘网格</text>
+  <text x="474" y="473" text-anchor="middle" class="t s">多通道 × 多层</text>
+  <text x="572" y="473" text-anchor="middle" class="t s">单个价值</text>
+  <text x="455" y="497" text-anchor="middle" class="t s">逐层卷积与非线性，估计新叶胜负前景</text>
+
+  <path d="M605 197 H680" class="a"/><path d="M605 423 H680" class="a"/>
+  <rect x="685" y="185" width="235" height="250" class="box" fill="#17455a"/>
+  <text x="802" y="230" text-anchor="middle" class="t h">树搜索</text>
+  <text x="802" y="272" text-anchor="middle" class="t b">1. 按先验选择分支</text>
+  <text x="802" y="310" text-anchor="middle" class="t b">2. 扩展一个新叶</text>
+  <text x="802" y="348" text-anchor="middle" class="t b">3. 评估这个新叶</text>
+  <text x="802" y="386" text-anchor="middle" class="t b">4. 把结果向上回传</text>
+
+  <path d="M920 310 H990" class="a"/>
+  <rect x="995" y="225" width="165" height="170" class="box" fill="#5d3a16"/>
+  <text x="1077" y="272" text-anchor="middle" class="t h">再次选择</text>
+  <text x="1077" y="310" text-anchor="middle" class="t b">好分支获得</text>
+  <text x="1077" y="344" text-anchor="middle" class="t b">更多访问</text>
+
+  <text x="600" y="570" text-anchor="middle" class="t b">2016 AlphaGo 的叶子评估还把价值网络与快速走子模拟的结果混合</text>
+  <text x="600" y="598" text-anchor="middle" class="t s">依据 Silver et al., Nature 2016, Fig. 1b 与 Fig. 3 重绘</text>
+</svg>
