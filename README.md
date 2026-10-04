@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README_zh.md)
 
-[Play online](http://47.102.137.220:8100) · [Interactive tutorial](slides-formal-web-lite/index.html) · [Tutorial PDF](slides-formal-web-lite/xiangqi-engine-tutorial.pdf) · [Running the project](docs/RUNNING.md) · [Experiments](docs/EXPERIMENTS.md) · [NNUE details](trainnnue/README.md)
+[Play online](http://164.152.167.211:8100/) · [Interactive tutorial](slides-formal-web-lite/index.html) · [Tutorial PDF](slides-formal-web-lite/xiangqi-engine-tutorial.pdf) · [Running the project](docs/RUNNING.md) · [Experiments](docs/EXPERIMENTS.md) · [NNUE details](trainnnue/README.md)
 
 ## Overview
 

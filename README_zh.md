@@ -2,13 +2,13 @@
 
 [English](README.md) · [简体中文](README_zh.md)
 
-[在线对弈](http://47.102.137.220:8100) · [交互式教程](slides-formal-web-lite_zh/index.html) · [运行说明](docs/RUNNING_zh.md) · [实验设计](docs/EXPERIMENTS_zh.md) · [NNUE 专题](trainnnue/README_zh.md)
+[在线对弈](http://164.152.167.211:8100/) · [交互式教程](slides-formal-web-lite_zh/index.html) · [运行说明](docs/RUNNING_zh.md) · [实验设计](docs/EXPERIMENTS_zh.md) · [NNUE 专题](trainnnue/README_zh.md)
 
 ## 摘要
 
 本项目从零实现了一套中国象棋搜索引擎，研究重点是普通 CPU、固定思考时间下的决策质量。系统以可逆增量状态为基础，将规则判断、PST/NNUE 评价、Zobrist 哈希与搜索路径统一到 `make_move()` / `undo_move()`；搜索端组合迭代加深、PVS、置换表、静态搜索、走法排序和选择性剪枝；评价端实现 HalfKA 特征、增量累加器与量化整数推理。
 
-当前最佳模型采用 `XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头`，大小 363 KB。内部等时测试中，NNUE 对自研 PST 基线取得 **70.18%** 得分率；外部测试覆盖象眼、天启、旋风与官方 Pikafish。三个相邻历史引擎的实战结果独立换算为 **2369–2452 Elo**，共同把当前引擎定位在**约 2400 Elo、人类大师水平**。欢迎[在线试玩 Demo](http://47.102.137.220:8100)。
+当前最佳模型采用 `XQ-HalfKA-9x14x90 → H16 → CReLU → 阶段输出头`，大小 363 KB。内部等时测试中，NNUE 对自研 PST 基线取得 **70.18%** 得分率；外部测试覆盖象眼、天启、旋风与官方 Pikafish。三个相邻历史引擎的实战结果独立换算为 **2369–2452 Elo**，共同把当前引擎定位在**约 2400 Elo、人类大师水平**。欢迎[在线试玩 Demo](http://164.152.167.211:8100/)。
 
 | 公开引擎 | 自研胜/和/负（得分率） | 换算 Elo |
 |---|---:|---:|
