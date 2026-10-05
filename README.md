@@ -8,7 +8,7 @@
 
 A Chinese chess engine built from scratch, focused on decision quality on ordinary CPUs under fixed thinking times. Reversible incremental state connects move legality, PST/NNUE evaluation, Zobrist hashing, and search history through `make_move()` / `undo_move()`. The search combines iterative deepening, PVS, transposition tables, quiescence search, move ordering, and selective pruning. Neural evaluation uses HalfKA features, incremental accumulators, and quantized integer inference.
 
-The selected **363 KB** model uses **XQ-HalfKA-9x14x90 → H16 → CReLU → phase-specific output heads**. It scored **70.18%** against the project's PST baseline in internal equal-time matches. Results against three historical engines imply **2369–2452 Elo**, placing it around **2400 Elo, at human-master level on the cited reference scale**.
+The selected **363 KB** model uses **XQ-HalfKA-9x14x90 → H16 → CReLU → phase-specific output heads**. It scored **70.18%** against the project's PST baseline in internal equal-time matches. Results against three historical engines imply **2369–2452 Elo**, placing it around **2400 Elo**, with **human-master level as an approximate rating reference** ([official human ratings](https://www.sport.gov.cn/qpzx/n5384/c23886046/content.html); details below).
 
 | Opponent | Our wins / draws / losses (score rate) | Implied Elo |
 |---|---:|---:|
@@ -19,6 +19,8 @@ The selected **363 KB** model uses **XQ-HalfKA-9x14x90 → H16 → CReLU → pha
 | [Pikafish 2026-01-31 · full strength](trainnnue/iter2_vs_pikafish_official_180pairs.json) | 6 / 44 / 310 (7.78%) | ≈3573 (cross-generation comparison) |
 
 Reference ratings come from a [public Xiangqi engine rating list](https://zhuanlan.zhihu.com/p/2072972857840350627). The conversion is `opponent reference Elo + 400 × log10(score / (1 − score))`, with reference ratings 2130.4, 2430, 2600, and 4002.7 for ElephantEye, Tianqi, Cyclone, and full-strength Pikafish. Pikafish 1900 uses its built-in strength-limiting scale. See the [results report](trainnnue/RESULTS.generated.md) for game records, measured times, executable hashes, and reproduction commands.
+
+The human-master reference comes from the Chinese Xiangqi Association's [slow-play rating announcement as of December 31, 2021](https://www.sport.gov.cn/qpzx/n5384/c23886046/content.html), published by the Board and Card Games Administrative Center of the General Administration of Sport of China. Its [rating attachment](https://www.sport.gov.cn/qpzx/n5384/c23886046/part/23887091.doc) lists male masters (title column “大”) near 2400, including Wu Wei at **2408**, Li Bingxian at **2406**, Yu Bing at **2397**, and Liu Junda at **2396**. These entries provide historical context for the numerical comparison; the engine estimate comes from engine matches, and equivalence to human playing strength would require calibration through human–engine games under matched time controls.
 
 ## 1. Questions and implementation
 
