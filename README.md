@@ -6,21 +6,23 @@
 
 ## Overview
 
-A Chinese chess engine built from scratch, focused on decision quality on ordinary CPUs under fixed thinking times. Reversible incremental state connects move legality, PST/NNUE evaluation, Zobrist hashing, and search history through `make_move()` / `undo_move()`. The search combines iterative deepening, PVS, transposition tables, quiescence search, move ordering, and selective pruning. Neural evaluation uses HalfKA features, incremental accumulators, and quantized integer inference.
+A Chinese chess engine built from scratch for ordinary CPUs, combining reversible incremental state, PVS search, and a quantized HalfKA NNUE.
 
-The selected **363 KB** model uses **XQ-HalfKA-9x14x90 → H16 → CReLU → phase-specific output heads**. It scored **70.18%** against the project's PST baseline in internal equal-time matches. Results against three historical engines imply **2369–2452 Elo**, placing it around **2400 Elo**, with **human-master level as an approximate rating reference** ([official human ratings](https://www.sport.gov.cn/qpzx/n5384/c23886046/content.html); details below).
+**2026-11-06 update:** the deployed model is **g006 H128, int8 feature weights / int16 accumulators, E20 QAT**, trained from the project’s own pure-PST restart chain. The chain completed 28 historical comparisons (5,376 games), promoted g006, and stopped after g007 failed two historical point-score gates.
 
-| Opponent | Our wins / draws / losses (score rate) | Implied Elo |
-|---|---:|---:|
-| [ElephantEye 3.1](trainnnue/iter2_vs_eleeye31_180pairs.json) | 290 / 31 / 39 (84.86%) | ≈2430 |
-| [Tianqi V1.1.8](trainnnue/iter2_vs_tianqi118_180pairs.compact.json) | 109 / 79 / 172 (41.25%) | ≈2369 |
-| [Cyclone 2007C](trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json) | 60 / 95 / 205 (29.86%) | ≈2452 |
-| [Pikafish 2026-01-31 · UCI_Elo=1900](trainnnue/iter2_vs_pikafish_elo1900_180pairs.json) | 169 / 68 / 123 (56.39%) | ≈1945 (limited-strength scale) |
-| [Pikafish 2026-01-31 · full strength](trainnnue/iter2_vs_pikafish_official_180pairs.json) | 6 / 44 / 310 (7.78%) | ≈3573 (cross-generation comparison) |
+| Opponent | W / D / L | Score (95% CI) | Actual ms (ours / opponent) | Reference Elo (95% CI) |
+|---|---:|---:|---:|---:|
+| ElephantEye 3.1 (new) | 142 / 35 / 15 | 83.07% (78.91%–87.24%) | 149.089 / 148.672 | 2407 (2359–2464) |
+| Tianqi V1.1.8 (new) | 126 / 42 / 24 | 76.56% (71.61%–81.51%) | 150.358 / 152.969 | 2636 (2591–2688) |
+| Cyclone 2007C (reused observation) | 78 / 63 / 51 | 57.03% (52.08%–61.98%) | 144.366 / 142.902 | 2649 (2614–2685) |
 
-Reference ratings come from a [public Xiangqi engine rating list](https://zhuanlan.zhihu.com/p/2072972857840350627). The conversion is `opponent reference Elo + 400 × log10(score / (1 − score))`, with reference ratings 2130.4, 2430, 2600, and 4002.7 for ElephantEye, Tianqi, Cyclone, and full-strength Pikafish. Pikafish 1900 uses its built-in strength-limiting scale. See the [results report](trainnnue/RESULTS.generated.md) for game records, measured times, executable hashes, and reproduction commands.
+The fixed three-anchor fit is **2601 reference Elo** (opening-pair bootstrap 95% CI 2574–2629). The point estimate is just above 2600, with its interval spanning 2600. The opponent-specific ratings range from about 2407 to 2649, so this is an approximately 2600 coordinate on the cited historical engine scale. The Cyclone 2600 anchor refers to top professional and grandmaster play in 2006–2007.
 
-The human-master reference comes from the Chinese Xiangqi Association's [slow-play rating announcement as of December 31, 2021](https://www.sport.gov.cn/qpzx/n5384/c23886046/content.html), published by the Board and Card Games Administrative Center of the General Administration of Sport of China. Its [rating attachment](https://www.sport.gov.cn/qpzx/n5384/c23886046/part/23887091.doc) lists male masters (title column “大”) near 2400, including Wu Wei at **2408**, Li Bingxian at **2406**, Yu Bing at **2397**, and Liu Junda at **2396**. These entries provide historical context for the numerical comparison; the engine estimate comes from engine matches, and equivalence to human playing strength would require calibration through human–engine games under matched time controls.
+Both new matches passed independent 48-pair timing confirmation before 96 formal opening pairs. Each side's actual mean must be within 150ms ±5%, with time-ratio deviation at most 5%. Nominal budgets were frozen before formal play and were selected using timing only. Cyclone reuses the existing g006 observation, accepted under its original relative-only timing gate. The new matches use production engine `ad9a1567…99d5db`; Cyclone used experimental engine `e6f367…`. The model is identical, but this is not one newly run three-opponent production-engine tournament. Full identities and pure-win intervals are in the compact JSON and recipe.
+
+[Current report](docs/nnue_g006_20261106/REPORT.md) · [Frozen recipe](docs/nnue_g006_20261106/recipe.json) · [Compact games](docs/nnue_g006_20261106/matches.compact.json).
+
+Model SHA-256: `746e930533cddf7907c85545659605b7477bf32bdb0335a6ca0b3b743455af5e`. [Play online](http://164.152.167.211:8100/).
 
 ## 1. Questions and implementation
 
@@ -76,14 +78,10 @@ PST also serves as the residual baseline for NNUE. Both evaluation paths share p
 ### NNUE architecture
 
 ```text
-XQ-HalfKA-9x14x90 → H16 → CReLU → phase-specific output head → PST residual
+HalfKA (7,560 independent rows, expanded to 11,340) → H128 → CReLU → phase output → PST residual
 ```
 
-- **Features:** 9 king-position buckets × 14 relative side/piece channels × 90 squares.
-- **Perspectives:** separately oriented Red and Black views share one weight table.
-- **Width:** `H=16`, with clipped ReLU.
-- **Output:** a correction to PST, with parameters selected by game phase.
-- **Inference:** C++ integer arithmetic; the quantized model occupies 363,128 bytes.
+Features index 9 friendly-king positions × 14 relative-side/piece channels × 90 squares. Three pairs of side king buckets share simultaneously mirrored piece-square vectors; the three central buckets remain independent. Two oriented perspectives share the feature table. Export expands shared weights, so inference adds no mirror lookup. The deployed model uses int8 feature weights, int16 accumulators and E20 QAT. Model and native inference details are in the [current report](docs/nnue_g006_20261106/REPORT.md).
 
 ### Incremental accumulators
 
@@ -91,7 +89,7 @@ The first layer is cached in two perspective accumulators. Ordinary moves subtra
 
 ### Training and teacher iteration
 
-Initial data comes from PST teacher search with heuristic forward pruning disabled, balanced by side to move. Later iterations use the previous quantized NNUE with depth-3 search, generating one million new positions per iteration. Sigmoid temperature `K` is calibrated separately and frozen. Training, quantization, and C++ validation share one pipeline.
+The pure-PST restart chain uses Top-3 exploration (50% / 30% / 20%), with labels always taken from an independent single-PV best search. PST plays and labels at D4; later NNUE generations use D3. Each historical source contributes two million fresh valid positions per generation, giving 2M through 14M datasets. H128 is randomly initialized each generation, trained only on normalized clipped search-residual MSE, then fine-tuned by fixed-scale QAT. Whole-game splits are 98% / 1% / 1%. External engines supply evaluation only. The saved label `S_i` is the sample’s independent single-PV best score with its actual pre-root history; the network input `B_i` is board plus side to move. See the [formula and recipe](docs/nnue_g006_20261106/REPORT.md).
 
 ## 5. Search
 
@@ -116,30 +114,37 @@ TT scores include the chosen leaf evaluator and are reused according to saved de
 | Forward pruning | Null move, futility, reverse futility, razoring | Static score relative to the search window |
 | Recovery | Re-search after failed narrow windows; full depth for critical moves | Results crossing current bounds |
 
-Deadline checks occur in the node loop; completed results are committed at iteration boundaries. The teacher shares rules, evaluation, and quiescence but disables heuristic forward pruning to produce consistent fixed-depth labels.
+Deadline checks occur in the node loop; completed results are committed at iteration boundaries. The teacher shares rules, evaluation, and quiescence but disables heuristic forward pruning to produce fixed-depth labels.
 
 ## 7. Experimental design
 
-| Setting | Internal PST / NNUE | Official Pikafish reference |
-|---|---|---|
-| Openings | 192 held-out openings | 12 calibration + 180 formal openings |
-| Color control | Swap colors for every opening | Same |
-| Games | 384 per comparison | 360 per strength setting |
-| Resources | One CPU core | One thread each, same logical core per game |
-| Nominal time per move | 0.10 s each | Our engine 0.25 s; Pikafish 0.10 s |
-| Mean measured time | Shared searcher for direct comparison | Limited: 76.2 / 101.3 ms; full: 86.9 / 91.4 ms |
-| Score rate | `(wins + 0.5 × draws) / games` | Same |
-| Uncertainty | Opening-pair bootstrap 95% CI | Same |
+Current mainline comparisons use 96 color-swapped opening pairs (192 games) per historical opponent. Independent calibration freezes nominal budgets before formal play; each side’s actual mean must lie within 150 ms ±5%, and the deviation of their actual-time ratio from 1 must be at most 5%. Promotion requires every historical point score `(wins + draws/2)/games` to exceed 50%; all scheduled comparisons finish before stopping. Pure win rates, paired 95% intervals and measured times are reported separately in the [current report](docs/nnue_g006_20261106/REPORT.md).
 
-Our engine uses a `0.16` heuristic threshold after each completed depth to estimate the next iteration's cost. This creates a systematic difference between nominal and actual time. The first 12 openings freeze the time multiplier and Pikafish strength setting; the other 180 form the formal test set. Our measured mean time is lower in the formal Pikafish matches. `UCI_Elo=1900` is Pikafish's built-in `UCI_LimitStrength` scale.
+The older 360/384-game protocols and figures below belong to the historical Iter2 experiments.
 
-## 8. Results
+## 8. Historical results (Iter2 and earlier)
+
+The historical Iter2 **363 KB** model uses **XQ-HalfKA-9x14x90 → H16 → CReLU → phase-specific output heads**. It scored **70.18%** against the project's PST baseline in internal equal-time matches. Results against three historical engines imply **2369–2452 Elo**, placing it around **2400 Elo**, with **human-master level as an approximate rating reference** ([official human ratings](https://www.sport.gov.cn/qpzx/n5384/c23886046/content.html); details below).
+
+| Opponent | Our wins / draws / losses (score rate) | Implied Elo |
+|---|---:|---:|
+| [ElephantEye 3.1](trainnnue/iter2_vs_eleeye31_180pairs.json) | 290 / 31 / 39 (84.86%) | ≈2430 |
+| [Tianqi V1.1.8](trainnnue/iter2_vs_tianqi118_180pairs.compact.json) | 109 / 79 / 172 (41.25%) | ≈2369 |
+| [Cyclone 2007C](trainnnue/iter2_vs_cyclone2007c_180pairs.compact.json) | 60 / 95 / 205 (29.86%) | ≈2452 |
+| [Pikafish 2026-01-31 · UCI_Elo=1900](trainnnue/iter2_vs_pikafish_elo1900_180pairs.json) | 169 / 68 / 123 (56.39%) | ≈1945 (limited-strength scale) |
+| [Pikafish 2026-01-31 · full strength](trainnnue/iter2_vs_pikafish_official_180pairs.json) | 6 / 44 / 310 (7.78%) | ≈3573 (cross-generation comparison) |
+
+Reference ratings come from a [public Xiangqi engine rating list](https://zhuanlan.zhihu.com/p/2072972857840350627). The conversion is `opponent reference Elo + 400 × log10(score / (1 − score))`, with reference ratings 2130.4, 2430, 2600, and 4002.7 for ElephantEye, Tianqi, Cyclone, and full-strength Pikafish. Pikafish 1900 uses its built-in strength-limiting scale. See the [results report](trainnnue/RESULTS.generated.md) for game records, measured times, executable hashes, and reproduction commands.
+
+The human-master reference comes from the Chinese Xiangqi Association's [slow-play rating announcement as of December 31, 2021](https://www.sport.gov.cn/qpzx/n5384/c23886046/content.html), published by the Board and Card Games Administrative Center of the General Administration of Sport of China. Its [rating attachment](https://www.sport.gov.cn/qpzx/n5384/c23886046/part/23887091.doc) lists male masters (title column “大”) near 2400, including Wu Wei at **2408**, Li Bingxian at **2406**, Yu Bing at **2397**, and Liu Junda at **2396**. These entries provide historical context for the numerical comparison; the engine estimate comes from engine matches, and equivalence to human playing strength would require calibration through human–engine games under matched time controls.
+
+
 
 ### External matches
 
 ![Official Pikafish reference](trainnnue/external_benchmark.svg)
 
-The table above reports all external results. Each match uses 180 color-swapped opening pairs (360 games) with fixed CPU affinity. Mean measured times (our engine / opponent) are 104.0 / 119.4 ms for ElephantEye, 155.0 / 159.6 ms for Tianqi, 112.4 / 89.9 ms for Cyclone, 76.2 / 101.3 ms for limited Pikafish, and 86.9 / 91.4 ms for full-strength Pikafish. Our engine used about 25% more time against Cyclone; the table retains that original condition.
+The historical table in this section reports the external Iter2 results. Each match uses 180 color-swapped opening pairs (360 games) with fixed CPU affinity. Mean measured times (our engine / opponent) are 104.0 / 119.4 ms for ElephantEye, 155.0 / 159.6 ms for Tianqi, 112.4 / 89.9 ms for Cyclone, 76.2 / 101.3 ms for limited Pikafish, and 86.9 / 91.4 ms for full-strength Pikafish. Our engine used about 25% more time against Cyclone; the table retains that original condition.
 
 ### Model generations
 
@@ -153,11 +158,11 @@ The table above reports all external results. Each match uses 180 color-swapped 
 | **3** | **Previous NNUE + D3, one million positions** | **70.18%** | **218 / 103 / 63** |
 | 4 | Previous NNUE + D3, one million positions | 70.05% | 224 / 90 / 70 |
 
-Generation 3 (`Iter2-NNUE-D3`) has the highest observed score, with paired 95% CI **66.80%–73.44%**, and is selected for the web and local NNUE entry points. Generation 4 reaches the same performance plateau, ending this iteration experiment.
+Generation 3 (`Iter2-NNUE-D3`) has the highest observed score, with paired 95% CI **66.80%–73.44%**, and was selected for the web and local NNUE entry points in that historical experiment. Generation 4 reaches the same performance plateau, ending this iteration experiment.
 
 ### Width and search cost
 
-D4-H16 scored **54.17%** against D4-H8, with mean completed depths of **9.18 vs 9.24**. H16 adds little depth cost while improving direct-match performance, so it is the selected width. Offline metrics, curves, Swiss standings, matches, and checkpoints are in the [NNUE guide](trainnnue/README.md) and [generated report](trainnnue/RESULTS.generated.md).
+D4-H16 scored **54.17%** against D4-H8, with mean completed depths of **9.18 vs 9.24**. H16 adds little depth cost while improving direct-match performance, so it was the selected width in that historical experiment. Offline metrics, curves, Swiss standings, matches, and checkpoints are in the [NNUE guide](trainnnue/README.md) and [generated report](trainnnue/RESULTS.generated.md).
 
 ## 9. Reproduction
 
